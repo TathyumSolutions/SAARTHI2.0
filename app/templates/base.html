@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Saarthi - Enterprise Data Intelligence Platform{% endblock %}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-blue: #0078D4;
+            --dark-bg: #1E1E1E;
+            --sidebar-bg: #252526;
+            --panel-bg: #2D2D30;
+            --border-color: #3E3E42;
+            --text-primary: #FFFFFF;
+            --text-secondary: #CCCCCC;
+            --hover-bg: #37373D;
+            --accent-green: #4EC9B0;
+            --accent-orange: #CE9178;
+            --accent-purple: #C586C0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: var(--sidebar-bg);
+            padding: 12px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--primary-blue), var(--accent-green));
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .app-name {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .mode-selector {
+            display: flex;
+            background: var(--panel-bg);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .mode-btn {
+            padding: 8px 20px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background: var(--primary-blue);
+            color: white;
+        }
+
+        .mode-btn:hover:not(.active) {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+        }
+
+        .user-profile {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--primary-blue);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 60px);
+        }
+
+        .left-sidebar {
+            width: 280px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .section-item {
+            padding: 10px 12px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .section-item:hover {
+            background: var(--hover-bg);
+        }
+
+        .section-item.active {
+            background: var(--primary-blue);
+        }
+
+        .item-icon {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .expand-icon {
+            margin-left: auto;
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+
+        .sub-items {
+            margin-left: 28px;
+            margin-top: 4px;
+            display: none;
+        }
+
+        .sub-items.show {
+            display: block;
+        }
+
+        .sub-item {
+            padding: 8px 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+        }
+
+        .sub-item:hover {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+        }
+
+        .sub-item.active {
+            background: var(--primary-blue);
+            color: var(--text-primary);
+        }
+
+        .sub-item .badge {
+            margin-left: auto;
+            font-size: 9px;
+            padding: 2px 6px;
+        }
+
+        .center-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--dark-bg);
+            overflow-y: auto;
+        }
+
+        .content-area {
+            flex: 1;
+            padding: 20px;
+        }
+
+        {% block extra_styles %}{% endblock %}
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="logo-section">
+            <div class="logo" onclick="window.location.href='/'">S</div>
+            <div class="app-name" onclick="window.location.href='/'">Saarthi</div>
+        </div>
+        <div class="header-actions">
+            <div class="mode-selector">
+                <button class="mode-btn active">Standalone</button>
+                <button class="mode-btn">API Mode</button>
+            </div>
+            <div class="user-profile">A</div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Left Sidebar -->
+        <div class="left-sidebar">
+            <!-- Data Sources Section -->
+            <div class="sidebar-section">
+                <div class="section-title">Data Sources</div>
+                
+                <a href="/unstructured-data" class="section-item">
+                    <div class="item-icon">📁</div>
+                    <span>Unstructured Data (Docs, Images, Videos, Audio, Emails)</span>
+                </a>
+
+                <div class="section-item {% if active_section == 'databases' %}active{% endif %}" onclick="toggleSubMenu(this)">
+                    <div class="item-icon">🔌</div>
+                    <span>Database Connectors</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items show">
+                    <a href="/database/oracle" class="sub-item"><span style="margin-right: 8px;">🔴</span>Oracle Database</a>
+                    <a href="/database/sap-hana" class="sub-item"><span style="margin-right: 8px;">🔷</span>SAP HANA</a>
+                    <a href="/database/sap-erp" class="sub-item"><span style="margin-right: 8px;">🔷</span>SAP ERP</a>
+                    <a href="/database/salesforce" class="sub-item"><span style="margin-right: 8px;">☁️</span>Salesforce</a>
+                    <a href="/database/microsoft-dynamics" class="sub-item"><span style="margin-right: 8px;">🟦</span>Microsoft Dynamics</a>
+                    <a href="/database/postgresql" class="sub-item"><span style="margin-right: 8px;">🐘</span>PostgreSQL</a>
+                    <a href="/database/mysql" class="sub-item"><span style="margin-right: 8px;">🐬</span>MySQL</a>
+                    <a href="/database/mongodb" class="sub-item"><span style="margin-right: 8px;">🍃</span>MongoDB</a>
+                    <a href="/database/snowflake" class="sub-item"><span style="margin-right: 8px;">❄️</span>Snowflake</a>
+                    <a href="/database/bigquery" class="sub-item"><span style="margin-right: 8px;">🔺</span>BigQuery</a>
+                    <a href="/database/redis" class="sub-item"><span style="margin-right: 8px;">⚡</span>Redis</a>
+                    <a href="/database/amazon-rds" class="sub-item"><span style="margin-right: 8px;">🔶</span>Amazon RDS</a>
+                    <a href="/database/azure-sql" class="sub-item"><span style="margin-right: 8px;">🔵</span>Azure SQL</a>
+                    <a href="/database/teradata" class="sub-item"><span style="margin-right: 8px;">📊</span>Teradata</a>
+                    <a href="/database/cassandra" class="sub-item"><span style="margin-right: 8px;">🟨</span>Cassandra</a>
+                </div>
+            </div>
+
+            <!-- AI Models Section -->
+            <div class="sidebar-section">
+                <div class="section-title">AI & Models</div>
+                
+                <div class="section-item" onclick="toggleSubMenu(this)">
+                    <div class="item-icon">🤖</div>
+                    <span>Configured Models</span>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="sub-items">
+                    <a href="/models/claude-sonnet" class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Claude 4.5 Sonnet
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
+                    </a>
+                    <a href="/models/gpt4-turbo" class="sub-item"><span style="margin-right: 8px;">✓</span>GPT-4 Turbo</a>
+                    <a href="/models/llama" class="sub-item"><span style="margin-right: 8px;">✓</span>Llama 3.3 70B</a>
+                    <a href="/models/gemini-pro" class="sub-item"><span style="margin-right: 8px;">✓</span>Gemini Pro</a>
+                    <a href="/models/mixtral" class="sub-item"><span style="margin-right: 8px;">✓</span>Mixtral 8x7B</a>
+                    <a href="/models/configure-new" class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
+                        <span style="margin-right: 8px;">➕</span>Configure New Model
+                    </a>
+                </div>
+            </div>
+
+            <!-- Database Connections Section -->
+            <div class="sidebar-section">
+                <div class="section-title">Active Connections</div>
+                
+                <div class="section-item" onclick="toggleSubMenu(this)">
+                    <div class="item-icon">🗄️</div>
+                    <span>Database Connections</span>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="sub-items">
+                    <a href="/connections/sap-hana-prod" class="sub-item">
+                        <span style="margin-right: 8px;">🔷</span>SAP HANA Prod
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
+                    </a>
+                    <a href="/connections/oracle-erp" class="sub-item">
+                        <span style="margin-right: 8px;">🔴</span>Oracle ERP DB
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
+                    </a>
+                    <a href="/connections/salesforce-crm" class="sub-item">
+                        <span style="margin-right: 8px;">☁️</span>Salesforce CRM
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
+                    </a>
+                    <a href="/connections/postgresql-main" class="sub-item"><span style="margin-right: 8px;">🐘</span>PostgreSQL Main</a>
+                    <a href="/connections/mongodb-analytics" class="sub-item"><span style="margin-right: 8px;">🍃</span>MongoDB Analytics</a>
+                    <a href="/connections/configure-new" class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
+                        <span style="margin-right: 8px;">➕</span>Configure New Connection
+                    </a>
+                </div>
+            </div>
+
+            <!-- Management Section -->
+            <div class="sidebar-section">
+                <div class="section-title">Management</div>
+                
+                <a href="/management/role-management" class="section-item">
+                    <div class="item-icon">👥</div>
+                    <span>Role Management</span>
+                </a>
+
+                <a href="/management/user-groups" class="section-item">
+                    <div class="item-icon">👤</div>
+                    <span>User Groups</span>
+                </a>
+
+                <a href="/management/permissions" class="section-item">
+                    <div class="item-icon">🔐</div>
+                    <span>Permissions</span>
+                </a>
+
+                <a href="/management/audit-logs" class="section-item">
+                    <div class="item-icon">📝</div>
+                    <span>Audit Logs</span>
+                </a>
+
+                <a href="/management/system-logs" class="section-item">
+                    <div class="item-icon">🗂️</div>
+                    <span>System Logs</span>
+                </a>
+
+                <a href="/management/power-automate" class="section-item">
+                    <div class="item-icon">⚡</div>
+                    <span>Power Automate</span>
+                </a>
+
+                <a href="/management/rpa-workflows" class="section-item">
+                    <div class="item-icon">🔄</div>
+                    <span>RPA Workflows</span>
+                </a>
+
+                <div class="section-item" onclick="toggleSubMenu(this)">
+                    <div class="item-icon">🔌</div>
+                    <span>API Connectors</span>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="sub-items">
+                    <a href="/api-connectors/rest-apis" class="sub-item">REST APIs</a>
+                    <a href="/api-connectors/graphql" class="sub-item">GraphQL</a>
+                    <a href="/api-connectors/webhooks" class="sub-item">Webhooks</a>
+                </div>
+
+                <a href="/api-connectors/zapier" class="section-item">
+                    <div class="item-icon">📋</div>
+                    <span>Zapier Integration</span>
+                </a>
+
+                <a href="/api-connectors/custom-workflows" class="section-item">
+                    <div class="item-icon">🎯</div>
+                    <span>Custom Workflows</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Center Panel -->
+        <div class="center-panel">
+            <div class="content-area">
+                {% block content %}
+                <!-- Page specific content goes here -->
+                {% endblock %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSubMenu(element) {
+            const subItems = element.nextElementSibling;
+            if (subItems && subItems.classList.contains('sub-items')) {
+                subItems.classList.toggle('show');
+                const icon = element.querySelector('.expand-icon');
+                icon.textContent = subItems.classList.contains('show') ? '▼' : '▶';
+            }
+        }
+
+        // Highlight active menu item based on current URL
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentPath = window.location.pathname;
+            const menuLinks = document.querySelectorAll('.sub-item, .section-item');
+            
+            menuLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPath) {
+                    link.classList.add('active');
+                    // Expand parent menu if it's a sub-item
+                    const parentSubItems = link.closest('.sub-items');
+                    if (parentSubItems) {
+                        parentSubItems.classList.add('show');
+                        const parentItem = parentSubItems.previousElementSibling;
+                        const icon = parentItem.querySelector('.expand-icon');
+                        if (icon) icon.textContent = '▼';
+                    }
+                }
+            });
+        });
+
+        {% block extra_scripts %}{% endblock %}
+    </script>
+</body>
+</html>

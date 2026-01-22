@@ -1,0 +1,1658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saarthi - Enterprise Data Intelligence Platform</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-blue: #0078D4;
+            --dark-bg: #1E1E1E;
+            --sidebar-bg: #252526;
+            --panel-bg: #2D2D30;
+            --border-color: #3E3E42;
+            --text-primary: #FFFFFF;
+            --text-secondary: #CCCCCC;
+            --hover-bg: #37373D;
+            --accent-green: #4EC9B0;
+            --accent-orange: #CE9178;
+            --accent-purple: #C586C0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: var(--sidebar-bg);
+            padding: 12px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--primary-blue), var(--accent-green));
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 20px;
+        }
+
+        .app-name {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .mode-selector {
+            display: flex;
+            background: var(--panel-bg);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .mode-btn {
+            padding: 8px 20px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background: var(--primary-blue);
+            color: white;
+        }
+
+        .mode-btn:hover:not(.active) {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+        }
+
+        .user-profile {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--primary-blue);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 60px);
+        }
+
+        .left-sidebar {
+            width: 280px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .section-item {
+            padding: 10px 12px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .section-item:hover {
+            background: var(--hover-bg);
+        }
+
+        .section-item.active {
+            background: var(--primary-blue);
+        }
+
+        .item-icon {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .expand-icon {
+            margin-left: auto;
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+
+        .sub-items {
+            margin-left: 28px;
+            margin-top: 4px;
+        }
+
+        .sub-item {
+            padding: 8px 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+        }
+
+        .sub-item:hover {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+        }
+
+        .sub-item .badge {
+            margin-left: auto;
+            font-size: 9px;
+            padding: 2px 6px;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            background: var(--panel-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+        }
+
+        option {
+            background: var(--panel-bg);
+            color: var(--text-primary);
+        }
+
+        .center-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--dark-bg);
+        }
+
+        .llm-selector-bar {
+            background: var(--sidebar-bg);
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .llm-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .llm-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            min-width: 100px;
+        }
+
+        .llm-dropdown {
+            flex: 1;
+            max-width: 250px;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 12px;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--primary-blue);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .message-content {
+            flex: 1;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .message-author {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .message-time {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .message-text {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        .visualization-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 16px;
+            margin-top: 12px;
+        }
+
+        .viz-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .viz-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent-green);
+        }
+
+        .viz-type {
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--hover-bg);
+            padding: 4px 10px;
+            border-radius: 3px;
+        }
+
+        .chart-placeholder {
+            background: var(--dark-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 16px;
+            height: 280px;
+        }
+
+        .chart-canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .db-icon {
+            width: 24px;
+            height: 24px;
+            object-fit: contain;
+        }
+
+        .llm-section-header {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        .insight-box {
+            background: var(--panel-bg);
+            border-left: 3px solid var(--accent-green);
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-top: 12px;
+        }
+
+        .insight-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent-green);
+            margin-bottom: 8px;
+        }
+
+        .insight-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .metric-card {
+            background: var(--dark-bg);
+            padding: 12px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .metric-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .metric-change {
+            font-size: 11px;
+            margin-top: 4px;
+        }
+
+        .metric-change.positive {
+            color: var(--accent-green);
+        }
+
+        .metric-change.negative {
+            color: #F48771;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--sidebar-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+        }
+
+        .form-help {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+        }
+
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary-blue);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #106EBE;
+        }
+
+        .btn-secondary {
+            background: var(--panel-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--hover-bg);
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 16px;
+            margin-top: 8px;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .radio-option input[type="radio"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .radio-option label {
+            font-size: 14px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .input-container {
+            padding: 16px 20px;
+            background: var(--sidebar-bg);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px 16px;
+            color: var(--text-primary);
+            font-size: 14px;
+            resize: none;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+        }
+
+        .send-btn {
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .send-btn:hover {
+            background: #106EBE;
+        }
+
+        .right-sidebar {
+            width: 320px;
+            background: var(--sidebar-bg);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .right-panel-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .panel-title {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .collapse-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        .thought-chain {
+            padding: 16px;
+        }
+
+        .thought-step {
+            margin-bottom: 16px;
+            padding: 12px;
+            background: var(--panel-bg);
+            border-left: 3px solid var(--accent-purple);
+            border-radius: 4px;
+        }
+
+        .thought-number {
+            font-size: 11px;
+            color: var(--accent-purple);
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .thought-title {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .thought-description {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .thought-status {
+            display: inline-block;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 3px;
+            margin-top: 6px;
+        }
+
+        .status-completed {
+            background: rgba(78, 201, 176, 0.2);
+            color: var(--accent-green);
+        }
+
+        .status-processing {
+            background: rgba(206, 145, 120, 0.2);
+            color: var(--accent-orange);
+        }
+
+        .automation-section {
+            margin-top: auto;
+        }
+
+        .badge {
+            display: inline-block;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+            background: var(--accent-orange);
+            color: white;
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--dark-bg);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo-section">
+            <div class="logo">S</div>
+            <div class="app-name">Saarthi</div>
+        </div>
+        <div class="header-actions">
+            <div class="mode-selector">
+                <button class="mode-btn active">Standalone</button>
+                <button class="mode-btn">API Mode</button>
+            </div>
+            <div class="user-profile">A</div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Left Sidebar -->
+        <div class="left-sidebar">
+            <!-- Data Sources Section -->
+            <div class="sidebar-section">
+                <div class="section-title">Data Sources</div>
+                
+                <div class="section-item">
+                    <div class="item-icon">📁</div>
+                    <span>Unstructured Data (RAG)</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item">Documents</div>
+                    <div class="sub-item">Images</div>
+                    <div class="sub-item">Videos</div>
+                    <div class="sub-item">Audio Files</div>
+                    <div class="sub-item">Email Archives</div>
+                </div>
+
+                <div class="section-item active">
+                    <div class="item-icon">🔌</div>
+                    <span>Database Connectors</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔴</span>Oracle Database
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔷</span>SAP HANA
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔷</span>SAP ERP
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">☁️</span>Salesforce
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🟦</span>Microsoft Dynamics
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🐘</span>PostgreSQL
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🐬</span>MySQL
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🍃</span>MongoDB
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">❄️</span>Snowflake
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔺</span>BigQuery
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">⚡</span>Redis
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔶</span>Amazon RDS
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔵</span>Azure SQL
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">📊</span>Teradata
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🟨</span>Cassandra
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Models Section -->
+            <div class="sidebar-section">
+                <div class="section-title">AI & Models</div>
+                
+                <div class="section-item">
+                    <div class="item-icon">🤖</div>
+                    <span>Configured Models</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Claude 4.5 Sonnet
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>GPT-4 Turbo
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Llama 3.3 70B
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Gemini Pro
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Mixtral 8x7B
+                    </div>
+                    <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
+                        <span style="margin-right: 8px;">➕</span>Configure New Model
+                    </div>
+                </div>
+            </div>
+
+            <!-- Database Connections Section -->
+            <div class="sidebar-section">
+                <div class="section-title">Active Connections</div>
+                
+                <div class="section-item">
+                    <div class="item-icon">🗄️</div>
+                    <span>Database Connections</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔷</span>SAP HANA Prod
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔴</span>Oracle ERP DB
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">☁️</span>Salesforce CRM
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🐘</span>PostgreSQL Main
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🍃</span>MongoDB Analytics
+                    </div>
+                    <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
+                        <span style="margin-right: 8px;">➕</span>Configure New Connection
+                    </div>
+                </div>
+            </div>
+
+            <!-- Management Section -->
+            <div class="sidebar-section">
+                <div class="section-title">Management</div>
+                
+                <div class="section-item">
+                    <div class="item-icon">👥</div>
+                    <span>Role Management</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item">Users</div>
+                    <div class="sub-item">Groups</div>
+                    <div class="sub-item">Permissions</div>
+                    <div class="sub-item">Access Policies</div>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">⚙️</div>
+                    <span>Configuration</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">📊</div>
+                    <span>Analytics Dashboard</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🔒</div>
+                    <span>Security Center</span>
+                </div>
+            </div>
+
+            <!-- Automation Section -->
+            <div class="sidebar-section automation-section">
+                <div class="section-title">Automation & Integration</div>
+                
+                <div class="section-item">
+                    <div class="item-icon">🤖</div>
+                    <span>Agentic AI</span>
+                    <span class="badge">New</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">⚡</div>
+                    <span>Power Automate</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🔄</div>
+                    <span>RPA Workflows</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🔌</div>
+                    <span>API Connectors</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item">REST APIs</div>
+                    <div class="sub-item">GraphQL</div>
+                    <div class="sub-item">Webhooks</div>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">📋</div>
+                    <span>Zapier Integration</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🎯</div>
+                    <span>Custom Workflows</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Panel -->
+        <div class="center-panel">
+            <!-- LLM Selector Bar -->
+            <div class="llm-selector-bar">
+                <div class="llm-group">
+                    <div style="min-width: 140px;">
+                        <div class="llm-section-header">LLM - Standard API</div>
+                        <select class="llm-dropdown" style="width: 220px;">
+                            <option selected>Claude 4.5 Sonnet</option>
+                            <option>Claude 4.5 Opus</option>
+                            <option>Claude 3.5 Haiku</option>
+                            <option>GPT-4 Turbo</option>
+                            <option>GPT-4o</option>
+                            <option>GPT-3.5 Turbo</option>
+                            <option>Gemini Pro</option>
+                            <option>Gemini Ultra</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="llm-group">
+                    <div style="min-width: 140px;">
+                        <div class="llm-section-header">LLM - Open Source</div>
+                        <select class="llm-dropdown" style="width: 220px;">
+                            <option selected>Llama 3.3 70B</option>
+                            <option>Llama 3.1 405B</option>
+                            <option>Llama 3.1 70B</option>
+                            <option>Llama 3.1 8B</option>
+                            <option>Mixtral 8x7B</option>
+                            <option>Mistral Large</option>
+                            <option>Qwen 2.5 72B</option>
+                            <option>DeepSeek V3</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Container -->
+            <div class="chat-container">
+                <div class="message">
+                    <div class="message-avatar">👤</div>
+                    <div class="message-content">
+                        <div class="message-header">
+                            <span class="message-author">You</span>
+                            <span class="message-time">10:23 AM</span>
+                        </div>
+                        <div class="message-text">
+                            Show me the sales performance by region for Q4 2024 from our SAP HANA database
+                        </div>
+                    </div>
+                </div>
+
+                <div class="message">
+                    <div class="message-avatar" style="background: var(--accent-green);">S</div>
+                    <div class="message-content">
+                        <div class="message-header">
+                            <span class="message-author">Saarthi AI</span>
+                            <span class="message-time">10:23 AM</span>
+                        </div>
+                        <div class="message-text">
+                            I've analyzed the Q4 2024 sales data from your SAP HANA instance. Here's a comprehensive breakdown of regional performance:
+                        </div>
+
+                        <div class="metric-grid">
+                            <div class="metric-card">
+                                <div class="metric-label">Total Q4 Revenue</div>
+                                <div class="metric-value">$118.3M</div>
+                                <div class="metric-change positive">↑ 24.5% YoY</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Average Deal Size</div>
+                                <div class="metric-value">$847K</div>
+                                <div class="metric-change positive">↑ 12.3% QoQ</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Total Transactions</div>
+                                <div class="metric-value">1,847</div>
+                                <div class="metric-change positive">↑ 18.7% YoY</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-label">Customer Growth</div>
+                                <div class="metric-value">+234</div>
+                                <div class="metric-change positive">↑ 15.2% QoQ</div>
+                            </div>
+                        </div>
+
+                        <div class="insight-box">
+                            <div class="insight-title">🎯 Key Insights</div>
+                            <div class="insight-text">
+                                <strong>North America</strong> continues to dominate with $45.2M (38.2% of total revenue), driven by strong enterprise adoption in the technology and financial services sectors.
+                                <br><br>
+                                <strong>Europe</strong> achieved remarkable 23% YoY growth reaching $32.8M, with Germany and UK leading the expansion. The DACH region alone contributed €18.5M.
+                                <br><br>
+                                <strong>Asia-Pacific</strong> showed the strongest growth trajectory at 31% YoY ($28.1M), primarily fueled by increased market penetration in Singapore, Australia, and emerging opportunities in India.
+                                <br><br>
+                                <strong>Latin America</strong> maintained steady performance at $12.5M with Brazil accounting for 62% of regional revenue.
+                            </div>
+                        </div>
+
+                        <div class="visualization-panel">
+                            <div class="viz-header">
+                                <span class="viz-title">Regional Sales Performance - Q4 2024</span>
+                                <span class="viz-type">Bar Chart</span>
+                            </div>
+                            <div class="chart-placeholder">
+                                <canvas id="regionalChart" class="chart-canvas"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="visualization-panel">
+                            <div class="viz-header">
+                                <span class="viz-title">Quarterly Growth Trends by Region</span>
+                                <span class="viz-type">Line Chart</span>
+                            </div>
+                            <div class="chart-placeholder">
+                                <canvas id="trendChart" class="chart-canvas"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="insight-box" style="border-left-color: var(--accent-orange);">
+                            <div class="insight-title" style="color: var(--accent-orange);">⚠️ Recommendations</div>
+                            <div class="insight-text">
+                                <strong>1. Capitalize on APAC momentum:</strong> Increase sales resources in high-growth markets by 25-30% to capture emerging opportunities.
+                                <br><br>
+                                <strong>2. Enhance European presence:</strong> The strong YoY growth indicates untapped potential. Consider expanding to Nordics and Southern Europe.
+                                <br><br>
+                                <strong>3. North America optimization:</strong> While maintaining leadership, focus on mid-market segment which shows 34% conversion rate improvement.
+                                <br><br>
+                                <strong>4. LATAM diversification:</strong> Reduce Brazil dependency by expanding into Mexico and Colombia markets.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="message">
+                    <div class="message-avatar">👤</div>
+                    <div class="message-content">
+                        <div class="message-header">
+                            <span class="message-author">You</span>
+                            <span class="message-time">10:25 AM</span>
+                        </div>
+                        <div class="message-text">
+                            Can you break down the top 5 products in North America?
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Container -->
+            <div class="input-container">
+                <textarea class="chat-input" rows="2" placeholder="Ask Saarthi anything about your data..."></textarea>
+                <button class="send-btn">Send</button>
+            </div>
+        </div>
+
+        <!-- Right Sidebar -->
+        <div class="right-sidebar">
+            <div class="right-panel-header">
+                <span class="panel-title">Chain of Thought</span>
+                <button class="collapse-btn">−</button>
+            </div>
+
+            <div class="thought-chain">
+                <div class="thought-step">
+                    <div class="thought-number">STEP 1</div>
+                    <div class="thought-title">Query Understanding</div>
+                    <div class="thought-description">
+                        Identified request for Q4 2024 sales data segmented by geographic regions from SAP HANA database
+                    </div>
+                    <span class="thought-status status-completed">✓ Completed</span>
+                </div>
+
+                <div class="thought-step">
+                    <div class="thought-number">STEP 2</div>
+                    <div class="thought-title">Data Source Connection</div>
+                    <div class="thought-description">
+                        Established secure connection to SAP HANA instance. Validated credentials and access permissions for sales schema
+                    </div>
+                    <span class="thought-status status-completed">✓ Completed</span>
+                </div>
+
+                <div class="thought-step">
+                    <div class="thought-number">STEP 3</div>
+                    <div class="thought-title">SQL Query Generation</div>
+                    <div class="thought-description">
+                        Generated optimized SQL query with proper date filtering (Oct-Dec 2024), regional grouping, and revenue aggregation
+                    </div>
+                    <span class="thought-status status-completed">✓ Completed</span>
+                </div>
+
+                <div class="thought-step">
+                    <div class="thought-number">STEP 4</div>
+                    <div class="thought-title">Data Retrieval</div>
+                    <div class="thought-description">
+                        Executed query and retrieved 47 rows covering all regional sales offices. Query execution time: 1.2s
+                    </div>
+                    <span class="thought-status status-completed">✓ Completed</span>
+                </div>
+
+                <div class="thought-step">
+                    <div class="thought-number">STEP 5</div>
+                    <div class="thought-title">Data Analysis</div>
+                    <div class="thought-description">
+                        Performed regional aggregation, YoY comparisons, and identified key trends and outliers in the dataset
+                    </div>
+                    <span class="thought-status status-completed">✓ Completed</span>
+                </div>
+
+                <div class="thought-step">
+                    <div class="thought-number">STEP 6</div>
+                    <div class="thought-title">Visualization Generation</div>
+                    <div class="thought-description">
+                        Created interactive charts showing regional distribution and growth trends with comparative metrics
+                    </div>
+                    <span class="thought-status status-processing">⟳ Processing</span>
+                </div>
+
+                <div class="thought-step" style="border-left-color: var(--text-secondary); opacity: 0.5;">
+                    <div class="thought-number">STEP 7</div>
+                    <div class="thought-title">Insight Synthesis</div>
+                    <div class="thought-description">
+                        Generating natural language summary with actionable business insights and recommendations
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configure New Model Modal -->
+    <div class="modal-overlay" id="modelModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">Configure New AI Model</span>
+                <button class="modal-close" onclick="closeModal('modelModal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Model Type</label>
+                    <div class="radio-group">
+                        <div class="radio-option">
+                            <input type="radio" name="modelType" id="standardApi" value="standard" checked>
+                            <label for="standardApi">Standard API</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" name="modelType" id="openSource" value="opensource">
+                            <label for="openSource">Open Source</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Model Provider</label>
+                    <select class="form-input">
+                        <option>Anthropic</option>
+                        <option>OpenAI</option>
+                        <option>Google</option>
+                        <option>Meta</option>
+                        <option>Mistral AI</option>
+                        <option>Cohere</option>
+                        <option>Hugging Face</option>
+                        <option>Custom Provider</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Model Name</label>
+                    <input type="text" class="form-input" placeholder="e.g., Claude 4.5 Sonnet, GPT-4o, Llama 3.3">
+                    <div class="form-help">Enter the exact model identifier</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">API Endpoint URL</label>
+                    <input type="text" class="form-input" placeholder="https://api.example.com/v1/chat/completions">
+                    <div class="form-help">Base URL for API requests</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">API Key</label>
+                    <input type="password" class="form-input" placeholder="sk-...">
+                    <div class="form-help">Your authentication key (encrypted and stored securely)</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Max Tokens</label>
+                    <input type="number" class="form-input" placeholder="4096" value="4096">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Temperature</label>
+                    <input type="number" class="form-input" placeholder="0.7" value="0.7" step="0.1" min="0" max="2">
+                    <div class="form-help">Controls randomness (0.0 - 2.0)</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Description (Optional)</label>
+                    <textarea class="form-input" rows="3" placeholder="Brief description of this model configuration..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('modelModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveModel()">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configure New Database Connection Modal -->
+    <div class="modal-overlay" id="dbModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">Configure New Database Connection</span>
+                <button class="modal-close" onclick="closeModal('dbModal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Database Type</label>
+                    <select class="form-input" id="dbType">
+                        <option value="postgres">🐘 PostgreSQL</option>
+                        <option value="mysql">🐬 MySQL</option>
+                        <option value="mongodb">🍃 MongoDB</option>
+                        <option value="oracle">🔴 Oracle Database</option>
+                        <option value="saphana">🔷 SAP HANA</option>
+                        <option value="saperp">🔷 SAP ERP</option>
+                        <option value="salesforce">☁️ Salesforce</option>
+                        <option value="mssql">🔵 Microsoft SQL Server</option>
+                        <option value="snowflake">❄️ Snowflake</option>
+                        <option value="bigquery">🔺 Google BigQuery</option>
+                        <option value="redis">⚡ Redis</option>
+                        <option value="cassandra">🟨 Cassandra</option>
+                        <option value="dynamodb">🔶 Amazon DynamoDB</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Connection Name</label>
+                    <input type="text" class="form-input" placeholder="e.g., Production DB, Analytics Warehouse">
+                    <div class="form-help">A friendly name to identify this connection</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Host / Server</label>
+                    <input type="text" class="form-input" placeholder="localhost or db.example.com">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Port</label>
+                    <input type="number" class="form-input" placeholder="5432" value="5432">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Database Name</label>
+                    <input type="text" class="form-input" placeholder="database_name">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Username</label>
+                    <input type="text" class="form-input" placeholder="db_user">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-input" placeholder="••••••••">
+                    <div class="form-help">Credentials are encrypted and stored securely</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Connection String (Optional)</label>
+                    <textarea class="form-input" rows="2" placeholder="postgresql://user:password@host:port/database"></textarea>
+                    <div class="form-help">Override individual fields with a connection string</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">SSL/TLS</label>
+                    <div class="radio-group">
+                        <div class="radio-option">
+                            <input type="radio" name="ssl" id="sslRequired" value="require" checked>
+                            <label for="sslRequired">Required</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" name="ssl" id="sslPreferred" value="prefer">
+                            <label for="sslPreferred">Preferred</label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" name="ssl" id="sslDisabled" value="disable">
+                            <label for="sslDisabled">Disabled</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('dbModal')">Cancel</button>
+                <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
+                <button class="btn btn-primary" onclick="saveDatabase()">Save Connection</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Charts
+        function initializeCharts() {
+            // Regional Sales Bar Chart
+            const regionalCtx = document.getElementById('regionalChart');
+            if (regionalCtx) {
+                new Chart(regionalCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['North America', 'Europe', 'Asia-Pacific', 'Latin America'],
+                        datasets: [{
+                            label: 'Q4 2024 Revenue ($M)',
+                            data: [45.2, 32.8, 28.1, 12.5],
+                            backgroundColor: [
+                                'rgba(0, 120, 212, 0.8)',
+                                'rgba(78, 201, 176, 0.8)',
+                                'rgba(197, 134, 192, 0.8)',
+                                'rgba(206, 145, 120, 0.8)'
+                            ],
+                            borderColor: [
+                                'rgba(0, 120, 212, 1)',
+                                'rgba(78, 201, 176, 1)',
+                                'rgba(197, 134, 192, 1)',
+                                'rgba(206, 145, 120, 1)'
+                            ],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(37, 37, 38, 0.95)',
+                                titleColor: '#fff',
+                                bodyColor: '#ccc',
+                                borderColor: '#3E3E42',
+                                borderWidth: 1,
+                                padding: 12,
+                                displayColors: true,
+                                callbacks: {
+                                    label: function(context) {
+                                        return 'Revenue: $' + context.parsed.y + 'M';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(62, 62, 66, 0.5)',
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    color: '#CCCCCC',
+                                    callback: function(value) {
+                                        return '$' + value + 'M';
+                                    }
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: '#CCCCCC'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Quarterly Trends Line Chart
+            const trendCtx = document.getElementById('trendChart');
+            if (trendCtx) {
+                new Chart(trendCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Q1 2024', 'Q2 2024', 'Q3 2024', 'Q4 2024'],
+                        datasets: [
+                            {
+                                label: 'North America',
+                                data: [38.5, 41.2, 43.8, 45.2],
+                                borderColor: 'rgba(0, 120, 212, 1)',
+                                backgroundColor: 'rgba(0, 120, 212, 0.1)',
+                                tension: 0.4,
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointBackgroundColor: 'rgba(0, 120, 212, 1)'
+                            },
+                            {
+                                label: 'Europe',
+                                data: [26.7, 28.4, 30.2, 32.8],
+                                borderColor: 'rgba(78, 201, 176, 1)',
+                                backgroundColor: 'rgba(78, 201, 176, 0.1)',
+                                tension: 0.4,
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointBackgroundColor: 'rgba(78, 201, 176, 1)'
+                            },
+                            {
+                                label: 'Asia-Pacific',
+                                data: [21.5, 23.8, 25.7, 28.1],
+                                borderColor: 'rgba(197, 134, 192, 1)',
+                                backgroundColor: 'rgba(197, 134, 192, 0.1)',
+                                tension: 0.4,
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointBackgroundColor: 'rgba(197, 134, 192, 1)'
+                            },
+                            {
+                                label: 'Latin America',
+                                data: [11.2, 11.8, 12.1, 12.5],
+                                borderColor: 'rgba(206, 145, 120, 1)',
+                                backgroundColor: 'rgba(206, 145, 120, 0.1)',
+                                tension: 0.4,
+                                borderWidth: 2,
+                                pointRadius: 4,
+                                pointBackgroundColor: 'rgba(206, 145, 120, 1)'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    color: '#CCCCCC',
+                                    padding: 15,
+                                    font: {
+                                        size: 11
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(37, 37, 38, 0.95)',
+                                titleColor: '#fff',
+                                bodyColor: '#ccc',
+                                borderColor: '#3E3E42',
+                                borderWidth: 1,
+                                padding: 12,
+                                displayColors: true,
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.dataset.label + ': $' + context.parsed.y + 'M';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                grid: {
+                                    color: 'rgba(62, 62, 66, 0.5)',
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    color: '#CCCCCC',
+                                    callback: function(value) {
+                                        return '$' + value + 'M';
+                                    }
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    color: 'rgba(62, 62, 66, 0.3)',
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    color: '#CCCCCC'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Initialize charts when page loads
+        window.addEventListener('load', initializeCharts);
+
+        // Modal Functions
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function saveModel() {
+            // Here you would implement the actual save logic
+            alert('Model configuration saved successfully!');
+            closeModal('modelModal');
+        }
+
+        function saveDatabase() {
+            // Here you would implement the actual save logic
+            alert('Database connection saved successfully!');
+            closeModal('dbModal');
+        }
+
+        function testConnection() {
+            // Here you would implement the connection test logic
+            alert('Testing connection...\n\nConnection successful! ✓\nLatency: 45ms');
+        }
+
+        // Close modal when clicking outside
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.classList.remove('active');
+                }
+            });
+        });
+
+        // Toggle sidebar items
+        document.querySelectorAll('.section-item').forEach(item => {
+            item.addEventListener('click', function(e) {
+                if (e.target.closest('.expand-icon')) {
+                    const subItems = this.nextElementSibling;
+                    if (subItems && subItems.classList.contains('sub-items')) {
+                        subItems.style.display = subItems.style.display === 'none' ? 'block' : 'none';
+                        const icon = this.querySelector('.expand-icon');
+                        icon.textContent = subItems.style.display === 'none' ? '▶' : '▼';
+                    }
+                }
+            });
+        });
+
+        // Handle configure new model/database clicks
+        document.addEventListener('click', function(e) {
+            const target = e.target.closest('.sub-item');
+            if (target) {
+                const text = target.textContent.trim();
+                if (text.includes('Configure New Model')) {
+                    openModal('modelModal');
+                } else if (text.includes('Configure New Connection')) {
+                    openModal('dbModal');
+                }
+            }
+        });
+
+        // Mode selector
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // Auto-resize textarea
+        const textarea = document.querySelector('.chat-input');
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+        });
+
+        // Send button
+        document.querySelector('.send-btn').addEventListener('click', function() {
+            const input = document.querySelector('.chat-input');
+            if (input.value.trim()) {
+                // Handle message send
+                console.log('Sending message:', input.value);
+                input.value = '';
+                input.style.height = 'auto';
+            }
+        });
+
+        // Enter to send (Shift+Enter for new line)
+        textarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                document.querySelector('.send-btn').click();
+            }
+        });
+    </script>
+</body>
+</html>
