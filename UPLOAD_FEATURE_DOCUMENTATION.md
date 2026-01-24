@@ -326,7 +326,7 @@ In `app/api/routes/upload_routes.py`:
 
 ```python
 # Upload folder location
-UPLOAD_FOLDER = '/home/claude/saarthi_enterprise_api/uploads'
+UPLOAD_FOLDER = '/saarthi_enterprise_api/uploads'
 
 # Maximum file size (100MB)
 MAX_FILE_SIZE = 100 * 1024 * 1024

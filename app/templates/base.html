@@ -154,6 +154,8 @@
             gap: 10px;
             transition: all 0.2s;
             font-size: 14px;
+            text-decoration: none;
+            color: inherit;
         }
 
         .section-item:hover {
@@ -181,11 +183,6 @@
         .sub-items {
             margin-left: 28px;
             margin-top: 4px;
-            display: none;
-        }
-
-        .sub-items.show {
-            display: block;
         }
 
         .sub-item {
@@ -216,6 +213,16 @@
             padding: 2px 6px;
         }
 
+        .badge {
+            display: inline-block;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+            background: var(--accent-orange);
+            color: white;
+        }
+
         .center-panel {
             flex: 1;
             display: flex;
@@ -227,6 +234,24 @@
         .content-area {
             flex: 1;
             padding: 20px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--dark-bg);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
         }
 
         {% block extra_styles %}{% endblock %}
@@ -255,32 +280,62 @@
             <div class="sidebar-section">
                 <div class="section-title">Data Sources</div>
                 
-                <a href="/unstructured-data" class="section-item">
+                <div class="section-item" id="unstructuredDataIcon">
                     <div class="item-icon">📁</div>
-                    <span>Unstructured Data (Docs, Images, Videos, Audio, Emails)</span>
-                </a>
+                    <span>Files</span>
+                </div>
 
-                <div class="section-item {% if active_section == 'databases' %}active{% endif %}" onclick="toggleSubMenu(this)">
+                <div class="section-item active">
                     <div class="item-icon">🔌</div>
                     <span>Database Connectors</span>
                     <span class="expand-icon">▼</span>
                 </div>
-                <div class="sub-items show">
-                    <a href="/database/oracle" class="sub-item"><span style="margin-right: 8px;">🔴</span>Oracle Database</a>
-                    <a href="/database/sap-hana" class="sub-item"><span style="margin-right: 8px;">🔷</span>SAP HANA</a>
-                    <a href="/database/sap-erp" class="sub-item"><span style="margin-right: 8px;">🔷</span>SAP ERP</a>
-                    <a href="/database/salesforce" class="sub-item"><span style="margin-right: 8px;">☁️</span>Salesforce</a>
-                    <a href="/database/microsoft-dynamics" class="sub-item"><span style="margin-right: 8px;">🟦</span>Microsoft Dynamics</a>
-                    <a href="/database/postgresql" class="sub-item"><span style="margin-right: 8px;">🐘</span>PostgreSQL</a>
-                    <a href="/database/mysql" class="sub-item"><span style="margin-right: 8px;">🐬</span>MySQL</a>
-                    <a href="/database/mongodb" class="sub-item"><span style="margin-right: 8px;">🍃</span>MongoDB</a>
-                    <a href="/database/snowflake" class="sub-item"><span style="margin-right: 8px;">❄️</span>Snowflake</a>
-                    <a href="/database/bigquery" class="sub-item"><span style="margin-right: 8px;">🔺</span>BigQuery</a>
-                    <a href="/database/redis" class="sub-item"><span style="margin-right: 8px;">⚡</span>Redis</a>
-                    <a href="/database/amazon-rds" class="sub-item"><span style="margin-right: 8px;">🔶</span>Amazon RDS</a>
-                    <a href="/database/azure-sql" class="sub-item"><span style="margin-right: 8px;">🔵</span>Azure SQL</a>
-                    <a href="/database/teradata" class="sub-item"><span style="margin-right: 8px;">📊</span>Teradata</a>
-                    <a href="/database/cassandra" class="sub-item"><span style="margin-right: 8px;">🟨</span>Cassandra</a>
+                <div class="sub-items">
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔴</span>Oracle Database
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔷</span>SAP HANA
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔷</span>SAP ERP
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">☁️</span>Salesforce
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🟦</span>Microsoft Dynamics
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🐘</span>PostgreSQL
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🐬</span>MySQL
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🍃</span>MongoDB
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">❄️</span>Snowflake
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔺</span>BigQuery
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">⚡</span>Redis
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔶</span>Amazon RDS
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🔵</span>Azure SQL
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">📊</span>Teradata
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🟨</span>Cassandra
+                    </div>
                 </div>
             </div>
 
@@ -288,23 +343,31 @@
             <div class="sidebar-section">
                 <div class="section-title">AI & Models</div>
                 
-                <div class="section-item" onclick="toggleSubMenu(this)">
+                <div class="section-item">
                     <div class="item-icon">🤖</div>
                     <span>Configured Models</span>
-                    <span class="expand-icon">▶</span>
+                    <span class="expand-icon">▼</span>
                 </div>
                 <div class="sub-items">
-                    <a href="/models/claude-sonnet" class="sub-item">
+                    <div class="sub-item">
                         <span style="margin-right: 8px;">✓</span>Claude 4.5 Sonnet
                         <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
-                    </a>
-                    <a href="/models/gpt4-turbo" class="sub-item"><span style="margin-right: 8px;">✓</span>GPT-4 Turbo</a>
-                    <a href="/models/llama" class="sub-item"><span style="margin-right: 8px;">✓</span>Llama 3.3 70B</a>
-                    <a href="/models/gemini-pro" class="sub-item"><span style="margin-right: 8px;">✓</span>Gemini Pro</a>
-                    <a href="/models/mixtral" class="sub-item"><span style="margin-right: 8px;">✓</span>Mixtral 8x7B</a>
-                    <a href="/models/configure-new" class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>GPT-4 Turbo
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Llama 3.3 70B
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Gemini Pro
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Mixtral 8x7B
+                    </div>
+                    <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
                         <span style="margin-right: 8px;">➕</span>Configure New Model
-                    </a>
+                    </div>
                 </div>
             </div>
 
@@ -312,29 +375,33 @@
             <div class="sidebar-section">
                 <div class="section-title">Active Connections</div>
                 
-                <div class="section-item" onclick="toggleSubMenu(this)">
+                <div class="section-item">
                     <div class="item-icon">🗄️</div>
                     <span>Database Connections</span>
-                    <span class="expand-icon">▶</span>
+                    <span class="expand-icon">▼</span>
                 </div>
                 <div class="sub-items">
-                    <a href="/connections/sap-hana-prod" class="sub-item">
+                    <div class="sub-item">
                         <span style="margin-right: 8px;">🔷</span>SAP HANA Prod
                         <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
-                    </a>
-                    <a href="/connections/oracle-erp" class="sub-item">
+                    </div>
+                    <div class="sub-item">
                         <span style="margin-right: 8px;">🔴</span>Oracle ERP DB
                         <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
-                    </a>
-                    <a href="/connections/salesforce-crm" class="sub-item">
+                    </div>
+                    <div class="sub-item">
                         <span style="margin-right: 8px;">☁️</span>Salesforce CRM
                         <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
-                    </a>
-                    <a href="/connections/postgresql-main" class="sub-item"><span style="margin-right: 8px;">🐘</span>PostgreSQL Main</a>
-                    <a href="/connections/mongodb-analytics" class="sub-item"><span style="margin-right: 8px;">🍃</span>MongoDB Analytics</a>
-                    <a href="/connections/configure-new" class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🐘</span>PostgreSQL Main
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">🍃</span>MongoDB Analytics
+                    </div>
+                    <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
                         <span style="margin-right: 8px;">➕</span>Configure New Connection
-                    </a>
+                    </div>
                 </div>
             </div>
 
@@ -342,61 +409,74 @@
             <div class="sidebar-section">
                 <div class="section-title">Management</div>
                 
-                <a href="/management/role-management" class="section-item">
+                <div class="section-item">
                     <div class="item-icon">👥</div>
                     <span>Role Management</span>
-                </a>
-
-                <a href="/management/user-groups" class="section-item">
-                    <div class="item-icon">👤</div>
-                    <span>User Groups</span>
-                </a>
-
-                <a href="/management/permissions" class="section-item">
-                    <div class="item-icon">🔐</div>
-                    <span>Permissions</span>
-                </a>
-
-                <a href="/management/audit-logs" class="section-item">
-                    <div class="item-icon">📝</div>
-                    <span>Audit Logs</span>
-                </a>
-
-                <a href="/management/system-logs" class="section-item">
-                    <div class="item-icon">🗂️</div>
-                    <span>System Logs</span>
-                </a>
-
-                <a href="/management/power-automate" class="section-item">
-                    <div class="item-icon">⚡</div>
-                    <span>Power Automate</span>
-                </a>
-
-                <a href="/management/rpa-workflows" class="section-item">
-                    <div class="item-icon">🔄</div>
-                    <span>RPA Workflows</span>
-                </a>
-
-                <div class="section-item" onclick="toggleSubMenu(this)">
-                    <div class="item-icon">🔌</div>
-                    <span>API Connectors</span>
-                    <span class="expand-icon">▶</span>
+                    <span class="expand-icon">▼</span>
                 </div>
                 <div class="sub-items">
-                    <a href="/api-connectors/rest-apis" class="sub-item">REST APIs</a>
-                    <a href="/api-connectors/graphql" class="sub-item">GraphQL</a>
-                    <a href="/api-connectors/webhooks" class="sub-item">Webhooks</a>
+                    <div class="sub-item">Users</div>
+                    <div class="sub-item">Groups</div>
+                    <div class="sub-item">Permissions</div>
+                    <div class="sub-item">Access Policies</div>
                 </div>
 
-                <a href="/api-connectors/zapier" class="section-item">
+                <div class="section-item">
+                    <div class="item-icon">⚙️</div>
+                    <span>Configuration</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">📊</div>
+                    <span>Analytics Dashboard</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🔒</div>
+                    <span>Security Center</span>
+                </div>
+            </div>
+
+            <!-- Automation Section -->
+            <div class="sidebar-section automation-section">
+                <div class="section-title">Automation & Integration</div>
+                
+                <div class="section-item">
+                    <div class="item-icon">🤖</div>
+                    <span>Agentic AI</span>
+                    <span class="badge">New</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">⚡</div>
+                    <span>Power Automate</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🔄</div>
+                    <span>RPA Workflows</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🔌</div>
+                    <span>API Connectors</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item">REST APIs</div>
+                    <div class="sub-item">GraphQL</div>
+                    <div class="sub-item">Webhooks</div>
+                </div>
+
+                <div class="section-item">
                     <div class="item-icon">📋</div>
                     <span>Zapier Integration</span>
-                </a>
+                </div>
 
-                <a href="/api-connectors/custom-workflows" class="section-item">
+                <div class="section-item">
                     <div class="item-icon">🎯</div>
                     <span>Custom Workflows</span>
-                </a>
+                </div>
             </div>
         </div>
 
@@ -440,7 +520,48 @@
             });
         });
 
-        {% block extra_scripts %}{% endblock %}
+        // Toggle sidebar items - ONLY sidebar items, not content
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.left-sidebar .section-item').forEach(item => {
+                item.addEventListener('click', function(e) {
+                    // Files icon click
+                    if (this.id === 'unstructuredDataIcon') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        window.location.href = '/unstructured_data';
+                        return;
+                    }
+                    
+                    // Check if item has sub-items
+                    const subItems = this.nextElementSibling;
+                    if (subItems && subItems.classList.contains('sub-items')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        // Toggle sub-items visibility
+                        const isCurrentlyVisible = subItems.style.display !== 'none';
+                        subItems.style.display = isCurrentlyVisible ? 'none' : 'block';
+                        
+                        // Toggle expand icon
+                        const icon = this.querySelector('.expand-icon');
+                        if (icon) {
+                            icon.textContent = isCurrentlyVisible ? '▶' : '▼';
+                        }
+                    }
+                });
+            });
+        });
+
+        // Mode selector
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        
     </script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

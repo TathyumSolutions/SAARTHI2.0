@@ -766,17 +766,9 @@
             <div class="sidebar-section">
                 <div class="section-title">Data Sources</div>
                 
-                <div class="section-item">
+                <div class="section-item" id="unstructuredDataIcon">
                     <div class="item-icon">📁</div>
-                    <span>Unstructured Data (RAG)</span>
-                    <span class="expand-icon">▼</span>
-                </div>
-                <div class="sub-items">
-                    <div class="sub-item">Documents</div>
-                    <div class="sub-item">Images</div>
-                    <div class="sub-item">Videos</div>
-                    <div class="sub-item">Audio Files</div>
-                    <div class="sub-item">Email Archives</div>
+                    <span>Files</span>
                 </div>
 
                 <div class="section-item active">
@@ -1593,15 +1585,26 @@
             });
         });
 
-        // Toggle sidebar items
+        // Toggle sidebar items - FIXED VERSION
         document.querySelectorAll('.section-item').forEach(item => {
             item.addEventListener('click', function(e) {
-                if (e.target.closest('.expand-icon')) {
-                    const subItems = this.nextElementSibling;
-                    if (subItems && subItems.classList.contains('sub-items')) {
-                        subItems.style.display = subItems.style.display === 'none' ? 'block' : 'none';
-                        const icon = this.querySelector('.expand-icon');
-                        icon.textContent = subItems.style.display === 'none' ? '▶' : '▼';
+                // Files icon click - special case, navigates to different page
+                if (this.id === 'unstructuredDataIcon') {
+                    window.location.href = '/unstructured_data';
+                    return;
+                }
+                
+                // Check if item has sub-items
+                const subItems = this.nextElementSibling;
+                if (subItems && subItems.classList.contains('sub-items')) {
+                    // Toggle sub-items visibility
+                    const isCurrentlyVisible = subItems.style.display !== 'none';
+                    subItems.style.display = isCurrentlyVisible ? 'none' : 'block';
+                    
+                    // Toggle expand icon
+                    const icon = this.querySelector('.expand-icon');
+                    if (icon) {
+                        icon.textContent = isCurrentlyVisible ? '▶' : '▼';
                     }
                 }
             });

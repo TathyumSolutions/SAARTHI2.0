@@ -166,7 +166,7 @@ def create_page(directory, filename, title):
 
 def main():
     """Generate all HTML pages"""
-    base_dir = '/home/claude/saarthi_enterprise_api/app/templates'
+    base_dir = '/workspaces/SAARTHI2.0/app/templates'
     
     for category, pages in PAGES.items():
         category_dir = os.path.join(base_dir, category)

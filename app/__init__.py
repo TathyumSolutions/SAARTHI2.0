@@ -7,11 +7,20 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from config.config import config
+import os
 
 # Initialize extensions
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
+
+print("Working on upload folder")
+print("Current file path:", os.path.abspath(__file__))
+print
+
+# Set up upload folder
+UPLOAD_FOLDER = "/workspaces/SAARTHI2.0/uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def create_app(config_name='development'):
     """Create and configure the Flask application"""
@@ -61,7 +70,10 @@ def create_app(config_name='development'):
     app.register_blueprint(export_routes.bp)
     app.register_blueprint(model_config_routes.bp)
     app.register_blueprint(user_routes.bp)
-    app.register_blueprint(upload_routes.bp)
+    
+    from app.api.routes.upload_routes import upload_bp
+    app.register_blueprint(upload_bp)
+    
     print("Working on the blue print part")
     # Health check endpoint
     @app.route('/health')

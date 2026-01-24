@@ -6,6 +6,7 @@ from flask import Blueprint, render_template
 
 bp = Blueprint('pages', __name__)
 
+print( "I am in the page_routes.py file" )
 # Home/Dashboard
 @bp.route('/')
 @bp.route('/index')
@@ -14,8 +15,9 @@ def index():
     return render_template('index.html')
 
 # Data Sources - Unstructured Data
-@bp.route('/unstructured-data')
+@bp.route('/unstructured_data')
 def unstructured_data():
+    print( "Rendering unstructured_data.html" )
     """Main unstructured data upload page"""
     return render_template('unstructured_data.html')
 
