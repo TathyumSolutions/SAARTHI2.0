@@ -233,43 +233,24 @@
 
         .content-area {
             flex: 1;
-            padding: 20px;
+            padding: 24px;
         }
-
-        ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--dark-bg);
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--border-color);
-            border-radius: 5px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-
-        {% block extra_styles %}{% endblock %}
     </style>
 </head>
 <body>
     <!-- Header -->
     <div class="header">
         <div class="logo-section">
-            <div class="logo" onclick="window.location.href='/'">S</div>
-            <div class="app-name" onclick="window.location.href='/'">Saarthi</div>
+            <div class="logo">S</div>
+            <div class="app-name">Saarthi</div>
         </div>
         <div class="header-actions">
             <div class="mode-selector">
-                <button class="mode-btn active">Standalone</button>
-                <button class="mode-btn">API Mode</button>
+                <button class="mode-btn active">Chat</button>
+                <button class="mode-btn">Analytics</button>
+                <button class="mode-btn">Reports</button>
             </div>
-            <div class="user-profile">A</div>
+            <div class="user-profile">U</div>
         </div>
     </div>
 
@@ -280,63 +261,15 @@
             <div class="sidebar-section">
                 <div class="section-title">Data Sources</div>
                 
-                <div class="section-item" id="unstructuredDataIcon">
+                <a href="/unstructured_data" class="section-item" id="unstructuredDataIcon">
                     <div class="item-icon">📁</div>
                     <span>Files</span>
-                </div>
+                </a>
 
-                <div class="section-item active">
+                <a href="/database_connections" class="section-item" id="databaseConnectionsIcon">
                     <div class="item-icon">🔌</div>
-                    <span>Database Connectors</span>
-                    <span class="expand-icon">▼</span>
-                </div>
-                <div class="sub-items">
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔴</span>Oracle Database
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔷</span>SAP HANA
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔷</span>SAP ERP
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">☁️</span>Salesforce
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🟦</span>Microsoft Dynamics
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🐘</span>PostgreSQL
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🐬</span>MySQL
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🍃</span>MongoDB
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">❄️</span>Snowflake
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔺</span>BigQuery
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">⚡</span>Redis
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔶</span>Amazon RDS
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔵</span>Azure SQL
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">📊</span>Teradata
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🟨</span>Cassandra
-                    </div>
-                </div>
+                    <span>Database Connections</span>
+                </a>
             </div>
 
             <!-- AI Models Section -->
@@ -367,40 +300,6 @@
                     </div>
                     <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
                         <span style="margin-right: 8px;">➕</span>Configure New Model
-                    </div>
-                </div>
-            </div>
-
-            <!-- Database Connections Section -->
-            <div class="sidebar-section">
-                <div class="section-title">Active Connections</div>
-                
-                <div class="section-item">
-                    <div class="item-icon">🗄️</div>
-                    <span>Database Connections</span>
-                    <span class="expand-icon">▼</span>
-                </div>
-                <div class="sub-items">
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔷</span>SAP HANA Prod
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔴</span>Oracle ERP DB
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">☁️</span>Salesforce CRM
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🐘</span>PostgreSQL Main
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🍃</span>MongoDB Analytics
-                    </div>
-                    <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
-                        <span style="margin-right: 8px;">➕</span>Configure New Connection
                     </div>
                 </div>
             </div>
@@ -526,10 +425,12 @@
                 item.addEventListener('click', function(e) {
                     // Files icon click
                     if (this.id === 'unstructuredDataIcon') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        window.location.href = '/unstructured_data';
-                        return;
+                        return; // Let the anchor tag handle navigation
+                    }
+                    
+                    // Database Connections icon click
+                    if (this.id === 'databaseConnectionsIcon') {
+                        return; // Let the anchor tag handle navigation
                     }
                     
                     // Check if item has sub-items

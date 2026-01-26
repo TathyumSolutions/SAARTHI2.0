@@ -766,62 +766,14 @@
             <div class="sidebar-section">
                 <div class="section-title">Data Sources</div>
                 
-                <div class="section-item" id="unstructuredDataIcon">
+                <div class="section-item" id="unstructuredDataIcon" onclick="window.location.href='/unstructured_data'">
                     <div class="item-icon">📁</div>
                     <span>Files</span>
                 </div>
 
-                <div class="section-item active">
+                <div class="section-item" id="databaseConnectionsIcon" onclick="window.location.href='/database_connections'">
                     <div class="item-icon">🔌</div>
-                    <span>Database Connectors</span>
-                    <span class="expand-icon">▼</span>
-                </div>
-                <div class="sub-items">
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔴</span>Oracle Database
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔷</span>SAP HANA
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔷</span>SAP ERP
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">☁️</span>Salesforce
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🟦</span>Microsoft Dynamics
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🐘</span>PostgreSQL
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🐬</span>MySQL
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🍃</span>MongoDB
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">❄️</span>Snowflake
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔺</span>BigQuery
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">⚡</span>Redis
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔶</span>Amazon RDS
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔵</span>Azure SQL
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">📊</span>Teradata
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🟨</span>Cassandra
-                    </div>
+                    <span>Database Connections</span>
                 </div>
             </div>
 
@@ -853,40 +805,6 @@
                     </div>
                     <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
                         <span style="margin-right: 8px;">➕</span>Configure New Model
-                    </div>
-                </div>
-            </div>
-
-            <!-- Database Connections Section -->
-            <div class="sidebar-section">
-                <div class="section-title">Active Connections</div>
-                
-                <div class="section-item">
-                    <div class="item-icon">🗄️</div>
-                    <span>Database Connections</span>
-                    <span class="expand-icon">▼</span>
-                </div>
-                <div class="sub-items">
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔷</span>SAP HANA Prod
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🔴</span>Oracle ERP DB
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">☁️</span>Salesforce CRM
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Connected</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🐘</span>PostgreSQL Main
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">🍃</span>MongoDB Analytics
-                    </div>
-                    <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
-                        <span style="margin-right: 8px;">➕</span>Configure New Connection
                     </div>
                 </div>
             </div>
@@ -1270,97 +1188,6 @@
         </div>
     </div>
 
-    <!-- Configure New Database Connection Modal -->
-    <div class="modal-overlay" id="dbModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <span class="modal-title">Configure New Database Connection</span>
-                <button class="modal-close" onclick="closeModal('dbModal')">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">Database Type</label>
-                    <select class="form-input" id="dbType">
-                        <option value="postgres">🐘 PostgreSQL</option>
-                        <option value="mysql">🐬 MySQL</option>
-                        <option value="mongodb">🍃 MongoDB</option>
-                        <option value="oracle">🔴 Oracle Database</option>
-                        <option value="saphana">🔷 SAP HANA</option>
-                        <option value="saperp">🔷 SAP ERP</option>
-                        <option value="salesforce">☁️ Salesforce</option>
-                        <option value="mssql">🔵 Microsoft SQL Server</option>
-                        <option value="snowflake">❄️ Snowflake</option>
-                        <option value="bigquery">🔺 Google BigQuery</option>
-                        <option value="redis">⚡ Redis</option>
-                        <option value="cassandra">🟨 Cassandra</option>
-                        <option value="dynamodb">🔶 Amazon DynamoDB</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Connection Name</label>
-                    <input type="text" class="form-input" placeholder="e.g., Production DB, Analytics Warehouse">
-                    <div class="form-help">A friendly name to identify this connection</div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Host / Server</label>
-                    <input type="text" class="form-input" placeholder="localhost or db.example.com">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Port</label>
-                    <input type="number" class="form-input" placeholder="5432" value="5432">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Database Name</label>
-                    <input type="text" class="form-input" placeholder="database_name">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Username</label>
-                    <input type="text" class="form-input" placeholder="db_user">
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Password</label>
-                    <input type="password" class="form-input" placeholder="••••••••">
-                    <div class="form-help">Credentials are encrypted and stored securely</div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Connection String (Optional)</label>
-                    <textarea class="form-input" rows="2" placeholder="postgresql://user:password@host:port/database"></textarea>
-                    <div class="form-help">Override individual fields with a connection string</div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">SSL/TLS</label>
-                    <div class="radio-group">
-                        <div class="radio-option">
-                            <input type="radio" name="ssl" id="sslRequired" value="require" checked>
-                            <label for="sslRequired">Required</label>
-                        </div>
-                        <div class="radio-option">
-                            <input type="radio" name="ssl" id="sslPreferred" value="prefer">
-                            <label for="sslPreferred">Preferred</label>
-                        </div>
-                        <div class="radio-option">
-                            <input type="radio" name="ssl" id="sslDisabled" value="disable">
-                            <label for="sslDisabled">Disabled</label>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('dbModal')">Cancel</button>
-                <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
-                <button class="btn btn-primary" onclick="saveDatabase()">Save Connection</button>
-            </div>
-        </div>
-    </div>
-
     <script>
         // Initialize Charts
         function initializeCharts() {
@@ -1565,17 +1392,6 @@
             closeModal('modelModal');
         }
 
-        function saveDatabase() {
-            // Here you would implement the actual save logic
-            alert('Database connection saved successfully!');
-            closeModal('dbModal');
-        }
-
-        function testConnection() {
-            // Here you would implement the connection test logic
-            alert('Testing connection...\n\nConnection successful! ✓\nLatency: 45ms');
-        }
-
         // Close modal when clicking outside
         document.querySelectorAll('.modal-overlay').forEach(overlay => {
             overlay.addEventListener('click', function(e) {
@@ -1585,15 +1401,9 @@
             });
         });
 
-        // Toggle sidebar items - FIXED VERSION
+        // Toggle sidebar items
         document.querySelectorAll('.section-item').forEach(item => {
             item.addEventListener('click', function(e) {
-                // Files icon click - special case, navigates to different page
-                if (this.id === 'unstructuredDataIcon') {
-                    window.location.href = '/unstructured_data';
-                    return;
-                }
-                
                 // Check if item has sub-items
                 const subItems = this.nextElementSibling;
                 if (subItems && subItems.classList.contains('sub-items')) {
@@ -1610,15 +1420,13 @@
             });
         });
 
-        // Handle configure new model/database clicks
+        // Handle configure new model clicks
         document.addEventListener('click', function(e) {
             const target = e.target.closest('.sub-item');
             if (target) {
                 const text = target.textContent.trim();
                 if (text.includes('Configure New Model')) {
                     openModal('modelModal');
-                } else if (text.includes('Configure New Connection')) {
-                    openModal('dbModal');
                 }
             }
         });

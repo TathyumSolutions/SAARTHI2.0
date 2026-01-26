@@ -1,8 +1,241 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Connections - Saarthi</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-{% block title %}Database Connections - Saarthi{% endblock %}
+        :root {
+            --primary-blue: #0078D4;
+            --dark-bg: #1E1E1E;
+            --sidebar-bg: #252526;
+            --panel-bg: #2D2D30;
+            --border-color: #3E3E42;
+            --text-primary: #FFFFFF;
+            --text-secondary: #CCCCCC;
+            --hover-bg: #37373D;
+            --accent-green: #4EC9B0;
+            --accent-orange: #CE9178;
+            --accent-purple: #C586C0;
+        }
 
-{% block extra_styles %}
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            background: var(--sidebar-bg);
+            padding: 12px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--primary-blue), var(--accent-green));
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .app-name {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .mode-selector {
+            display: flex;
+            background: var(--panel-bg);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .mode-btn {
+            padding: 8px 20px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background: var(--primary-blue);
+            color: white;
+        }
+
+        .mode-btn:hover:not(.active) {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+        }
+
+        .user-profile {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--primary-blue);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 60px);
+        }
+
+        .left-sidebar {
+            width: 280px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .section-item {
+            padding: 10px 12px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s;
+            font-size: 14px;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .section-item:hover {
+            background: var(--hover-bg);
+        }
+
+        .section-item.active {
+            background: var(--primary-blue);
+        }
+
+        .item-icon {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .expand-icon {
+            margin-left: auto;
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+
+        .sub-items {
+            margin-left: 28px;
+            margin-top: 4px;
+        }
+
+        .sub-item {
+            padding: 8px 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+        }
+
+        .sub-item:hover {
+            background: var(--hover-bg);
+            color: var(--text-primary);
+        }
+
+        .sub-item.active {
+            background: var(--primary-blue);
+            color: var(--text-primary);
+        }
+
+        .sub-item .badge {
+            margin-left: auto;
+            font-size: 9px;
+            padding: 2px 6px;
+        }
+
+        .badge {
+            display: inline-block;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 8px;
+            background: var(--accent-orange);
+            color: white;
+        }
+
+        .center-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--dark-bg);
+            overflow-y: auto;
+        }
+
+        .content-area {
+            flex: 1;
+            padding: 24px;
+        }
+    
 
     .connection-section {
         background: var(--panel-bg);
@@ -362,9 +595,155 @@
         gap: 8px;
     }
 
-{% endblock %}
 
-{% block content %}
+</style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="logo-section">
+            <div class="logo">S</div>
+            <div class="app-name">Saarthi</div>
+        </div>
+        <div class="header-actions">
+            <div class="mode-selector">
+                <button class="mode-btn active">Chat</button>
+                <button class="mode-btn">Analytics</button>
+                <button class="mode-btn">Reports</button>
+            </div>
+            <div class="user-profile">U</div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Left Sidebar -->
+        <div class="left-sidebar">
+            <!-- Data Sources Section -->
+            <div class="sidebar-section">
+                <div class="section-title">Data Sources</div>
+                
+                <a href="/unstructured_data" class="section-item" id="unstructuredDataIcon">
+                    <div class="item-icon">📁</div>
+                    <span>Files</span>
+                </a>
+
+                <a href="/database_connections" class="section-item" id="databaseConnectionsIcon">
+                    <div class="item-icon">🔌</div>
+                    <span>Database Connections</span>
+                </a>
+            </div>
+
+            <!-- AI Models Section -->
+            <div class="sidebar-section">
+                <div class="section-title">AI & Models</div>
+                
+                <div class="section-item">
+                    <div class="item-icon">🤖</div>
+                    <span>Configured Models</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Claude 4.5 Sonnet
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>GPT-4 Turbo
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Llama 3.3 70B
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Gemini Pro
+                    </div>
+                    <div class="sub-item">
+                        <span style="margin-right: 8px;">✓</span>Mixtral 8x7B
+                    </div>
+                    <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
+                        <span style="margin-right: 8px;">➕</span>Configure New Model
+                    </div>
+                </div>
+            </div>
+
+            <!-- Management Section -->
+            <div class="sidebar-section">
+                <div class="section-title">Management</div>
+                
+                <div class="section-item">
+                    <div class="item-icon">👥</div>
+                    <span>Role Management</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item">Users</div>
+                    <div class="sub-item">Groups</div>
+                    <div class="sub-item">Permissions</div>
+                    <div class="sub-item">Access Policies</div>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">⚙️</div>
+                    <span>Configuration</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">📊</div>
+                    <span>Analytics Dashboard</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🔒</div>
+                    <span>Security Center</span>
+                </div>
+            </div>
+
+            <!-- Automation Section -->
+            <div class="sidebar-section automation-section">
+                <div class="section-title">Automation & Integration</div>
+                
+                <div class="section-item">
+                    <div class="item-icon">🤖</div>
+                    <span>Agentic AI</span>
+                    <span class="badge">New</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">⚡</div>
+                    <span>Power Automate</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🔄</div>
+                    <span>RPA Workflows</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🔌</div>
+                    <span>API Connectors</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item">REST APIs</div>
+                    <div class="sub-item">GraphQL</div>
+                    <div class="sub-item">Webhooks</div>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">📋</div>
+                    <span>Zapier Integration</span>
+                </div>
+
+                <div class="section-item">
+                    <div class="item-icon">🎯</div>
+                    <span>Custom Workflows</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Panel -->
+        <div class="center-panel">
+            <div class="content-area">
+                
 <div style="max-width: 1400px;">
     <h1 style="font-size: 28px; margin-bottom: 8px; color: var(--text-primary);">Database Connections</h1>
     <p style="color: var(--text-secondary); margin-bottom: 24px;">
@@ -500,7 +879,86 @@
         </div>
     </div>
 </div>
-{% endblock %}
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSubMenu(element) {
+            const subItems = element.nextElementSibling;
+            if (subItems && subItems.classList.contains('sub-items')) {
+                subItems.classList.toggle('show');
+                const icon = element.querySelector('.expand-icon');
+                icon.textContent = subItems.classList.contains('show') ? '▼' : '▶';
+            }
+        }
+
+        // Highlight active menu item based on current URL
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentPath = window.location.pathname;
+            const menuLinks = document.querySelectorAll('.sub-item, .section-item');
+            
+            menuLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPath) {
+                    link.classList.add('active');
+                    // Expand parent menu if it's a sub-item
+                    const parentSubItems = link.closest('.sub-items');
+                    if (parentSubItems) {
+                        parentSubItems.classList.add('show');
+                        const parentItem = parentSubItems.previousElementSibling;
+                        const icon = parentItem.querySelector('.expand-icon');
+                        if (icon) icon.textContent = '▼';
+                    }
+                }
+            });
+        });
+
+        // Toggle sidebar items - ONLY sidebar items, not content
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.left-sidebar .section-item').forEach(item => {
+                item.addEventListener('click', function(e) {
+                    // Files icon click
+                    if (this.id === 'unstructuredDataIcon') {
+                        return; // Let the anchor tag handle navigation
+                    }
+                    
+                    // Database Connections icon click
+                    if (this.id === 'databaseConnectionsIcon') {
+                        return; // Let the anchor tag handle navigation
+                    }
+                    
+                    // Check if item has sub-items
+                    const subItems = this.nextElementSibling;
+                    if (subItems && subItems.classList.contains('sub-items')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        // Toggle sub-items visibility
+                        const isCurrentlyVisible = subItems.style.display !== 'none';
+                        subItems.style.display = isCurrentlyVisible ? 'none' : 'block';
+                        
+                        // Toggle expand icon
+                        const icon = this.querySelector('.expand-icon');
+                        if (icon) {
+                            icon.textContent = isCurrentlyVisible ? '▶' : '▼';
+                        }
+                    }
+                });
+            });
+        });
+
+        // Mode selector
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        
+    </script>
+    
 
 {% block extra_scripts %}
 <script>
@@ -586,6 +1044,26 @@
             fields: [
                 {name: 'securityToken', label: 'Security Token', type: 'password', placeholder: 'Your security token', required: true},
                 {name: 'sandboxMode', label: 'Sandbox Mode', type: 'checkbox', required: false}
+            ]
+        },
+        'ODBC': {
+            icon: '🔌',
+            defaultPort: null,
+            desc: 'ODBC Connection',
+            fields: [
+                {name: 'driver', label: 'ODBC Driver', type: 'text', placeholder: 'e.g., SQL Server Native Client 11.0', required: true},
+                {name: 'dsn', label: 'DSN (Data Source Name)', type: 'text', placeholder: 'myDSN', required: false},
+                {name: 'connectionString', label: 'Connection String', type: 'textarea', placeholder: 'Driver={...};Server=...;Database=...', required: false}
+            ]
+        },
+        'Others': {
+            icon: '🗄️',
+            defaultPort: null,
+            desc: 'Custom Database',
+            fields: [
+                {name: 'dbEngine', label: 'Database Engine', type: 'text', placeholder: 'e.g., Cassandra, DynamoDB, Neo4j', required: true},
+                {name: 'connectionString', label: 'Connection String', type: 'textarea', placeholder: 'Full connection string', required: true},
+                {name: 'additionalParams', label: 'Additional Parameters (JSON)', type: 'textarea', placeholder: '{"key": "value"}', required: false}
             ]
         }
     };
@@ -684,10 +1162,20 @@
         
         // Handle host field for cloud services
         const hostInput = document.getElementById('host');
-        if (dbType === 'BigQuery' || dbType === 'Salesforce') {
+        const databaseNameInput = document.getElementById('databaseName');
+        
+        // Hide host/port for cloud services and ODBC/Others
+        if (dbType === 'BigQuery' || dbType === 'Salesforce' || dbType === 'ODBC' || dbType === 'Others') {
             hostInput.parentElement.style.display = 'none';
         } else {
             hostInput.parentElement.style.display = 'block';
+        }
+        
+        // Hide database name for ODBC and Others (they use connection strings)
+        if (dbType === 'ODBC' || dbType === 'Others') {
+            databaseNameInput.parentElement.style.display = 'none';
+        } else {
+            databaseNameInput.parentElement.style.display = 'block';
         }
         
         // Add additional fields
@@ -1152,3 +1640,6 @@
     }
 </script>
 {% endblock %}
+
+</body>
+</html>
