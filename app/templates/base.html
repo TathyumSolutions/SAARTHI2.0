@@ -236,6 +236,9 @@
             padding: 24px;
         }
     </style>
+         {% block extra_styles %}{% endblock %}
+    </style>
+    {% block extra_styles_tag %}<style>{% block extra_styles_inline %}{% endblock %}</style>{% endblock %}
 </head>
 <body>
     <!-- Header -->
