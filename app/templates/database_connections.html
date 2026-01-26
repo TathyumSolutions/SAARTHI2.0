@@ -1,0 +1,1154 @@
+{% extends "base.html" %}
+
+{% block title %}Database Connections - Saarthi{% endblock %}
+
+{% block extra_styles %}
+
+    .connection-section {
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 32px;
+        margin-bottom: 24px;
+    }
+
+    .db-type-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .db-type-card {
+        background: var(--dark-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        position: relative;
+    }
+
+    .db-type-card:hover {
+        border-color: var(--primary-blue);
+        transform: translateY(-2px);
+    }
+
+    .db-type-card.selected {
+        border-color: var(--accent-green);
+        background: var(--hover-bg);
+        box-shadow: 0 0 0 2px rgba(78, 201, 176, 0.2);
+    }
+
+    .db-type-icon {
+        font-size: 48px;
+        margin-bottom: 12px;
+    }
+
+    .db-type-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+    }
+
+    .db-type-desc {
+        font-size: 11px;
+        color: var(--text-secondary);
+    }
+
+    .connection-form {
+        display: none;
+        background: var(--dark-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 24px;
+        margin-top: 24px;
+    }
+
+    .connection-form.show {
+        display: block;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-group.full-width {
+        grid-column: 1 / -1;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+        font-weight: 500;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-primary);
+        font-size: 14px;
+        transition: all 0.2s;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--primary-blue);
+        box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+    }
+
+    .form-input::placeholder {
+        color: #666;
+    }
+
+    .form-input.optional {
+        border-left: 3px solid var(--accent-orange);
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.3s;
+    }
+
+    .btn-primary {
+        background: var(--primary-blue);
+        color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: #006bb3;
+    }
+
+    .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .btn-secondary {
+        background: var(--hover-bg);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+    }
+
+    .btn-success {
+        background: var(--accent-green);
+        color: var(--dark-bg);
+    }
+
+    .btn-danger {
+        background: #d32f2f;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #b71c1c;
+    }
+
+    .connections-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 24px;
+    }
+
+    .connections-table th {
+        text-align: left;
+        padding: 12px;
+        background: var(--hover-bg);
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 600;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .connections-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+
+    .connections-table tr:hover {
+        background: var(--hover-bg);
+    }
+
+    .connection-name {
+        font-weight: 600;
+        color: var(--accent-green);
+    }
+
+    .connection-type {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .status-connected {
+        background: var(--accent-green);
+        color: var(--dark-bg);
+    }
+
+    .status-disconnected {
+        background: #d32f2f;
+        color: white;
+    }
+
+    .status-testing {
+        background: var(--accent-orange);
+        color: var(--dark-bg);
+    }
+
+    .alert {
+        padding: 16px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+        display: none;
+    }
+
+    .alert.show {
+        display: block;
+    }
+
+    .alert-success {
+        background: rgba(78, 201, 176, 0.2);
+        border: 1px solid var(--accent-green);
+        color: var(--accent-green);
+    }
+
+    .alert-error {
+        background: rgba(211, 47, 47, 0.2);
+        border: 1px solid #d32f2f;
+        color: #ff6b6b;
+    }
+
+    .alert-info {
+        background: rgba(0, 120, 212, 0.2);
+        border: 1px solid var(--primary-blue);
+        color: var(--primary-blue);
+    }
+
+    .form-hint {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-top: 4px;
+        font-style: italic;
+    }
+
+    .loading-spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--border-color);
+        border-top-color: var(--accent-green);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .test-result {
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: 4px;
+        font-size: 13px;
+        display: none;
+    }
+
+    .test-result.show {
+        display: block;
+    }
+
+    .test-result.success {
+        background: rgba(78, 201, 176, 0.1);
+        border: 1px solid var(--accent-green);
+        color: var(--accent-green);
+    }
+
+    .test-result.error {
+        background: rgba(211, 47, 47, 0.1);
+        border: 1px solid #d32f2f;
+        color: #ff6b6b;
+    }
+
+    .connection-details {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+        font-size: 13px;
+        padding: 12px;
+        background: var(--dark-bg);
+        border-radius: 4px;
+        margin-top: 8px;
+    }
+
+    .connection-details dt {
+        color: var(--text-secondary);
+        font-weight: 500;
+    }
+
+    .connection-details dd {
+        color: var(--text-primary);
+        margin: 0;
+    }
+
+    .schema-preview {
+        margin-top: 12px;
+        padding: 12px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+
+    .table-list {
+        list-style: none;
+        padding: 0;
+    }
+
+    .table-item {
+        padding: 6px 8px;
+        margin: 2px 0;
+        background: var(--dark-bg);
+        border-radius: 3px;
+        font-size: 12px;
+        color: var(--accent-green);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .table-item:hover {
+        background: var(--hover-bg);
+        color: var(--text-primary);
+    }
+
+    .action-btn-group {
+        display: flex;
+        gap: 8px;
+    }
+
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1400px;">
+    <h1 style="font-size: 28px; margin-bottom: 8px; color: var(--text-primary);">Database Connections</h1>
+    <p style="color: var(--text-secondary); margin-bottom: 24px;">
+        Configure and manage connections to various database systems for enterprise data intelligence.
+    </p>
+
+    <!-- Alert Messages -->
+    <div id="alertSuccess" class="alert alert-success">
+        <strong>Success!</strong> <span id="alertSuccessMessage"></span>
+    </div>
+    <div id="alertError" class="alert alert-error">
+        <strong>Error!</strong> <span id="alertErrorMessage"></span>
+    </div>
+    <div id="alertInfo" class="alert alert-info">
+        <strong>Info!</strong> <span id="alertInfoMessage"></span>
+    </div>
+
+    <!-- Database Type Selection -->
+    <div class="connection-section">
+        <h2 style="font-size: 18px; margin-bottom: 16px; color: var(--accent-green);">Select Database Type</h2>
+        <div class="db-type-grid" id="dbTypeGrid">
+            <!-- Will be populated dynamically -->
+        </div>
+
+        <!-- Connection Form -->
+        <div id="connectionForm" class="connection-form">
+            <h3 style="font-size: 16px; margin-bottom: 20px; color: var(--text-primary);">
+                Configure <span id="selectedDbType" style="color: var(--accent-green);"></span> Connection
+            </h3>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Connection Name *</label>
+                    <input type="text" id="connectionName" class="form-input" placeholder="e.g., Production DB" required>
+                    <div class="form-hint">Friendly name for this connection</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Database Type</label>
+                    <input type="text" id="databaseType" class="form-input" readonly>
+                </div>
+            </div>
+
+            <div class="form-row" id="standardFields">
+                <div class="form-group">
+                    <label class="form-label">Host *</label>
+                    <input type="text" id="host" class="form-input" placeholder="e.g., localhost or db.example.com" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Port *</label>
+                    <input type="number" id="port" class="form-input" placeholder="e.g., 5432" required>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Database Name *</label>
+                    <input type="text" id="databaseName" class="form-input" placeholder="e.g., mydb" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Username *</label>
+                    <input type="text" id="username" class="form-input" placeholder="Database username" required>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Password *</label>
+                    <input type="password" id="password" class="form-input" placeholder="Database password" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Workspace ID</label>
+                    <input type="text" id="workspaceId" class="form-input optional" placeholder="Optional workspace ID">
+                </div>
+            </div>
+
+            <!-- Additional fields for specific database types -->
+            <div id="additionalFields"></div>
+
+            <!-- Test Result Display -->
+            <div id="testResult" class="test-result"></div>
+
+            <!-- Form Actions -->
+            <div class="form-actions">
+                <button id="testConnectionBtn" class="btn btn-secondary">
+                    <span id="testBtnText">🔌 Test Connection</span>
+                </button>
+                <button id="saveConnectionBtn" class="btn btn-primary">
+                    <span id="saveBtnText">💾 Save Connection</span>
+                </button>
+                <button id="cancelBtn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Existing Connections -->
+    <div class="connection-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="font-size: 18px; color: var(--accent-green); margin: 0;">Active Database Connections</h2>
+            <button id="refreshConnectionsBtn" class="btn btn-secondary" style="padding: 8px 16px;">
+                🔄 Refresh
+            </button>
+        </div>
+
+        <table class="connections-table">
+            <thead>
+                <tr>
+                    <th>Connection Name</th>
+                    <th>Type</th>
+                    <th>Host</th>
+                    <th>Database</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="connectionsTableBody">
+                <!-- Will be populated dynamically -->
+                <tr>
+                    <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 32px;">
+                        Loading connections...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Connection Details Modal (Hidden by default) -->
+    <div id="connectionDetailsModal" style="display: none;">
+        <div class="connection-section">
+            <h3 style="font-size: 16px; margin-bottom: 16px; color: var(--text-primary);">
+                Connection Details
+            </h3>
+            <div id="connectionDetailsContent"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    'use strict';
+    
+    console.log('✓ Database Connections Script loaded');
+    
+    // Database type configurations
+    const DB_CONFIGS = {
+        'PostgreSQL': {
+            icon: '🐘',
+            defaultPort: 5432,
+            desc: 'Open-source RDBMS',
+            fields: []
+        },
+        'MySQL': {
+            icon: '🐬',
+            defaultPort: 3306,
+            desc: 'Popular open-source DB',
+            fields: []
+        },
+        'MongoDB': {
+            icon: '🍃',
+            defaultPort: 27017,
+            desc: 'NoSQL document DB',
+            fields: [
+                {name: 'authSource', label: 'Auth Source', type: 'text', placeholder: 'admin', required: false}
+            ]
+        },
+        'SQL Server': {
+            icon: '🔷',
+            defaultPort: 1433,
+            desc: 'Microsoft SQL Server',
+            fields: [
+                {name: 'instance', label: 'Instance Name', type: 'text', placeholder: 'MSSQLSERVER', required: false}
+            ]
+        },
+        'Oracle': {
+            icon: '🔴',
+            defaultPort: 1521,
+            desc: 'Enterprise RDBMS',
+            fields: [
+                {name: 'serviceName', label: 'Service Name', type: 'text', placeholder: 'ORCL', required: false}
+            ]
+        },
+        'BigQuery': {
+            icon: '☁️',
+            defaultPort: null,
+            desc: 'Google Cloud warehouse',
+            fields: [
+                {name: 'projectId', label: 'Project ID', type: 'text', placeholder: 'your-project-id', required: true},
+                {name: 'datasetId', label: 'Dataset ID', type: 'text', placeholder: 'your-dataset', required: false},
+                {name: 'credentialsJson', label: 'Service Account JSON', type: 'textarea', placeholder: 'Paste credentials JSON', required: true}
+            ]
+        },
+        'Snowflake': {
+            icon: '❄️',
+            defaultPort: null,
+            desc: 'Cloud data warehouse',
+            fields: [
+                {name: 'account', label: 'Account', type: 'text', placeholder: 'your-account.region', required: true},
+                {name: 'warehouse', label: 'Warehouse', type: 'text', placeholder: 'COMPUTE_WH', required: false}
+            ]
+        },
+        'Redis': {
+            icon: '⚡',
+            defaultPort: 6379,
+            desc: 'In-memory data store',
+            fields: [
+                {name: 'db', label: 'Database Number', type: 'number', placeholder: '0', required: false}
+            ]
+        },
+        'SAP HANA': {
+            icon: '🔷',
+            defaultPort: 30015,
+            desc: 'SAP in-memory DB',
+            fields: []
+        },
+        'Salesforce': {
+            icon: '☁️',
+            defaultPort: null,
+            desc: 'CRM platform',
+            fields: [
+                {name: 'securityToken', label: 'Security Token', type: 'password', placeholder: 'Your security token', required: true},
+                {name: 'sandboxMode', label: 'Sandbox Mode', type: 'checkbox', required: false}
+            ]
+        }
+    };
+
+    let selectedDbType = null;
+    let editingConnectionId = null;
+    
+    function init() {
+        console.log('Initializing database connections page...');
+        
+        loadDatabaseTypes();
+        loadConnections();
+        
+        const cancelBtn = document.getElementById('cancelBtn');
+        const testBtn = document.getElementById('testConnectionBtn');
+        const saveBtn = document.getElementById('saveConnectionBtn');
+        const refreshBtn = document.getElementById('refreshConnectionsBtn');
+        
+        if (cancelBtn) {
+            cancelBtn.onclick = function(e) {
+                e.stopPropagation();
+                resetForm();
+            };
+        }
+        
+        if (testBtn) {
+            testBtn.onclick = function(e) {
+                e.stopPropagation();
+                testConnection();
+            };
+        }
+        
+        if (saveBtn) {
+            saveBtn.onclick = function(e) {
+                e.stopPropagation();
+                saveConnection();
+            };
+        }
+
+        if (refreshBtn) {
+            refreshBtn.onclick = function(e) {
+                e.stopPropagation();
+                loadConnections();
+            };
+        }
+        
+        console.log('Init complete');
+    }
+    
+    function loadDatabaseTypes() {
+        const grid = document.getElementById('dbTypeGrid');
+        if (!grid) return;
+        
+        let html = '';
+        for (const [dbType, config] of Object.entries(DB_CONFIGS)) {
+            html += `
+                <div class="db-type-card" data-db-type="${dbType}" onclick="selectDatabaseType('${dbType}')">
+                    <div class="db-type-icon">${config.icon}</div>
+                    <div class="db-type-name">${dbType}</div>
+                    <div class="db-type-desc">${config.desc}</div>
+                </div>
+            `;
+        }
+        grid.innerHTML = html;
+    }
+    
+    function selectDatabaseType(dbType) {
+        console.log('Database type selected: ' + dbType);
+        
+        // Update UI
+        document.querySelectorAll('.db-type-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        event.currentTarget.classList.add('selected');
+        
+        selectedDbType = dbType;
+        const config = DB_CONFIGS[dbType];
+        
+        // Show and populate form
+        const form = document.getElementById('connectionForm');
+        const typeLabel = document.getElementById('selectedDbType');
+        const dbTypeInput = document.getElementById('databaseType');
+        const portInput = document.getElementById('port');
+        
+        form.classList.add('show');
+        typeLabel.textContent = dbType;
+        dbTypeInput.value = dbType;
+        
+        // Set default port
+        if (config.defaultPort) {
+            portInput.value = config.defaultPort;
+            portInput.parentElement.style.display = 'block';
+        } else {
+            portInput.parentElement.style.display = 'none';
+        }
+        
+        // Handle host field for cloud services
+        const hostInput = document.getElementById('host');
+        if (dbType === 'BigQuery' || dbType === 'Salesforce') {
+            hostInput.parentElement.style.display = 'none';
+        } else {
+            hostInput.parentElement.style.display = 'block';
+        }
+        
+        // Add additional fields
+        renderAdditionalFields(config.fields);
+        
+        // Reset editing state
+        editingConnectionId = null;
+        
+        // Scroll to form
+        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    
+    function renderAdditionalFields(fields) {
+        const container = document.getElementById('additionalFields');
+        if (!fields || fields.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        
+        let html = '<div class="form-row">';
+        fields.forEach((field, index) => {
+            const isFullWidth = field.type === 'textarea';
+            const inputClass = field.required ? 'form-input' : 'form-input optional';
+            
+            let inputHtml = '';
+            if (field.type === 'textarea') {
+                inputHtml = `<textarea id="${field.name}" class="${inputClass}" placeholder="${field.placeholder}" rows="4" ${field.required ? 'required' : ''}></textarea>`;
+            } else if (field.type === 'checkbox') {
+                inputHtml = `<input type="checkbox" id="${field.name}" style="width: auto; margin-top: 8px;">`;
+            } else {
+                inputHtml = `<input type="${field.type}" id="${field.name}" class="${inputClass}" placeholder="${field.placeholder}" ${field.required ? 'required' : ''}>`;
+            }
+            
+            html += `
+                <div class="form-group ${isFullWidth ? 'full-width' : ''}">
+                    <label class="form-label">${field.label} ${field.required ? '*' : ''}</label>
+                    ${inputHtml}
+                </div>
+            `;
+            
+            // Close and start new row every 2 fields (except for full-width fields)
+            if (!isFullWidth && index % 2 === 1 && index < fields.length - 1) {
+                html += '</div><div class="form-row">';
+            }
+        });
+        html += '</div>';
+        
+        container.innerHTML = html;
+    }
+    
+    function testConnection() {
+        const testBtn = document.getElementById('testConnectionBtn');
+        const testBtnText = document.getElementById('testBtnText');
+        const testResult = document.getElementById('testResult');
+        
+        if (!selectedDbType) {
+            showAlert('Please select a database type first', 'error');
+            return;
+        }
+        
+        const connectionData = gatherFormData();
+        if (!connectionData) return;
+        
+        // Show loading state
+        testBtn.disabled = true;
+        testBtnText.innerHTML = '<span class="loading-spinner"></span> Testing...';
+        testResult.classList.remove('show', 'success', 'error');
+        
+        // If editing existing connection, test that connection
+        const endpoint = editingConnectionId 
+            ? `/api/databases/${editingConnectionId}/test`
+            : '/api/databases/test';
+        
+        const requestData = editingConnectionId ? {} : connectionData;
+        
+        fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            testBtn.disabled = false;
+            testBtnText.textContent = '🔌 Test Connection';
+            
+            if (data.status === 'success') {
+                testResult.className = 'test-result success show';
+                testResult.innerHTML = `✓ Connection successful! Latency: ${data.latency_ms || 0}ms`;
+            } else {
+                testResult.className = 'test-result error show';
+                testResult.innerHTML = `✗ Connection failed: ${data.error || 'Unknown error'}`;
+            }
+        })
+        .catch(error => {
+            testBtn.disabled = false;
+            testBtnText.textContent = '🔌 Test Connection';
+            testResult.className = 'test-result error show';
+            testResult.innerHTML = `✗ Test failed: ${error.message}`;
+            console.error('Test error:', error);
+        });
+    }
+    
+    function saveConnection() {
+        const saveBtn = document.getElementById('saveConnectionBtn');
+        const saveBtnText = document.getElementById('saveBtnText');
+        
+        if (!selectedDbType) {
+            showAlert('Please select a database type first', 'error');
+            return;
+        }
+        
+        const connectionData = gatherFormData();
+        if (!connectionData) return;
+        
+        // Show loading state
+        saveBtn.disabled = true;
+        saveBtnText.innerHTML = '<span class="loading-spinner"></span> Saving...';
+        
+        const endpoint = editingConnectionId 
+            ? `/api/databases/${editingConnectionId}`
+            : '/api/databases/';
+        const method = editingConnectionId ? 'PUT' : 'POST';
+        
+        fetch(endpoint, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(connectionData)
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to save connection');
+            return response.json();
+        })
+        .then(data => {
+            saveBtn.disabled = false;
+            saveBtnText.textContent = '💾 Save Connection';
+            
+            const message = editingConnectionId 
+                ? 'Connection updated successfully!' 
+                : 'Connection created successfully!';
+            showAlert(message, 'success');
+            
+            resetForm();
+            loadConnections();
+        })
+        .catch(error => {
+            saveBtn.disabled = false;
+            saveBtnText.textContent = '💾 Save Connection';
+            showAlert('Failed to save connection: ' + error.message, 'error');
+            console.error('Save error:', error);
+        });
+    }
+    
+    function gatherFormData() {
+        const name = document.getElementById('connectionName').value.trim();
+        const host = document.getElementById('host').value.trim();
+        const port = document.getElementById('port').value;
+        const database = document.getElementById('databaseName').value.trim();
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        const workspaceId = document.getElementById('workspaceId').value.trim();
+        
+        // Validate required fields
+        const config = DB_CONFIGS[selectedDbType];
+        const requiresHost = config.defaultPort !== null;
+        
+        if (!name || !database || !username || !password) {
+            showAlert('Please fill in all required fields', 'error');
+            return null;
+        }
+        
+        if (requiresHost && !host) {
+            showAlert('Host is required for this database type', 'error');
+            return null;
+        }
+        
+        const data = {
+            name: name,
+            type: selectedDbType,
+            database: database,
+            username: username,
+            password: password
+        };
+        
+        if (requiresHost) {
+            data.host = host;
+            data.port = parseInt(port) || config.defaultPort;
+        }
+        
+        if (workspaceId) {
+            data.workspace_id = workspaceId;
+        }
+        
+        // Gather additional fields
+        const additionalFields = config.fields || [];
+        additionalFields.forEach(field => {
+            const element = document.getElementById(field.name);
+            if (element) {
+                if (field.type === 'checkbox') {
+                    data[field.name] = element.checked;
+                } else {
+                    const value = element.value.trim();
+                    if (value || field.required) {
+                        data[field.name] = value;
+                    }
+                }
+            }
+        });
+        
+        return data;
+    }
+    
+    function loadConnections() {
+        console.log('Loading database connections...');
+        
+        fetch('/api/databases/')
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to load connections');
+                return response.json();
+            })
+            .then(data => {
+                console.log('Loaded ' + (data.databases?.length || 0) + ' connections');
+                displayConnections(data.databases || []);
+            })
+            .catch(error => {
+                console.error('Error loading connections:', error);
+                const tbody = document.getElementById('connectionsTableBody');
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ff6b6b; padding: 32px;">Failed to load connections</td></tr>';
+                }
+            });
+    }
+    
+    function displayConnections(connections) {
+        const tbody = document.getElementById('connectionsTableBody');
+        if (!tbody) return;
+        
+        if (connections.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 32px;">No database connections configured yet</td></tr>';
+            return;
+        }
+        
+        let html = '';
+        connections.forEach(conn => {
+            const config = DB_CONFIGS[conn.type] || { icon: '🗄️' };
+            const statusClass = conn.status === 'connected' ? 'status-connected' : 'status-disconnected';
+            const statusText = conn.status === 'connected' ? 'Connected' : 'Disconnected';
+            
+            html += `
+                <tr>
+                    <td><span class="connection-name">${escapeHtml(conn.name)}</span></td>
+                    <td>
+                        <div class="connection-type">
+                            <span>${config.icon}</span>
+                            <span>${escapeHtml(conn.type)}</span>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(conn.host || 'N/A')}</td>
+                    <td>${escapeHtml(conn.database || 'N/A')}</td>
+                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    <td>
+                        <div class="action-btn-group">
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="testExistingConnection(${conn.id})">Test</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="viewSchema(${conn.id})">Schema</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
+                            <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tbody.innerHTML = html;
+    }
+    
+    function testExistingConnection(connectionId) {
+        console.log('Testing connection: ' + connectionId);
+        
+        showAlert('Testing connection...', 'info');
+        
+        fetch(`/api/databases/${connectionId}/test`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showAlert(`✓ Connection successful! Latency: ${data.latency_ms || 0}ms`, 'success');
+            } else {
+                showAlert(`✗ Connection failed: ${data.error || 'Unknown error'}`, 'error');
+            }
+        })
+        .catch(error => {
+            showAlert('Test failed: ' + error.message, 'error');
+            console.error('Test error:', error);
+        });
+    }
+    
+    function viewSchema(connectionId) {
+        console.log('Viewing schema for connection: ' + connectionId);
+        
+        showAlert('Loading schema...', 'info');
+        
+        fetch(`/api/databases/${connectionId}/schema`)
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to load schema');
+                return response.json();
+            })
+            .then(data => {
+                displaySchemaModal(data.schema);
+            })
+            .catch(error => {
+                showAlert('Failed to load schema: ' + error.message, 'error');
+                console.error('Schema error:', error);
+            });
+    }
+    
+    function displaySchemaModal(schema) {
+        // For now, just show tables in an alert
+        // You can enhance this with a proper modal later
+        if (schema && schema.tables) {
+            const tableNames = schema.tables.map(t => t.name).join(', ');
+            showAlert(`Tables: ${tableNames}`, 'info');
+        } else {
+            showAlert('No schema information available', 'info');
+        }
+    }
+    
+    function editConnection(connectionId) {
+        console.log('Editing connection: ' + connectionId);
+        
+        fetch(`/api/databases/${connectionId}`)
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to load connection');
+                return response.json();
+            })
+            .then(data => {
+                const conn = data.database;
+                
+                // Select the database type
+                selectDatabaseType(conn.type);
+                
+                // Populate form fields
+                document.getElementById('connectionName').value = conn.name || '';
+                document.getElementById('host').value = conn.host || '';
+                document.getElementById('port').value = conn.port || '';
+                document.getElementById('databaseName').value = conn.database || '';
+                document.getElementById('username').value = conn.username || '';
+                document.getElementById('workspaceId').value = conn.workspace_id || '';
+                
+                // Set editing state
+                editingConnectionId = connectionId;
+                
+                // Update button text
+                document.getElementById('saveBtnText').textContent = '💾 Update Connection';
+                
+                showAlert('Editing connection: ' + conn.name, 'info');
+            })
+            .catch(error => {
+                showAlert('Failed to load connection: ' + error.message, 'error');
+                console.error('Edit error:', error);
+            });
+    }
+    
+    function deleteConnection(connectionId) {
+        if (!confirm('Are you sure you want to delete this database connection?')) {
+            return;
+        }
+        
+        console.log('Deleting connection: ' + connectionId);
+        
+        fetch(`/api/databases/${connectionId}`, {
+            method: 'DELETE'
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to delete connection');
+            return response.json();
+        })
+        .then(data => {
+            showAlert('Connection deleted successfully', 'success');
+            loadConnections();
+        })
+        .catch(error => {
+            showAlert('Failed to delete connection: ' + error.message, 'error');
+            console.error('Delete error:', error);
+        });
+    }
+    
+    function resetForm() {
+        console.log('Resetting form...');
+        
+        const form = document.getElementById('connectionForm');
+        form.classList.remove('show');
+        
+        // Clear all inputs
+        document.getElementById('connectionName').value = '';
+        document.getElementById('host').value = '';
+        document.getElementById('port').value = '';
+        document.getElementById('databaseName').value = '';
+        document.getElementById('username').value = '';
+        document.getElementById('password').value = '';
+        document.getElementById('workspaceId').value = '';
+        document.getElementById('additionalFields').innerHTML = '';
+        
+        // Clear test result
+        const testResult = document.getElementById('testResult');
+        testResult.classList.remove('show', 'success', 'error');
+        
+        // Reset selections
+        document.querySelectorAll('.db-type-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        
+        selectedDbType = null;
+        editingConnectionId = null;
+        
+        // Reset button text
+        document.getElementById('saveBtnText').textContent = '💾 Save Connection';
+    }
+    
+    function showAlert(message, type) {
+        // Hide all alerts first
+        document.querySelectorAll('.alert').forEach(alert => {
+            alert.classList.remove('show');
+        });
+        
+        let alertId, messageId;
+        if (type === 'success') {
+            alertId = 'alertSuccess';
+            messageId = 'alertSuccessMessage';
+        } else if (type === 'error') {
+            alertId = 'alertError';
+            messageId = 'alertErrorMessage';
+        } else {
+            alertId = 'alertInfo';
+            messageId = 'alertInfoMessage';
+        }
+        
+        const alert = document.getElementById(alertId);
+        const messageSpan = document.getElementById(messageId);
+        
+        if (alert && messageSpan) {
+            messageSpan.textContent = message;
+            alert.classList.add('show');
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 5000);
+        }
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+</script>
+{% endblock %}
