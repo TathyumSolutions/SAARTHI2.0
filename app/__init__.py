@@ -16,7 +16,6 @@ jwt = JWTManager()
 
 print("Working on upload folder")
 print("Current file path:", os.path.abspath(__file__))
-print
 
 # Set up upload folder
 UPLOAD_FOLDER = "/workspaces/SAARTHI2.0/uploads"
@@ -38,6 +37,7 @@ def create_app(config_name='development'):
     migrate.init_app(app, db)
     jwt.init_app(app)
     print("Initialisation completed")
+    
     # Register blueprints
     from app.api.routes import (
         page_routes,
@@ -75,6 +75,41 @@ def create_app(config_name='development'):
     
     from app.api.routes.upload_routes import upload_bp
     app.register_blueprint(upload_bp)
+    
+    # Import models to ensure they're registered with SQLAlchemy
+    from app.models import (
+        database_connection,
+        workspace,
+        user,
+        chat,
+        query,
+        analytics,
+        audit,
+        datasource,
+        model_config
+    )
+    
+    # Create database tables
+    with app.app_context():
+        try:
+            print("Creating database tables...")
+            db.create_all()
+            
+            # Create default workspace if none exists
+            from app.models.workspace import Workspace
+            if not Workspace.query.first():
+                default_workspace = Workspace(
+                    name='Default Workspace',
+                    description='Default workspace for database connections',
+                    owner_id=1  # Will need to create users too
+                )
+                db.session.add(default_workspace)
+                db.session.commit()
+                print("✓ Created default workspace")
+            
+            print("✓ Database tables created successfully")
+        except Exception as e:
+            print(f"⚠ Error creating tables: {str(e)}")
     
     print("Working on the blue print part")
     # Health check endpoint

@@ -6,6 +6,8 @@ Enterprise Data Intelligence Platform - Flask API Backend
 
 Saarthi is an enterprise-grade data intelligence platform that enables natural language querying across multiple data sources using AI/LLM technology. This Flask API provides the backend infrastructure for the platform.
 
+sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib && sudo service postgresql start && sudo -u postgres psql -c "CREATE DATABASE myflaskdb;" && sudo -u postgres psql -c "CREATE USER myflaskuser WITH PASSWORD 'mypassword123';" && sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE myflaskdb TO myflaskuser;" && sudo -u postgres psql -c "ALTER DATABASE myflaskdb OWNER TO myflaskuser;" && sudo sed -i 's/local   all             all                                     peer/local   all             all                                     md5/' /etc/postgresql/*/main/pg_hba.conf && sudo service postgresql restart && pip install psycopg2-binary flask && echo "PostgreSQL setup complete!"
+
 ## 📁 Project Structure
 
 ```
