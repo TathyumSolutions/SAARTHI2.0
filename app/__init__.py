@@ -39,7 +39,7 @@ def create_app(config_name='development'):
     print("Initialisation completed")
     
     # Register blueprints
-    from app.api.routes import (
+    from app.routes import (
         page_routes,
         auth_routes,
         workspace_routes,
@@ -73,7 +73,7 @@ def create_app(config_name='development'):
     app.register_blueprint(model_config_routes.bp)
     app.register_blueprint(user_routes.bp)
     
-    from app.api.routes.upload_routes import upload_bp
+    from app.routes.upload_routes import upload_bp
     app.register_blueprint(upload_bp)
     
     # Import models to ensure they're registered with SQLAlchemy

@@ -1,691 +1,393 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Database Connections - Saarthi</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        :root {
-            --primary-blue: #0078d4;
-            --secondary-purple: #8a2be2;
-            --accent-green: #4ec9b0;
-            --accent-orange: #ff8c00;
-            --dark-bg: #1e1e1e;
-            --sidebar-bg: #252526;
-            --panel-bg: #2d2d30;
-            --border-color: #3c3c3c;
-            --text-primary: #cccccc;
-            --text-secondary: #969696;
-            --hover-bg: #3a3a3c;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--dark-bg);
-            color: var(--text-primary);
-            overflow-x: hidden;
-        }
-
-        .header {
-            background: var(--sidebar-bg);
-            border-bottom: 1px solid var(--border-color);
-            padding: 12px 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logo-section {
-            display: flex;
-            align-items: center;
-        }
-
-        .logo {
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, var(--primary-blue), var(--accent-green));
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            font-weight: bold;
-            color: white;
-            margin-right: 12px;
-        }
-
-        .app-name {
-            font-size: 18px;
-            font-weight: 600;
-        }
-
-        .header-actions {
-            display: flex;
-            align-items: center;
-        }
-
-        .mode-selector {
-            display: flex;
-            background: var(--dark-bg);
-            border-radius: 4px;
-            margin-right: 20px;
-        }
-
-        .mode-btn {
-            padding: 8px 16px;
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-        }
-
-        .mode-btn.active {
-            background: var(--primary-blue);
-            color: white;
-        }
-
-        .mode-btn:hover:not(.active) {
-            background: var(--hover-bg);
-        }
-
-        .user-profile {
-            width: 32px;
-            height: 32px;
-            background: var(--accent-green);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            color: var(--dark-bg);
-        }
-
-        .main-container {
-            display: flex;
-        }
-
-        .left-sidebar {
-            width: 280px;
-            background: var(--sidebar-bg);
-            height: calc(100vh - 61px);
-            overflow-y: auto;
-            border-right: 1px solid var(--border-color);
-        }
-
-        .sidebar-section {
-            padding: 16px 0;
-        }
-
-        .section-title {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            margin-bottom: 8px;
-            padding: 0 16px;
-        }
-
-        .section-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 16px;
-            color: var(--text-primary);
-            text-decoration: none;
-            cursor: pointer;
-            transition: all 0.2s;
-            border-left: 3px solid transparent;
-        }
-
-        .section-item:hover {
-            background: var(--hover-bg);
-        }
-
-        .section-item.active {
-            background: var(--hover-bg);
-            border-left-color: var(--accent-green);
-        }
-
-        .item-icon {
-            width: 20px;
-            text-align: center;
-            margin-right: 12px;
-            font-size: 16px;
-        }
-
-        .expand-icon {
-            font-size: 12px;
-            transition: transform 0.2s;
-        }
-
-        .sub-items {
-            padding-left: 48px;
-        }
-
-        .sub-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 16px;
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .sub-item:hover {
-            color: var(--text-primary);
-            background: var(--hover-bg);
-        }
-
-        .sub-item.active {
-            color: var(--accent-green);
-        }
-
-        .sub-item .badge {
-            font-size: 10px;
-            padding: 2px 6px;
-        }
-
-        .badge {
-            background: var(--primary-blue);
-            color: white;
-            border-radius: 10px;
-            padding: 2px 8px;
-            font-size: 11px;
-            font-weight: 500;
-        }
-
-        .center-panel {
-            flex: 1;
-            background: var(--dark-bg);
-            padding: 24px;
-            overflow-y: auto;
-        }
-
-        .content-area {
-            max-width: 1200px;
-        }
-
-        .connection-section {
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 32px;
-            margin-bottom: 24px;
-        }
-
-        .db-type-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .db-type-card {
-            background: var(--dark-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            position: relative;
-        }
-
-        .db-type-card:hover {
-            border-color: var(--primary-blue);
-            transform: translateY(-2px);
-        }
-
-        .db-type-card.selected {
-            border-color: var(--accent-green);
-            background: var(--hover-bg);
-            box-shadow: 0 0 0 2px rgba(78, 201, 176, 0.2);
-        }
-
-        .db-type-icon {
-            font-size: 48px;
-            margin-bottom: 12px;
-        }
-
-        .db-type-name {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 4px;
-        }
-
-        .db-type-desc {
-            font-size: 11px;
-            color: var(--text-secondary);
-        }
-
-        .connection-form {
-            display: none;
-            background: var(--dark-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 24px;
-            margin-top: 24px;
-        }
-
-        .connection-form.show {
-            display: block;
-        }
-
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 16px;
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        .form-group.full-width {
-            grid-column: 1 / -1;
-        }
-
-        .form-label {
-            display: block;
-            font-size: 13px;
-            color: var(--text-secondary);
-            margin-bottom: 6px;
-            font-weight: 500;
-        }
-
-        .form-input {
-            width: 100%;
-            padding: 10px 12px;
-            background: var(--sidebar-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            color: var(--text-primary);
-            font-size: 14px;
-            transition: all 0.2s;
-        }
-
-        .form-input:focus {
-            outline: none;
-            border-color: var(--primary-blue);
-            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
-        }
-
-        .form-input::placeholder {
-            color: #666;
-        }
-
-        .form-input.optional {
-            border-left: 3px solid var(--accent-orange);
-        }
-
-        .form-actions {
-            display: flex;
-            gap: 12px;
-            margin-top: 24px;
-            padding-top: 20px;
-            border-top: 1px solid var(--border-color);
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.3s;
-        }
-
-        .btn-primary {
-            background: var(--primary-blue);
-            color: white;
-        }
-
-        .btn-primary:hover:not(:disabled) {
-            background: #006bb3;
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .btn-secondary {
-            background: var(--hover-bg);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-        }
-
-        .btn-success {
-            background: var(--accent-green);
-            color: var(--dark-bg);
-        }
-
-        .btn-danger {
-            background: #d32f2f;
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #b71c1c;
-        }
-
-        .connections-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 24px;
-        }
-
-        .connections-table th {
-            text-align: left;
-            padding: 12px;
-            background: var(--hover-bg);
-            color: var(--text-secondary);
-            font-size: 12px;
-            font-weight: 600;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .connections-table td {
-            padding: 12px;
-            border-bottom: 1px solid var(--border-color);
-            color: var(--text-primary);
-            font-size: 14px;
-        }
-
-        .connections-table tr:hover {
-            background: var(--hover-bg);
-        }
-
-        .connection-name {
-            font-weight: 600;
-            color: var(--accent-green);
-        }
-
-        .connection-type {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-
-        .status-connected {
-            background: var(--accent-green);
-            color: var(--dark-bg);
-        }
-
-        .status-disconnected {
-            background: #d32f2f;
-            color: white;
-        }
-
-        .status-testing {
-            background: var(--accent-orange);
-            color: var(--dark-bg);
-        }
-
-        /* REPOSITIONED ALERT STYLES - Show near the form */
-        .alert {
-            padding: 16px;
-            border-radius: 6px;
-            margin: 16px 0;
-            display: none;
-            position: relative;
-            z-index: 1000;
-            font-size: 14px;
-            font-weight: 500;
-            border: 2px solid;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        }
-
-        .alert.show {
-            display: block !important;
-            animation: slideDown 0.3s ease-out;
-        }
-
-        /* Position alerts inside form when form is visible */
-        .form-alert {
-            margin-top: 0;
-            margin-bottom: 20px;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .alert-success {
-            background: rgba(78, 201, 176, 0.2);
-            border-color: var(--accent-green);
-            color: var(--accent-green);
-        }
-
-        .alert-error {
-            background: rgba(211, 47, 47, 0.2);
-            border-color: #d32f2f;
-            color: #ff6b6b;
-        }
-
-        .alert-info {
-            background: rgba(0, 120, 212, 0.2);
-            border-color: var(--primary-blue);
-            color: var(--primary-blue);
-        }
-
-        .form-hint {
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-            font-style: italic;
-        }
-
-        .loading-spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid var(--border-color);
-            border-top-color: var(--accent-green);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .test-result {
-            margin-top: 12px;
-            padding: 12px;
-            border-radius: 4px;
-            font-size: 13px;
-            display: none;
-        }
-
-        .test-result.show {
-            display: block;
-        }
-
-        .test-result.success {
-            background: rgba(78, 201, 176, 0.1);
-            border: 1px solid var(--accent-green);
-            color: var(--accent-green);
-        }
-
-        .test-result.error {
-            background: rgba(211, 47, 47, 0.1);
-            border: 1px solid #d32f2f;
-            color: #ff6b6b;
-        }
-
-        .connection-details {
-            display: grid;
-            grid-template-columns: auto 1fr;
-            gap: 8px;
-            font-size: 13px;
-            padding: 12px;
-            background: var(--dark-bg);
-            border-radius: 4px;
-            margin-top: 8px;
-        }
-
-        .connection-details dt {
-            color: var(--text-secondary);
-            font-weight: 500;
-        }
-
-        .connection-details dd {
-            color: var(--text-primary);
-            margin: 0;
-        }
-
-        .schema-preview {
-            margin-top: 12px;
-            padding: 12px;
-            background: var(--sidebar-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        .table-list {
-            list-style: none;
-            padding: 0;
-        }
-
-        .table-item {
-            padding: 6px 8px;
-            margin: 2px 0;
-            background: var(--dark-bg);
-            border-radius: 3px;
-            font-size: 12px;
-            color: var(--accent-green);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .table-item:hover {
-            background: var(--hover-bg);
-            color: var(--text-primary);
-        }
-
-        .action-btn-group {
-            display: flex;
-            gap: 8px;
-        }
-    </style>
-</head>
-<body>
-    <!-- Header -->
-    <div class="header">
-        <div class="logo-section">
-            <div class="logo">S</div>
-            <div class="app-name">Saarthi</div>
-        </div>
-        <div class="header-actions">
-            <div class="mode-selector">
-                <button class="mode-btn active">Chat</button>
-                <button class="mode-btn">Analytics</button>
-                <button class="mode-btn">Reports</button>
-            </div>
-            <div class="user-profile">U</div>
-        </div>
-    </div>
-
-    <div class="main-container">
-        <!-- Left Sidebar -->
-        <div class="left-sidebar">
-            <div class="sidebar-section">
-                <div class="section-title">Data Sources</div>
-                <a href="#" class="section-item">
-                    <span><span class="item-icon">📁</span>Files</span>
-                    <span class="badge">3</span>
-                </a>
-                <a href="/database_connections" class="section-item active">
-                    <span><span class="item-icon">🔗</span>Database Connections</span>
-                    <span class="expand-icon">▼</span>
-                </a>
-            </div>
-
-            <div class="sidebar-section">
-                <div class="section-title">AI & Models</div>
-                <a href="#" class="section-item">
-                    <span><span class="item-icon">⚙️</span>Configured Models</span>
-                    <span class="expand-icon">▶</span>
-                </a>
-                <div class="sub-items">
-                    <a href="#" class="sub-item">
-                        <span>✨ Claude 4.5 Sonnet</span>
-                        <span class="badge">New</span>
-                    </a>
-                    <a href="#" class="sub-item">
-                        <span>🚀 GPT-4 Turbo</span>
-                    </a>
-                    <a href="#" class="sub-item">
-                        <span>🔥 Llama 3.3 70B</span>
-                    </a>
-                    <a href="#" class="sub-item">
-                        <span>🎯 Gemini Pro</span>
-                    </a>
-                    <a href="#" class="sub-item">
-                        <span>⚡ Mistral 8x7B</span>
-                    </a>
-                    <a href="#" class="sub-item">
-                        <span style="color: var(--accent-green); cursor: pointer;">+ Configure New Model</span>
-                    </a>
-                </div>
-            </div>
-
-            <div class="sidebar-section">
-                <div class="section-title">Management</div>
-                <a href="#" class="section-item">
-                    <span><span class="item-icon">👥</span>Role Management</span>
-                    <span class="expand-icon">▶</span>
-                </a>
-                <div class="sub-items">
-                    <a href="#" class="sub-item">Users</a>
-                    <a href="#" class="sub-item">Groups</a>
-                    <a href="#" class="sub-item">Permissions</a>
-                    <a href="#" class="sub-item">Access Policies</a>
-                </div>
-                <a href="#" class="section-item">
-                    <span><span class="item-icon">⚙️</span>Configuration</span>
-                </a>
-                <a href="#" class="section-item">
-                    <span><span class="item-icon">📊</span>Analytics Dashboard</span>
-                </a>
-                <a href="#" class="section-item">
-                    <span><span class="item-icon">🔒</span>Security Center</span>
-                </a>
-            </div>
-        </div>
-
-        <!-- Center Panel -->
-        <div class="center-panel">
-            <div class="content-area">
-                
+{% extends "base.html" %}
+
+{% block title %}Database Connections - Saarthi{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .connection-section {
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 32px;
+        margin-bottom: 24px;
+    }
+
+    .db-type-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .db-type-card {
+        background: var(--dark-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        position: relative;
+    }
+
+    .db-type-card:hover {
+        border-color: var(--primary-blue);
+        transform: translateY(-2px);
+    }
+
+    .db-type-card.selected {
+        border-color: var(--accent-green);
+        background: var(--hover-bg);
+        box-shadow: 0 0 0 2px rgba(78, 201, 176, 0.2);
+    }
+
+    .db-type-icon {
+        font-size: 48px;
+        margin-bottom: 12px;
+    }
+
+    .db-type-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+    }
+
+    .db-type-desc {
+        font-size: 11px;
+        color: var(--text-secondary);
+    }
+
+    .connection-form {
+        display: none;
+        background: var(--dark-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 24px;
+        margin-top: 24px;
+    }
+
+    .connection-form.show {
+        display: block;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-group.full-width {
+        grid-column: 1 / -1;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+        font-weight: 500;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-primary);
+        font-size: 14px;
+        transition: all 0.2s;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--primary-blue);
+        box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+    }
+
+    .form-input::placeholder {
+        color: #666;
+    }
+
+    .form-input.optional {
+        border-left: 3px solid var(--accent-orange);
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.3s;
+    }
+
+    .btn-primary {
+        background: var(--primary-blue);
+        color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: #006bb3;
+    }
+
+    .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .btn-secondary {
+        background: var(--hover-bg);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+    }
+
+    .btn-success {
+        background: var(--accent-green);
+        color: var(--dark-bg);
+    }
+
+    .btn-danger {
+        background: #d32f2f;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #b71c1c;
+    }
+
+    .connections-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 24px;
+    }
+
+    .connections-table th {
+        text-align: left;
+        padding: 12px;
+        background: var(--hover-bg);
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 600;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .connections-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+
+    .connections-table tr:hover {
+        background: var(--hover-bg);
+    }
+
+    .connection-name {
+        font-weight: 600;
+        color: var(--accent-green);
+    }
+
+    .connection-type {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .status-connected {
+        background: var(--accent-green);
+        color: var(--dark-bg);
+    }
+
+    .status-disconnected {
+        background: #d32f2f;
+        color: white;
+    }
+
+    .status-testing {
+        background: var(--accent-orange);
+        color: var(--dark-bg);
+    }
+
+    .alert {
+        padding: 16px;
+        border-radius: 6px;
+        margin: 16px 0;
+        display: none;
+        position: relative;
+        z-index: 1000;
+        font-size: 14px;
+        font-weight: 500;
+        border: 2px solid;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .alert.show {
+        display: block !important;
+        animation: slideDown 0.3s ease-out;
+    }
+
+    .form-alert {
+        margin-top: 0;
+        margin-bottom: 20px;
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .alert-success {
+        background: rgba(78, 201, 176, 0.2);
+        border-color: var(--accent-green);
+        color: var(--accent-green);
+    }
+
+    .alert-error {
+        background: rgba(211, 47, 47, 0.2);
+        border-color: #d32f2f;
+        color: #ff6b6b;
+    }
+
+    .alert-info {
+        background: rgba(0, 120, 212, 0.2);
+        border-color: var(--primary-blue);
+        color: var(--primary-blue);
+    }
+
+    .form-hint {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-top: 4px;
+        font-style: italic;
+    }
+
+    .loading-spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--border-color);
+        border-top-color: var(--accent-green);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .test-result {
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: 4px;
+        font-size: 13px;
+        display: none;
+    }
+
+    .test-result.show {
+        display: block;
+    }
+
+    .test-result.success {
+        background: rgba(78, 201, 176, 0.1);
+        border: 1px solid var(--accent-green);
+        color: var(--accent-green);
+    }
+
+    .test-result.error {
+        background: rgba(211, 47, 47, 0.1);
+        border: 1px solid #d32f2f;
+        color: #ff6b6b;
+    }
+
+    .connection-details {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+        font-size: 13px;
+        padding: 12px;
+        background: var(--dark-bg);
+        border-radius: 4px;
+        margin-top: 8px;
+    }
+
+    .connection-details dt {
+        color: var(--text-secondary);
+        font-weight: 500;
+    }
+
+    .connection-details dd {
+        color: var(--text-primary);
+        margin: 0;
+    }
+
+    .schema-preview {
+        margin-top: 12px;
+        padding: 12px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+
+    .table-list {
+        list-style: none;
+        padding: 0;
+    }
+
+    .table-item {
+        padding: 6px 8px;
+        margin: 2px 0;
+        background: var(--dark-bg);
+        border-radius: 3px;
+        font-size: 12px;
+        color: var(--accent-green);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .table-item:hover {
+        background: var(--hover-bg);
+        color: var(--text-primary);
+    }
+
+    .action-btn-group {
+        display: flex;
+        gap: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
 <div style="max-width: 1400px;">
     <h1 style="font-size: 28px; margin-bottom: 8px; color: var(--text-primary);">Database Connections</h1>
     <p style="color: var(--text-secondary); margin-bottom: 24px;">
@@ -830,75 +532,7 @@
         </div>
     </div>
 </div>
-
-            </div>
-        </div>
-    </div>
-
-    <script>
-        function toggleSubMenu(element) {
-            const expandIcon = element.querySelector('.expand-icon');
-            const subItems = element.nextElementSibling;
-            if (expandIcon && subItems && subItems.classList.contains('sub-items')) {
-                expandIcon.style.transform = expandIcon.style.transform === 'rotate(90deg)' ? '' : 'rotate(90deg)';
-                subItems.style.display = subItems.style.display === 'block' ? 'none' : 'block';
-            }
-        }
-
-        // Highlight active menu item based on current URL
-        document.addEventListener('DOMContentLoaded', function() {
-            const currentPath = window.location.pathname;
-            const menuItems = document.querySelectorAll('.section-item');
-            
-            menuItems.forEach(item => {
-                const href = item.getAttribute('href');
-                if (href && currentPath.includes(href.replace('/', ''))) {
-                    // Remove active class from all items
-                    menuItems.forEach(i => i.classList.remove('active'));
-                    // Add active class to current item
-                    item.classList.add('active');
-                }
-            });
-        });
-
-        // Toggle sidebar items - ONLY sidebar items, not content
-        document.addEventListener('DOMContentLoaded', function() {
-            const sidebarItems = document.querySelectorAll('.sidebar-section .section-item');
-            
-            sidebarItems.forEach(item => {
-                item.addEventListener('click', function(e) {
-                    const expandIcon = this.querySelector('.expand-icon');
-                    if (expandIcon) {
-                        e.preventDefault(); // Prevent navigation for expandable items
-                        
-                        const subItems = this.nextElementSibling;
-                        if (subItems && subItems.classList.contains('sub-items')) {
-                            const isExpanded = expandIcon.textContent === '▼';
-                            
-                            // Toggle expand icon
-                            expandIcon.textContent = isExpanded ? '▶' : '▼';
-                            
-                            // Toggle sub-items visibility
-                            if (isExpanded) {
-                                subItems.style.display = 'none';
-                            } else {
-                                subItems.style.display = 'block';
-                            }
-                        }
-                    }
-                    // For items without expand icons, let them navigate normally
-                });
-            });
-        });
-
-        // Mode selector
-        document.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-            });
-        });
-    </script>
+{% endblock %}
 
 {% block extra_scripts %}
 <script>
@@ -912,61 +546,61 @@
     const DB_CONFIGS = {
         'PostgreSQL': {
             icon: '🐘',
-            desc: 'PostgreSQL relational database',
+            desc: 'Open-source relational database',
             defaultPort: 5432,
             fields: []
         },
         'MySQL': {
             icon: '🐬',
-            desc: 'MySQL/MariaDB database',
+            desc: 'Popular open-source database',
             defaultPort: 3306,
             fields: []
         },
         'MongoDB': {
             icon: '🍃',
-            desc: 'MongoDB document database',
+            desc: 'NoSQL document database',
             defaultPort: 27017,
             fields: []
         },
         'SQL Server': {
             icon: '🏢',
-            desc: 'Microsoft SQL Server',
+            desc: 'Microsoft enterprise database',
             defaultPort: 1433,
             fields: []
         },
         'Oracle': {
             icon: '🔴',
-            desc: 'Oracle database',
+            desc: 'Enterprise database system',
             defaultPort: 1521,
             fields: []
         },
         'BigQuery': {
-            icon: '📊',
-            desc: 'Google BigQuery',
+            icon: '☁️',
+            desc: 'Google Cloud data warehouse',
             defaultPort: null,
             fields: []
         },
         'Snowflake': {
             icon: '❄️',
-            desc: 'Snowflake data warehouse',
+            desc: 'Cloud data platform',
             defaultPort: null,
             fields: []
         },
         'Redis': {
-            icon: '🔴',
-            desc: 'Redis cache database',
+            icon: '⚡',
+            desc: 'In-memory data structure store',
             defaultPort: 6379,
             fields: []
         },
         'SAP HANA': {
-            icon: '🔷',
-            desc: 'SAP HANA database',
+            icon: '💎',
+            desc: 'In-memory database platform',
             defaultPort: 30015,
             fields: []
         },
         'Salesforce': {
             icon: '☁️',
-            desc: 'Salesforce CRM data',
+            desc: 'CRM and cloud platform',
             defaultPort: null,
             fields: []
         },
@@ -977,8 +611,8 @@
             fields: []
         },
         'Others': {
-            icon: '⚡',
-            desc: 'Other database systems',
+            icon: '📦',
+            desc: 'Custom database connection',
             defaultPort: null,
             fields: []
         }
@@ -1021,14 +655,14 @@
         console.log('📊 Loading database types...');
         const grid = document.getElementById('dbTypeGrid');
         if (!grid) {
-            console.error('❌ dbTypeGrid not found');
+            console.error('❌ dbTypeGrid not found!');
             return;
         }
         
         let html = '';
         for (const [dbType, config] of Object.entries(DB_CONFIGS)) {
             html += `
-                <div class="db-type-card" data-db-type="${dbType}" onclick="selectDatabaseType('${dbType}')">
+                <div class="db-type-card" onclick="selectDatabaseType('${dbType}')">
                     <div class="db-type-icon">${config.icon}</div>
                     <div class="db-type-name">${dbType}</div>
                     <div class="db-type-desc">${config.desc}</div>
@@ -1058,7 +692,7 @@
         const portInput = document.getElementById('port');
         
         if (!form) {
-            console.error('❌ Connection form not found');
+            console.error('❌ connectionForm not found!');
             return;
         }
         
@@ -1133,48 +767,44 @@
             const newCancelBtn = cancelBtn.cloneNode(true);
             cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
             newCancelBtn.addEventListener('click', function(e) {
-                console.log('🔄 Cancel button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
+                console.log('🚫 Cancel clicked');
                 resetForm();
             });
-            console.log('✅ Cancel button listener attached');
         }
         
         if (testBtn) {
             const newTestBtn = testBtn.cloneNode(true);
             testBtn.parentNode.replaceChild(newTestBtn, testBtn);
             newTestBtn.addEventListener('click', function(e) {
-                console.log('🔧 Test button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
+                console.log('🔧 Test button clicked');
                 testConnection();
             });
-            console.log('✅ Test button listener attached');
         }
         
         if (saveBtn) {
             const newSaveBtn = saveBtn.cloneNode(true);
             saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
             newSaveBtn.addEventListener('click', function(e) {
-                console.log('💾 Save button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
+                console.log('💾 Save button clicked');
                 saveConnection();
             });
-            console.log('✅ Save button listener attached');
         }
         
         // Refresh button is always visible, so attach once in init
         if (refreshBtn && !refreshBtn.hasAttribute('data-listener-attached')) {
+            refreshBtn.setAttribute('data-listener-attached', 'true');
             refreshBtn.addEventListener('click', function(e) {
-                console.log('🔄 Refresh button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
+                console.log('🔄 Refresh clicked');
                 loadConnections();
             });
-            refreshBtn.setAttribute('data-listener-attached', 'true');
-            console.log('✅ Refresh button listener attached');
         }
     }
     
@@ -1188,27 +818,14 @@
         
         let html = '<div class="form-row">';
         fields.forEach((field, index) => {
-            const isFullWidth = field.type === 'textarea';
-            const inputClass = field.required ? 'form-input' : 'form-input optional';
-            
-            let inputHtml = '';
-            if (field.type === 'textarea') {
-                inputHtml = `<textarea id="${field.id}" class="${inputClass}" placeholder="${field.placeholder || ''}" ${field.required ? 'required' : ''}></textarea>`;
-            } else {
-                inputHtml = `<input type="${field.type || 'text'}" id="${field.id}" class="${inputClass}" placeholder="${field.placeholder || ''}" ${field.required ? 'required' : ''}>`;
-            }
-            
             html += `
-                <div class="form-group ${isFullWidth ? 'full-width' : ''}">
+                <div class="form-group">
                     <label class="form-label">${field.label} ${field.required ? '*' : ''}</label>
-                    ${inputHtml}
+                    <input type="${field.type || 'text'}" id="field_${index}" class="form-input ${field.required ? '' : 'optional'}" 
+                           placeholder="${field.placeholder || ''}" ${field.required ? 'required' : ''}>
                     ${field.hint ? `<div class="form-hint">${field.hint}</div>` : ''}
                 </div>
             `;
-            
-            if ((index + 1) % 2 === 0 && !isFullWidth) {
-                html += '</div><div class="form-row">';
-            }
         });
         html += '</div>';
         
@@ -1228,7 +845,7 @@
         console.log('📊 Connection data:', connectionData);
         
         if (!connectionData) {
-            // gatherFormData already showed the specific error
+            showFormAlert('Please fill in all required fields', 'error');
             return;
         }
         
@@ -1245,7 +862,7 @@
         
         // If editing existing connection, test that connection
         const endpoint = editingConnectionId 
-            ? `/api/databases/${editingConnectionId}/test` 
+            ? `/api/databases/${editingConnectionId}/test`
             : '/api/databases/test';
         
         const requestData = editingConnectionId ? {} : connectionData;
@@ -1262,23 +879,24 @@
             body: JSON.stringify(requestData)
         })
         .then(response => {
-            console.log('📡 Test response:', response.status, response.statusText);
+            console.log('📡 Test response status:', response.status);
             return response.json();
         })
         .then(data => {
-            console.log('📊 Test result:', data);
-            
-            if (data.success || data.status === 'success') {
-                showFormAlert(`Connection test successful! ${data.message || ''}`, 'success');
+            console.log('📊 Test response data:', data);
+            if (data.success || data.status === 'connected') {
+                const latency = data.latency ? ` (${data.latency})` : '';
+                showFormAlert(`Connection successful!${latency}`, 'success');
                 if (testResult) {
-                    testResult.className = 'test-result show success';
-                    testResult.textContent = `✅ Connection successful! ${data.details || ''}`;
+                    testResult.className = 'test-result success show';
+                    testResult.textContent = `✅ Connection successful!${latency}`;
                 }
             } else {
-                showFormAlert(`Connection test failed: ${data.message || data.error || 'Unknown error'}`, 'error');
+                const errorMsg = data.error || data.message || 'Connection failed';
+                showFormAlert(errorMsg, 'error');
                 if (testResult) {
-                    testResult.className = 'test-result show error';
-                    testResult.textContent = `❌ Connection failed: ${data.message || data.error || 'Unknown error'}`;
+                    testResult.className = 'test-result error show';
+                    testResult.textContent = `❌ ${errorMsg}`;
                 }
             }
         })
@@ -1286,12 +904,11 @@
             console.error('❌ Test error:', error);
             showFormAlert(`Test failed: ${error.message}`, 'error');
             if (testResult) {
-                testResult.className = 'test-result show error';
-                testResult.textContent = `❌ Test failed: ${error.message}`;
+                testResult.className = 'test-result error show';
+                testResult.textContent = `❌ Error: ${error.message}`;
             }
         })
         .finally(() => {
-            // Reset button state
             if (testBtn) testBtn.disabled = false;
             if (testBtnText) testBtnText.innerHTML = '🔌 Test Connection';
         });
@@ -1310,7 +927,7 @@
         console.log('📊 Save connection data:', connectionData);
         
         if (!connectionData) {
-            // gatherFormData already showed the specific error
+            showFormAlert('Please fill in all required fields', 'error');
             return;
         }
         
@@ -1340,20 +957,20 @@
             body: JSON.stringify(connectionData)
         })
         .then(response => {
-            console.log('📡 Save response:', response.status, response.statusText);
+            console.log('📡 Save response status:', response.status);
             return response.json();
         })
         .then(data => {
-            console.log('📊 Save result:', data);
-            
-            // Fix: Check for the correct response format
+            console.log('📊 Save response data:', data);
             if (data.database || data.message === 'Connection created successfully') {
-                const action = editingConnectionId ? 'updated' : 'created';
-                showAlert(`Connection ${action} successfully!`, 'success');
-                resetForm();
-                loadConnections();
+                showFormAlert(data.message || 'Connection saved successfully!', 'success');
+                setTimeout(() => {
+                    resetForm();
+                    loadConnections();
+                }, 1500);
             } else {
-                showFormAlert(`Failed to save connection: ${data.message || data.error || 'Unknown error'}`, 'error');
+                const errorMsg = data.error || data.message || 'Failed to save connection';
+                showFormAlert(errorMsg, 'error');
             }
         })
         .catch(error => {
@@ -1361,7 +978,6 @@
             showFormAlert(`Save failed: ${error.message}`, 'error');
         })
         .finally(() => {
-            // Reset button state
             if (saveBtn) saveBtn.disabled = false;
             if (saveBtnText) saveBtnText.innerHTML = '💾 Save Connection';
         });
@@ -1404,15 +1020,15 @@
             port: `"${port}"`,
             databaseName: `"${databaseName}"`,
             username: `"${username}"`,
-            password: `"${password}"` === "" ? '(empty)' : '(has value)',
+            password: password ? '***' : '(empty)',
             workspaceId: `"${workspaceId}"`
         });
         
         // Enhanced validation with specific error messages
         if (!connectionName || connectionName.length === 0) {
-            console.error('❌ Validation failed: Connection name is empty');
-            showFormAlert('Connection name is required', 'error');
-            if (connectionNameEl) connectionNameEl.focus();
+            console.error('❌ Validation failed: Connection name is required');
+            showFormAlert('Please enter a connection name', 'error');
+            connectionNameEl?.focus();
             return null;
         }
         
@@ -1421,92 +1037,105 @@
         
         if (requiresHostPort) {
             if (!host || host.length === 0) {
-                console.error('❌ Validation failed: Host is empty');
-                showFormAlert('Host is required for this database type', 'error');
-                if (hostEl) hostEl.focus();
+                console.error('❌ Validation failed: Host is required');
+                showFormAlert('Please enter the database host', 'error');
+                hostEl?.focus();
                 return null;
             }
+            
             if (!port || port.length === 0) {
-                console.error('❌ Validation failed: Port is empty');
-                showFormAlert('Port is required for this database type', 'error');
-                if (portEl) portEl.focus();
+                console.error('❌ Validation failed: Port is required');
+                showFormAlert('Please enter the database port', 'error');
+                portEl?.focus();
                 return null;
             }
         }
         
-        // For ODBC/Others, don't require database name
-        const requiresDatabaseName = !['ODBC', 'Others'].includes(selectedDbType);
-        
-        if (requiresDatabaseName) {
+        // Database name required for most databases (except ODBC/Others)
+        const requiresDatabase = !['ODBC', 'Others'].includes(selectedDbType);
+        if (requiresDatabase) {
             if (!databaseName || databaseName.length === 0) {
-                console.error('❌ Validation failed: Database name is empty');
-                showFormAlert('Database name is required for this database type', 'error');
-                if (databaseNameEl) databaseNameEl.focus();
+                console.error('❌ Validation failed: Database name is required');
+                showFormAlert('Please enter the database name', 'error');
+                databaseNameEl?.focus();
                 return null;
             }
         }
         
         if (!username || username.length === 0) {
-            console.error('❌ Validation failed: Username is empty:', {
-                usernameEl: !!usernameEl,
-                value: usernameEl?.value,
-                trimmed: username
-            });
-            showFormAlert('Username is required', 'error');
-            if (usernameEl) usernameEl.focus();
+            console.error('❌ Validation failed: Username is required');
+            showFormAlert('Please enter the database username', 'error');
+            usernameEl?.focus();
             return null;
         }
         
         if (!password || password.length === 0) {
-            console.error('❌ Validation failed: Password is empty:', {
-                passwordEl: !!passwordEl,
-                hasValue: !!passwordEl?.value
-            });
-            showFormAlert('Password is required', 'error');
-            if (passwordEl) passwordEl.focus();
+            console.error('❌ Validation failed: Password is required');
+            showFormAlert('Please enter the database password', 'error');
+            passwordEl?.focus();
             return null;
         }
         
-        console.log('✅ Form validation passed');
-        
-        return {
+        // Construct connection data object
+        const data = {
             name: connectionName,
             type: selectedDbType,
-            host: host || null,
-            port: port ? parseInt(port) : null,
-            database: databaseName || "",          // Send empty string instead of null
             username: username,
-            password: password,
-            workspace_id: workspaceId || 1
+            password: password
         };
+        
+        if (requiresHostPort) {
+            data.host = host;
+            data.port = parseInt(port);
+        }
+        
+        if (requiresDatabase) {
+            data.database = databaseName;
+        }
+        
+        if (workspaceId) {
+            data.workspace_id = workspaceId;
+        }
+        
+        console.log('✅ Validation passed, returning data:', {
+            ...data,
+            password: '***'
+        });
+        
+        return data;
     }
     
     function loadConnections() {
-        console.log('📋 Loading existing connections...');
+        console.log('📥 Loading connections...');
         
         fetch('/api/databases/')
-            .then(response => response.json())
+            .then(response => {
+                console.log('📡 Load connections response status:', response.status);
+                return response.json();
+            })
             .then(data => {
-                console.log('📊 Connections loaded:', data);
+                console.log('📊 Load connections data:', data);
                 if (data.databases) {
                     displayConnections(data.databases);
                 } else {
-                    console.error('❌ Failed to load connections:', data.message);
+                    displayConnections([]);
                 }
             })
             .catch(error => {
-                console.error('❌ Error loading connections:', error);
+                console.error('❌ Load connections error:', error);
+                showAlert(`Failed to load connections: ${error.message}`, 'error');
             });
     }
     
     function displayConnections(connections) {
+        console.log('🖼️ Displaying', connections.length, 'connections');
         const tbody = document.getElementById('connectionsTableBody');
         if (!tbody) {
-            console.error('❌ Connections table body not found');
+            console.error('❌ connectionsTableBody not found!');
             return;
         }
         
-        if (!connections || connections.length === 0) {
+        if (connections.length === 0) {
             tbody.innerHTML = `
                 <tr>
                     <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
@@ -1519,23 +1148,22 @@
         
         let html = '';
         connections.forEach(conn => {
-            const status = conn.status || 'unknown';
-            const statusClass = status === 'connected' ? 'status-connected' : 
-                               status === 'testing' ? 'status-testing' : 'status-disconnected';
+            const statusClass = conn.status === 'connected' ? 'status-connected' : 'status-disconnected';
+            const statusText = conn.status === 'connected' ? 'Connected' : 'Disconnected';
+            const dbConfig = DB_CONFIGS[conn.type] || { icon: '📦' };
             
             html += `
                 <tr>
                     <td><span class="connection-name">${escapeHtml(conn.name)}</span></td>
-                    <td><span class="connection-type">${conn.type}</span></td>
+                    <td><span class="connection-type">${dbConfig.icon} ${escapeHtml(conn.type)}</span></td>
                     <td>${escapeHtml(conn.host || 'N/A')}</td>
                     <td>${escapeHtml(conn.database || 'N/A')}</td>
-                    <td><span class="status-badge ${statusClass}">${status}</span></td>
+                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>
                         <div class="action-btn-group">
-                            <button onclick="testExistingConnection(${conn.id})" class="btn btn-secondary">Test</button>
-                            <button onclick="viewSchema(${conn.id})" class="btn btn-secondary">Schema</button>
-                            <button onclick="editConnection(${conn.id})" class="btn btn-secondary">Edit</button>
-                            <button onclick="deleteConnection(${conn.id})" class="btn btn-danger">Delete</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="testExistingConnection(${conn.id})">Test</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
+                            <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>
                         </div>
                     </td>
                 </tr>
@@ -1543,22 +1171,25 @@
         });
         
         tbody.innerHTML = html;
+        console.log('✅ Connections displayed');
     }
     
     function testExistingConnection(connectionId) {
         console.log('🔧 Testing existing connection:', connectionId);
         
         fetch(`/api/databases/${connectionId}/test`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
         })
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
-                showAlert(`Connection test successful!`, 'success');
+            if (data.success || data.status === 'connected') {
+                const latency = data.latency ? ` (${data.latency})` : '';
+                showAlert(`Connection test successful!${latency}`, 'success');
             } else {
-                showAlert(`Connection test failed: ${data.message}`, 'error');
+                showAlert(data.error || 'Connection test failed', 'error');
             }
-            loadConnections(); // Refresh to show updated status
+            loadConnections(); // Reload to update status
         })
         .catch(error => {
             console.error('❌ Test error:', error);
@@ -1568,50 +1199,46 @@
     
     function viewSchema(connectionId) {
         console.log('👁️ Viewing schema for connection:', connectionId);
-        showAlert('Schema viewing functionality coming soon!', 'info');
+        // Implementation for schema viewer
     }
     
     function displaySchemaModal(schema) {
-        const modal = document.getElementById('connectionDetailsModal');
-        const content = document.getElementById('connectionDetailsContent');
-        
-        if (!modal || !content) return;
-        
-        content.innerHTML = '<pre>' + JSON.stringify(schema, null, 2) + '</pre>';
-        modal.style.display = 'block';
+        // Implementation for schema display
+        console.log('Schema:', schema);
     }
     
     function editConnection(connectionId) {
         console.log('✏️ Editing connection:', connectionId);
         
+        // Fetch connection details
         fetch(`/api/databases/${connectionId}`)
             .then(response => response.json())
             .then(data => {
-                if (data.success && data.connection) {
-                    const conn = data.connection;
-                    
-                    // Select the database type first
-                    selectDatabaseType(conn.database_type);
-                    
-                    // Then populate the form
-                    setTimeout(() => {
-                        document.getElementById('connectionName').value = conn.connection_name;
-                        document.getElementById('host').value = conn.host || '';
-                        document.getElementById('port').value = conn.port || '';
-                        document.getElementById('databaseName').value = conn.database_name || '';
-                        document.getElementById('username').value = conn.username || '';
-                        document.getElementById('workspaceId').value = conn.workspace_id || '';
-                        
-                        editingConnectionId = connectionId;
-                        showFormAlert('Connection loaded for editing', 'info');
-                        
-                        // Scroll to form
-                        document.getElementById('connectionForm').scrollIntoView({ 
-                            behavior: 'smooth', 
-                            block: 'nearest' 
-                        });
-                    }, 100);
+                const conn = data.database;
+                if (!conn) {
+                    showAlert('Connection not found', 'error');
+                    return;
                 }
+                
+                // Set editing mode
+                editingConnectionId = connectionId;
+                
+                // Select database type
+                selectedDbType = conn.type;
+                selectDatabaseType(conn.type);
+                
+                // Populate form
+                setTimeout(() => {
+                    document.getElementById('connectionName').value = conn.name || '';
+                    document.getElementById('host').value = conn.host || '';
+                    document.getElementById('port').value = conn.port || '';
+                    document.getElementById('databaseName').value = conn.database || '';
+                    document.getElementById('username').value = conn.username || '';
+                    document.getElementById('workspaceId').value = conn.workspace_id || '';
+                    // Don't populate password for security
+                    
+                    showFormAlert('Editing existing connection. Update the fields as needed.', 'info');
+                }, 500);
             })
             .catch(error => {
                 console.error('❌ Edit error:', error);
@@ -1620,7 +1247,7 @@
     }
     
     function deleteConnection(connectionId) {
-        if (!confirm('Are you sure you want to delete this connection?')) {
+        if (!confirm('Are you sure you want to delete this database connection?')) {
             return;
         }
         
@@ -1631,11 +1258,11 @@
         })
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
-                showAlert('Connection deleted successfully!', 'success');
+            if (data.message) {
+                showAlert('Connection deleted successfully', 'success');
                 loadConnections();
             } else {
-                showAlert(`Failed to delete connection: ${data.message}`, 'error');
+                showAlert(data.error || 'Delete failed', 'error');
             }
         })
         .catch(error => {
@@ -1647,132 +1274,112 @@
     function resetForm() {
         console.log('🔄 Resetting form...');
         
-        selectedDbType = null;
-        editingConnectionId = null;
-        
         const form = document.getElementById('connectionForm');
         if (form) {
             form.classList.remove('show');
-            
-            // Reset all form inputs
-            const inputs = form.querySelectorAll('input');
-            inputs.forEach(input => {
-                if (input.id !== 'databaseType') {
-                    input.value = '';
-                }
-            });
-            
-            // Clear test result
-            const testResult = document.getElementById('testResult');
-            if (testResult) {
-                testResult.classList.remove('show', 'success', 'error');
-                testResult.textContent = '';
-            }
         }
+        
+        // Clear all inputs
+        document.querySelectorAll('.form-input').forEach(input => {
+            input.value = '';
+        });
         
         // Clear selection
         document.querySelectorAll('.db-type-card').forEach(card => {
             card.classList.remove('selected');
         });
         
-        // Hide form alerts
+        // Reset state
+        selectedDbType = null;
+        editingConnectionId = null;
+        
+        // Hide alerts
         hideFormAlerts();
         
-        showAlert('Form reset successfully', 'success');
-        console.log('✅ Form reset completed');
+        // Clear test result
+        const testResult = document.getElementById('testResult');
+        if (testResult) {
+            testResult.classList.remove('show', 'success', 'error');
+            testResult.textContent = '';
+        }
+        
+        console.log('✅ Form reset complete');
     }
     
     // Enhanced alert functions to support both page-level and form-level alerts
     function showAlert(message, type) {
-        console.log(`📢 Page Alert [${type}]:`, message);
+        console.log(`🚨 Showing ${type} alert:`, message);
         
-        // Hide all page alerts first
-        const alerts = ['alertSuccess', 'alertError', 'alertInfo'];
-        alerts.forEach(id => {
-            const alert = document.getElementById(id);
-            if (alert) {
-                alert.classList.remove('show');
-            }
+        const alertId = type === 'success' ? 'alertSuccess' : 
+                       type === 'error' ? 'alertError' : 'alertInfo';
+        const messageId = type === 'success' ? 'alertSuccessMessage' : 
+                         type === 'error' ? 'alertErrorMessage' : 'alertInfoMessage';
+        
+        const alertEl = document.getElementById(alertId);
+        const messageEl = document.getElementById(messageId);
+        
+        console.log('📍 Alert elements:', {
+            alertId: alertId,
+            alertEl: !!alertEl,
+            messageId: messageId,
+            messageEl: !!messageEl
         });
         
-        // Show the appropriate alert
-        let alertId = '';
-        let messageElement = null;
-        
-        switch (type) {
-            case 'success':
-                alertId = 'alertSuccess';
-                messageElement = document.getElementById('alertSuccessMessage');
-                break;
-            case 'error':
-                alertId = 'alertError';
-                messageElement = document.getElementById('alertErrorMessage');
-                break;
-            case 'info':
-                alertId = 'alertInfo';
-                messageElement = document.getElementById('alertInfoMessage');
-                break;
-        }
-        
-        if (alertId && messageElement) {
-            messageElement.textContent = message;
-            const alert = document.getElementById(alertId);
-            
-            if (alert) {
-                alert.classList.add('show');
-                
-                // Auto-hide after 5 seconds for non-error alerts
-                if (type !== 'error') {
-                    setTimeout(() => {
-                        alert.classList.remove('show');
-                    }, 5000);
+        if (alertEl && messageEl) {
+            // Hide all alerts first
+            document.querySelectorAll('.alert').forEach(alert => {
+                if (!alert.classList.contains('form-alert')) {
+                    alert.classList.remove('show');
                 }
-            }
+            });
+            
+            messageEl.textContent = message;
+            alertEl.classList.add('show');
+            
+            console.log('✅ Alert shown successfully');
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                alertEl.classList.remove('show');
+            }, 5000);
+        } else {
+            console.error('❌ Alert elements not found!', { alertEl, messageEl });
         }
     }
     
     function showFormAlert(message, type) {
-        console.log(`📢 Form Alert [${type}]:`, message);
+        console.log(`🚨 Showing form ${type} alert:`, message);
         
-        // Hide all form alerts first
-        hideFormAlerts();
+        const alertId = type === 'success' ? 'formAlertSuccess' : 
+                       type === 'error' ? 'formAlertError' : 'formAlertInfo';
+        const messageId = type === 'success' ? 'formAlertSuccessMessage' : 
+                         type === 'error' ? 'formAlertErrorMessage' : 'formAlertInfoMessage';
         
-        // Show the appropriate form alert
-        let alertId = '';
-        let messageElement = null;
+        const alertEl = document.getElementById(alertId);
+        const messageEl = document.getElementById(messageId);
         
-        switch (type) {
-            case 'success':
-                alertId = 'formAlertSuccess';
-                messageElement = document.getElementById('formAlertSuccessMessage');
-                break;
-            case 'error':
-                alertId = 'formAlertError';
-                messageElement = document.getElementById('formAlertErrorMessage');
-                break;
-            case 'info':
-                alertId = 'formAlertInfo';
-                messageElement = document.getElementById('formAlertInfoMessage');
-                break;
-        }
-        
-        if (alertId && messageElement) {
-            messageElement.textContent = message;
-            const alert = document.getElementById(alertId);
+        if (alertEl && messageEl) {
+            // Hide all form alerts first
+            hideFormAlerts();
             
-            if (alert) {
-                alert.classList.add('show');
-            }
+            messageEl.textContent = message;
+            alertEl.classList.add('show');
+            
+            console.log('✅ Form alert shown successfully');
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                alertEl.classList.remove('show');
+            }, 5000);
+        } else {
+            console.error('❌ Form alert elements not found!');
         }
     }
     
     function hideFormAlerts() {
-        const formAlerts = ['formAlertSuccess', 'formAlertError', 'formAlertInfo'];
-        formAlerts.forEach(id => {
-            const alert = document.getElementById(id);
-            if (alert) {
-                alert.classList.remove('show');
-            }
+        ['formAlertSuccess', 'formAlertError', 'formAlertInfo'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('show');
         });
     }
     
@@ -1784,33 +1391,29 @@
     
     // Add global click handler for debugging
     document.addEventListener('click', function(e) {
-        console.log('🖱️ Global click detected:', {
-            target: e.target,
-            id: e.target.id,
-            className: e.target.className
-        });
+        if (e.target.tagName === 'BUTTON') {
+            console.log('🖱️ Button clicked:', e.target.id || e.target.className, e.target);
+        }
     });
     
     // Initialize when DOM is ready
     console.log('📍 Setting up initialization...');
     if (document.readyState === 'loading') {
-        console.log('📍 Document still loading, waiting for DOMContentLoaded...');
+        console.log('⏳ DOM still loading, adding DOMContentLoaded listener');
         document.addEventListener('DOMContentLoaded', init);
     } else {
-        console.log('📍 Document ready, initializing immediately...');
+        console.log('✅ DOM already loaded, initializing now');
         init();
     }
     
     // Also try a delayed initialization as backup
     setTimeout(() => {
-        console.log('⏰ Backup initialization timer triggered');
-        if (!document.getElementById('dbTypeGrid').innerHTML) {
-            console.log('🔄 Running backup initialization...');
+        console.log('⏰ Delayed init check...');
+        const grid = document.getElementById('dbTypeGrid');
+        if (grid && !grid.innerHTML) {
+            console.log('🔧 Running delayed initialization');
             init();
         }
     }, 2000);
 </script>
 {% endblock %}
-
-</body>
-</html>

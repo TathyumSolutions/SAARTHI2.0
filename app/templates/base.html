@@ -261,19 +261,19 @@
         <!-- Left Sidebar -->
         <div class="left-sidebar">
             <!-- Data Sources Section -->
-            <div class="sidebar-section">
-                <div class="section-title">Data Sources</div>
-                
-                <a href="/unstructured_data" class="section-item" id="unstructuredDataIcon">
-                    <div class="item-icon">📁</div>
-                    <span>Files</span>
-                </a>
+           <div class="sidebar-section">
+    <div class="section-title">Data Sources</div>
+    
+    <div class="section-item" id="unstructuredDataIcon" onclick="window.location.href='/unstructured_data'">
+        <div class="item-icon">📁</div>
+        <span>Files</span>
+    </div>
 
-                <a href="/database_connections" class="section-item" id="databaseConnectionsIcon">
-                    <div class="item-icon">🔌</div>
-                    <span>Database Connections</span>
-                </a>
-            </div>
+    <div class="section-item" id="databaseConnectionsIcon" onclick="window.location.href='/database_connections'">
+        <div class="item-icon">🔌</div>
+        <span>Database Connections</span>
+    </div>
+</div>
 
             <!-- AI Models Section -->
             <div class="sidebar-section">
@@ -426,17 +426,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('.left-sidebar .section-item').forEach(item => {
                 item.addEventListener('click', function(e) {
-                    // Files icon click
-                    if (this.id === 'unstructuredDataIcon') {
-                        return; // Let the anchor tag handle navigation
-                    }
-                    
-                    // Database Connections icon click
-                    if (this.id === 'databaseConnectionsIcon') {
-                        return; // Let the anchor tag handle navigation
-                    }
-                    
-                    // Check if item has sub-items
+                    // Check if item has sub-items (expandable menus)
                     const subItems = this.nextElementSibling;
                     if (subItems && subItems.classList.contains('sub-items')) {
                         e.preventDefault();
@@ -452,6 +442,7 @@
                             icon.textContent = isCurrentlyVisible ? '▶' : '▼';
                         }
                     }
+                    // If no sub-items, let the onclick handler work (for Files and Database Connections)
                 });
             });
         });
