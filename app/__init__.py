@@ -25,16 +25,18 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 def create_app(config_name='development'):
     """Create and configure the Flask application"""
     app = Flask(__name__)
+    CORS(app)
     
     # Load configuration
     app.config.from_object(config[config_name])
+    app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
+    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 
     print("Working on initialisation")
     # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    CORS(app)
     print("Initialisation completed")
     # Register blueprints
     from app.api.routes import (
