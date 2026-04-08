@@ -6,7 +6,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
+    libaio-dev \
+    python3-dev \
+    python3-setuptools \
+    python3-pkg-resources \
     && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip, setuptools, and wheel before installing requirements
+RUN pip install --upgrade pip setuptools wheel
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
