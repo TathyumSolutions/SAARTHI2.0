@@ -9,3 +9,4 @@ pymongo>=4.0.0
 pyodbc>=4.0.0
 redis>=4.0.0
 dotenv
+gunicorn
