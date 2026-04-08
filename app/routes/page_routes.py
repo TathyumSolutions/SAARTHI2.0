@@ -103,6 +103,12 @@ def teradata():
 def cassandra():
     return render_template('databases/cassandra.html')
 
+# Database Connections Management
+@bp.route('/database_connections')
+def database_connections():
+    """Database connections management page"""
+    return render_template('database_connections.html')
+
 # AI Models
 @bp.route('/models/claude-sonnet')
 def claude_sonnet():

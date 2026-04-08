@@ -3,7 +3,7 @@
 {% block title %}Database Connections - Saarthi{% endblock %}
 
 {% block extra_styles %}
-
+<style>
     .connection-section {
         background: var(--panel-bg);
         border: 1px solid var(--border-color);
@@ -234,29 +234,52 @@
     .alert {
         padding: 16px;
         border-radius: 6px;
-        margin-bottom: 20px;
+        margin: 16px 0;
         display: none;
+        position: relative;
+        z-index: 1000;
+        font-size: 14px;
+        font-weight: 500;
+        border: 2px solid;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
     .alert.show {
-        display: block;
+        display: block !important;
+        animation: slideDown 0.3s ease-out;
+    }
+
+    .form-alert {
+        margin-top: 0;
+        margin-bottom: 20px;
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
     .alert-success {
         background: rgba(78, 201, 176, 0.2);
-        border: 1px solid var(--accent-green);
+        border-color: var(--accent-green);
         color: var(--accent-green);
     }
 
     .alert-error {
         background: rgba(211, 47, 47, 0.2);
-        border: 1px solid #d32f2f;
+        border-color: #d32f2f;
         color: #ff6b6b;
     }
 
     .alert-info {
         background: rgba(0, 120, 212, 0.2);
-        border: 1px solid var(--primary-blue);
+        border-color: var(--primary-blue);
         color: var(--primary-blue);
     }
 
@@ -361,7 +384,7 @@
         display: flex;
         gap: 8px;
     }
-
+</style>
 {% endblock %}
 
 {% block content %}
@@ -371,22 +394,22 @@
         Configure and manage connections to various database systems for enterprise data intelligence.
     </p>
 
-    <!-- Alert Messages -->
+    <!-- Top level alerts (only for page-level messages) -->
     <div id="alertSuccess" class="alert alert-success">
-        <strong>Success!</strong> <span id="alertSuccessMessage"></span>
+        <strong>✅ Success!</strong> <span id="alertSuccessMessage"></span>
     </div>
     <div id="alertError" class="alert alert-error">
-        <strong>Error!</strong> <span id="alertErrorMessage"></span>
+        <strong>❌ Error!</strong> <span id="alertErrorMessage"></span>
     </div>
     <div id="alertInfo" class="alert alert-info">
-        <strong>Info!</strong> <span id="alertInfoMessage"></span>
+        <strong>ℹ️ Info!</strong> <span id="alertInfoMessage"></span>
     </div>
 
     <!-- Database Type Selection -->
     <div class="connection-section">
         <h2 style="font-size: 18px; margin-bottom: 16px; color: var(--accent-green);">Select Database Type</h2>
         <div class="db-type-grid" id="dbTypeGrid">
-            <!-- Will be populated dynamically -->
+            <!-- Database types will be populated by JavaScript -->
         </div>
 
         <!-- Connection Form -->
@@ -394,6 +417,17 @@
             <h3 style="font-size: 16px; margin-bottom: 20px; color: var(--text-primary);">
                 Configure <span id="selectedDbType" style="color: var(--accent-green);"></span> Connection
             </h3>
+
+            <!-- Form-level alerts (show near the form fields) -->
+            <div id="formAlertSuccess" class="alert alert-success form-alert">
+                <strong>✅ Success!</strong> <span id="formAlertSuccessMessage"></span>
+            </div>
+            <div id="formAlertError" class="alert alert-error form-alert">
+                <strong>❌ Error!</strong> <span id="formAlertErrorMessage"></span>
+            </div>
+            <div id="formAlertInfo" class="alert alert-info form-alert">
+                <strong>ℹ️ Info!</strong> <span id="formAlertInfoMessage"></span>
+            </div>
 
             <div class="form-row">
                 <div class="form-group">
@@ -448,13 +482,13 @@
 
             <!-- Form Actions -->
             <div class="form-actions">
-                <button id="testConnectionBtn" class="btn btn-secondary">
+                <button type="button" id="testConnectionBtn" class="btn btn-secondary">
                     <span id="testBtnText">🔌 Test Connection</span>
                 </button>
-                <button id="saveConnectionBtn" class="btn btn-primary">
+                <button type="button" id="saveConnectionBtn" class="btn btn-primary">
                     <span id="saveBtnText">💾 Save Connection</span>
                 </button>
-                <button id="cancelBtn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="cancelBtn" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
@@ -462,8 +496,8 @@
     <!-- Existing Connections -->
     <div class="connection-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="font-size: 18px; color: var(--accent-green); margin: 0;">Active Database Connections</h2>
-            <button id="refreshConnectionsBtn" class="btn btn-secondary" style="padding: 8px 16px;">
+            <h2 style="font-size: 18px; color: var(--accent-green);">Active Database Connections</h2>
+            <button id="refreshConnectionsBtn" class="btn btn-secondary">
                 🔄 Refresh
             </button>
         </div>
@@ -480,10 +514,9 @@
                 </tr>
             </thead>
             <tbody id="connectionsTableBody">
-                <!-- Will be populated dynamically -->
                 <tr>
-                    <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 32px;">
-                        Loading connections...
+                    <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        No database connections configured yet
                     </td>
                 </tr>
             </tbody>
@@ -493,10 +526,9 @@
     <!-- Connection Details Modal (Hidden by default) -->
     <div id="connectionDetailsModal" style="display: none;">
         <div class="connection-section">
-            <h3 style="font-size: 16px; margin-bottom: 16px; color: var(--text-primary);">
-                Connection Details
-            </h3>
+            <h3>Connection Details</h3>
             <div id="connectionDetailsContent"></div>
+            <button onclick="document.getElementById('connectionDetailsModal').style.display='none'">Close</button>
         </div>
     </div>
 </div>
@@ -506,87 +538,83 @@
 <script>
     'use strict';
     
-    console.log('✓ Database Connections Script loaded');
+    console.log('🔄 Database Connections Script loaded');
+    console.log('📍 Current URL:', window.location.href);
+    console.log('📍 Document ready state:', document.readyState);
     
     // Database type configurations
     const DB_CONFIGS = {
         'PostgreSQL': {
             icon: '🐘',
+            desc: 'Open-source relational database',
             defaultPort: 5432,
-            desc: 'Open-source RDBMS',
             fields: []
         },
         'MySQL': {
             icon: '🐬',
+            desc: 'Popular open-source database',
             defaultPort: 3306,
-            desc: 'Popular open-source DB',
             fields: []
         },
         'MongoDB': {
             icon: '🍃',
+            desc: 'NoSQL document database',
             defaultPort: 27017,
-            desc: 'NoSQL document DB',
-            fields: [
-                {name: 'authSource', label: 'Auth Source', type: 'text', placeholder: 'admin', required: false}
-            ]
+            fields: []
         },
         'SQL Server': {
-            icon: '🔷',
+            icon: '🏢',
+            desc: 'Microsoft enterprise database',
             defaultPort: 1433,
-            desc: 'Microsoft SQL Server',
-            fields: [
-                {name: 'instance', label: 'Instance Name', type: 'text', placeholder: 'MSSQLSERVER', required: false}
-            ]
+            fields: []
         },
         'Oracle': {
             icon: '🔴',
+            desc: 'Enterprise database system',
             defaultPort: 1521,
-            desc: 'Enterprise RDBMS',
-            fields: [
-                {name: 'serviceName', label: 'Service Name', type: 'text', placeholder: 'ORCL', required: false}
-            ]
+            fields: []
         },
         'BigQuery': {
             icon: '☁️',
+            desc: 'Google Cloud data warehouse',
             defaultPort: null,
-            desc: 'Google Cloud warehouse',
-            fields: [
-                {name: 'projectId', label: 'Project ID', type: 'text', placeholder: 'your-project-id', required: true},
-                {name: 'datasetId', label: 'Dataset ID', type: 'text', placeholder: 'your-dataset', required: false},
-                {name: 'credentialsJson', label: 'Service Account JSON', type: 'textarea', placeholder: 'Paste credentials JSON', required: true}
-            ]
+            fields: []
         },
         'Snowflake': {
             icon: '❄️',
+            desc: 'Cloud data platform',
             defaultPort: null,
-            desc: 'Cloud data warehouse',
-            fields: [
-                {name: 'account', label: 'Account', type: 'text', placeholder: 'your-account.region', required: true},
-                {name: 'warehouse', label: 'Warehouse', type: 'text', placeholder: 'COMPUTE_WH', required: false}
-            ]
+            fields: []
         },
         'Redis': {
             icon: '⚡',
+            desc: 'In-memory data structure store',
             defaultPort: 6379,
-            desc: 'In-memory data store',
-            fields: [
-                {name: 'db', label: 'Database Number', type: 'number', placeholder: '0', required: false}
-            ]
+            fields: []
         },
         'SAP HANA': {
-            icon: '🔷',
+            icon: '💎',
+            desc: 'In-memory database platform',
             defaultPort: 30015,
-            desc: 'SAP in-memory DB',
             fields: []
         },
         'Salesforce': {
             icon: '☁️',
+            desc: 'CRM and cloud platform',
             defaultPort: null,
-            desc: 'CRM platform',
-            fields: [
-                {name: 'securityToken', label: 'Security Token', type: 'password', placeholder: 'Your security token', required: true},
-                {name: 'sandboxMode', label: 'Sandbox Mode', type: 'checkbox', required: false}
-            ]
+            fields: []
+        },
+        'ODBC': {
+            icon: '🔌',
+            desc: 'Generic ODBC connection',
+            defaultPort: null,
+            fields: []
+        },
+        'Others': {
+            icon: '📦',
+            desc: 'Custom database connection',
+            defaultPort: null,
+            fields: []
         }
     };
 
@@ -594,55 +622,47 @@
     let editingConnectionId = null;
     
     function init() {
-        console.log('Initializing database connections page...');
+        console.log('🚀 Initializing database connections page...');
+        console.log('🔍 Looking for DOM elements...');
+        
+        // Check if key elements exist
+        const dbTypeGrid = document.getElementById('dbTypeGrid');
+        const connectionForm = document.getElementById('connectionForm');
+        const connectionsTableBody = document.getElementById('connectionsTableBody');
+        
+        console.log('📋 DOM Elements found:');
+        console.log('  - dbTypeGrid:', !!dbTypeGrid);
+        console.log('  - connectionForm:', !!connectionForm);
+        console.log('  - connectionsTableBody:', !!connectionsTableBody);
+        
+        // Test if alert elements exist
+        const alertSuccess = document.getElementById('alertSuccess');
+        const alertError = document.getElementById('alertError');
+        const alertInfo = document.getElementById('alertInfo');
+        
+        console.log('🚨 Alert Elements found:');
+        console.log('  - alertSuccess:', !!alertSuccess, alertSuccess);
+        console.log('  - alertError:', !!alertError, alertError);
+        console.log('  - alertInfo:', !!alertInfo, alertInfo);
         
         loadDatabaseTypes();
         loadConnections();
         
-        const cancelBtn = document.getElementById('cancelBtn');
-        const testBtn = document.getElementById('testConnectionBtn');
-        const saveBtn = document.getElementById('saveConnectionBtn');
-        const refreshBtn = document.getElementById('refreshConnectionsBtn');
-        
-        if (cancelBtn) {
-            cancelBtn.onclick = function(e) {
-                e.stopPropagation();
-                resetForm();
-            };
-        }
-        
-        if (testBtn) {
-            testBtn.onclick = function(e) {
-                e.stopPropagation();
-                testConnection();
-            };
-        }
-        
-        if (saveBtn) {
-            saveBtn.onclick = function(e) {
-                e.stopPropagation();
-                saveConnection();
-            };
-        }
-
-        if (refreshBtn) {
-            refreshBtn.onclick = function(e) {
-                e.stopPropagation();
-                loadConnections();
-            };
-        }
-        
-        console.log('Init complete');
+        console.log('✅ Init complete - button handlers will be attached when form becomes visible');
     }
     
     function loadDatabaseTypes() {
+        console.log('📊 Loading database types...');
         const grid = document.getElementById('dbTypeGrid');
-        if (!grid) return;
+        if (!grid) {
+            console.error('❌ dbTypeGrid not found!');
+            return;
+        }
         
         let html = '';
         for (const [dbType, config] of Object.entries(DB_CONFIGS)) {
             html += `
-                <div class="db-type-card" data-db-type="${dbType}" onclick="selectDatabaseType('${dbType}')">
+                <div class="db-type-card" onclick="selectDatabaseType('${dbType}')">
                     <div class="db-type-icon">${config.icon}</div>
                     <div class="db-type-name">${dbType}</div>
                     <div class="db-type-desc">${config.desc}</div>
@@ -650,10 +670,11 @@
             `;
         }
         grid.innerHTML = html;
+        console.log(`✅ Loaded ${Object.keys(DB_CONFIGS).length} database types`);
     }
     
     function selectDatabaseType(dbType) {
-        console.log('Database type selected: ' + dbType);
+        console.log('🎯 Database type selected: ' + dbType);
         
         // Update UI
         document.querySelectorAll('.db-type-card').forEach(card => {
@@ -670,24 +691,39 @@
         const dbTypeInput = document.getElementById('databaseType');
         const portInput = document.getElementById('port');
         
+        if (!form) {
+            console.error('❌ connectionForm not found!');
+            return;
+        }
+        
         form.classList.add('show');
-        typeLabel.textContent = dbType;
-        dbTypeInput.value = dbType;
+        if (typeLabel) typeLabel.textContent = dbType;
+        if (dbTypeInput) dbTypeInput.value = dbType;
         
         // Set default port
-        if (config.defaultPort) {
+        if (config.defaultPort && portInput) {
             portInput.value = config.defaultPort;
             portInput.parentElement.style.display = 'block';
-        } else {
+        } else if (portInput) {
             portInput.parentElement.style.display = 'none';
         }
         
         // Handle host field for cloud services
         const hostInput = document.getElementById('host');
-        if (dbType === 'BigQuery' || dbType === 'Salesforce') {
-            hostInput.parentElement.style.display = 'none';
+        const databaseNameInput = document.getElementById('databaseName');
+        
+        // Hide host/port for cloud services and ODBC/Others
+        if (dbType === 'BigQuery' || dbType === 'Salesforce' || dbType === 'ODBC' || dbType === 'Others') {
+            if (hostInput) hostInput.parentElement.style.display = 'none';
         } else {
-            hostInput.parentElement.style.display = 'block';
+            if (hostInput) hostInput.parentElement.style.display = 'block';
+        }
+        
+        // Hide database name for ODBC and Others (they use connection strings)
+        if (dbType === 'ODBC' || dbType === 'Others') {
+            if (databaseNameInput) databaseNameInput.parentElement.style.display = 'none';
+        } else {
+            if (databaseNameInput) databaseNameInput.parentElement.style.display = 'block';
         }
         
         // Add additional fields
@@ -696,65 +732,133 @@
         // Reset editing state
         editingConnectionId = null;
         
+        // *** CRITICAL FIX: Attach button event listeners AFTER form is visible ***
+        attachFormButtonListeners();
+        
+        // Show success alert for selection (in form area)
+        showFormAlert(`${dbType} database type selected. Fill in the connection details below.`, 'success');
+        
         // Scroll to form
-        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        form.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'nearest' 
+        });
+        
+        console.log('✅ Database type selection completed');
+    }
+    
+    function attachFormButtonListeners() {
+        console.log('🔘 Attaching form button listeners...');
+        
+        // Find buttons now that form is visible
+        const cancelBtn = document.getElementById('cancelBtn');
+        const testBtn = document.getElementById('testConnectionBtn');
+        const saveBtn = document.getElementById('saveConnectionBtn');
+        const refreshBtn = document.getElementById('refreshConnectionsBtn');
+        
+        console.log('📍 Button Elements after form shown:');
+        console.log('  - cancelBtn:', !!cancelBtn, cancelBtn);
+        console.log('  - testBtn:', !!testBtn, testBtn);
+        console.log('  - saveBtn:', !!saveBtn, saveBtn);
+        console.log('  - refreshBtn:', !!refreshBtn, refreshBtn);
+        
+        // Remove any existing listeners to prevent duplicates
+        if (cancelBtn) {
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+            newCancelBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🚫 Cancel clicked');
+                resetForm();
+            });
+        }
+        
+        if (testBtn) {
+            const newTestBtn = testBtn.cloneNode(true);
+            testBtn.parentNode.replaceChild(newTestBtn, testBtn);
+            newTestBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔧 Test button clicked');
+                testConnection();
+            });
+        }
+        
+        if (saveBtn) {
+            const newSaveBtn = saveBtn.cloneNode(true);
+            saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+            newSaveBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('💾 Save button clicked');
+                saveConnection();
+            });
+        }
+        
+        // Refresh button is always visible, so attach once in init
+        if (refreshBtn && !refreshBtn.hasAttribute('data-listener-attached')) {
+            refreshBtn.setAttribute('data-listener-attached', 'true');
+            refreshBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔄 Refresh clicked');
+                loadConnections();
+            });
+        }
     }
     
     function renderAdditionalFields(fields) {
+        console.log('📝 Rendering additional fields:', fields);
         const container = document.getElementById('additionalFields');
         if (!fields || fields.length === 0) {
-            container.innerHTML = '';
+            if (container) container.innerHTML = '';
             return;
         }
         
         let html = '<div class="form-row">';
         fields.forEach((field, index) => {
-            const isFullWidth = field.type === 'textarea';
-            const inputClass = field.required ? 'form-input' : 'form-input optional';
-            
-            let inputHtml = '';
-            if (field.type === 'textarea') {
-                inputHtml = `<textarea id="${field.name}" class="${inputClass}" placeholder="${field.placeholder}" rows="4" ${field.required ? 'required' : ''}></textarea>`;
-            } else if (field.type === 'checkbox') {
-                inputHtml = `<input type="checkbox" id="${field.name}" style="width: auto; margin-top: 8px;">`;
-            } else {
-                inputHtml = `<input type="${field.type}" id="${field.name}" class="${inputClass}" placeholder="${field.placeholder}" ${field.required ? 'required' : ''}>`;
-            }
-            
             html += `
-                <div class="form-group ${isFullWidth ? 'full-width' : ''}">
+                <div class="form-group">
                     <label class="form-label">${field.label} ${field.required ? '*' : ''}</label>
-                    ${inputHtml}
+                    <input type="${field.type || 'text'}" id="field_${index}" class="form-input ${field.required ? '' : 'optional'}" 
+                           placeholder="${field.placeholder || ''}" ${field.required ? 'required' : ''}>
+                    ${field.hint ? `<div class="form-hint">${field.hint}</div>` : ''}
                 </div>
             `;
-            
-            // Close and start new row every 2 fields (except for full-width fields)
-            if (!isFullWidth && index % 2 === 1 && index < fields.length - 1) {
-                html += '</div><div class="form-row">';
-            }
         });
         html += '</div>';
         
-        container.innerHTML = html;
+        if (container) container.innerHTML = html;
     }
     
     function testConnection() {
-        const testBtn = document.getElementById('testConnectionBtn');
-        const testBtnText = document.getElementById('testBtnText');
-        const testResult = document.getElementById('testResult');
+        console.log('🔧 TEST CONNECTION FUNCTION CALLED!');
         
+        // Show frontend validation alerts
         if (!selectedDbType) {
-            showAlert('Please select a database type first', 'error');
+            showFormAlert('Please select a database type first', 'error');
             return;
         }
         
         const connectionData = gatherFormData();
-        if (!connectionData) return;
+        console.log('📊 Connection data:', connectionData);
+        
+        if (!connectionData) {
+            showFormAlert('Please fill in all required fields', 'error');
+            return;
+        }
         
         // Show loading state
-        testBtn.disabled = true;
-        testBtnText.innerHTML = '<span class="loading-spinner"></span> Testing...';
-        testResult.classList.remove('show', 'success', 'error');
+        const testBtn = document.getElementById('testConnectionBtn');
+        const testBtnText = document.getElementById('testBtnText');
+        const testResult = document.getElementById('testResult');
+        
+        if (testBtn) testBtn.disabled = true;
+        if (testBtnText) testBtnText.innerHTML = '<span class="loading-spinner"></span> Testing...';
+        if (testResult) testResult.classList.remove('show', 'success', 'error');
+        
+        showFormAlert('Testing database connection...', 'info');
         
         // If editing existing connection, test that connection
         const endpoint = editingConnectionId 
@@ -763,53 +867,89 @@
         
         const requestData = editingConnectionId ? {} : connectionData;
         
+        console.log('🌐 Making API call:', {
+            endpoint: endpoint,
+            method: 'POST',
+            data: requestData
+        });
+        
         fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData)
         })
-        .then(response => response.json())
+        .then(response => {
+            console.log('📡 Test response status:', response.status);
+            return response.json();
+        })
         .then(data => {
-            testBtn.disabled = false;
-            testBtnText.textContent = '🔌 Test Connection';
-            
-            if (data.status === 'success') {
-                testResult.className = 'test-result success show';
-                testResult.innerHTML = `✓ Connection successful! Latency: ${data.latency_ms || 0}ms`;
+            console.log('📊 Test response data:', data);
+            if (data.success || data.status === 'connected') {
+                const latency = data.latency ? ` (${data.latency})` : '';
+                showFormAlert(`Connection successful!${latency}`, 'success');
+                if (testResult) {
+                    testResult.className = 'test-result success show';
+                    testResult.textContent = `✅ Connection successful!${latency}`;
+                }
             } else {
-                testResult.className = 'test-result error show';
-                testResult.innerHTML = `✗ Connection failed: ${data.error || 'Unknown error'}`;
+                const errorMsg = data.error || data.message || 'Connection failed';
+                showFormAlert(errorMsg, 'error');
+                if (testResult) {
+                    testResult.className = 'test-result error show';
+                    testResult.textContent = `❌ ${errorMsg}`;
+                }
             }
         })
         .catch(error => {
-            testBtn.disabled = false;
-            testBtnText.textContent = '🔌 Test Connection';
-            testResult.className = 'test-result error show';
-            testResult.innerHTML = `✗ Test failed: ${error.message}`;
-            console.error('Test error:', error);
+            console.error('❌ Test error:', error);
+            showFormAlert(`Test failed: ${error.message}`, 'error');
+            if (testResult) {
+                testResult.className = 'test-result error show';
+                testResult.textContent = `❌ Error: ${error.message}`;
+            }
+        })
+        .finally(() => {
+            if (testBtn) testBtn.disabled = false;
+            if (testBtnText) testBtnText.innerHTML = '🔌 Test Connection';
         });
     }
     
     function saveConnection() {
-        const saveBtn = document.getElementById('saveConnectionBtn');
-        const saveBtnText = document.getElementById('saveBtnText');
+        console.log('💾 SAVE CONNECTION FUNCTION CALLED!');
         
+        // Show frontend validation alerts
         if (!selectedDbType) {
-            showAlert('Please select a database type first', 'error');
+            showFormAlert('Please select a database type first', 'error');
             return;
         }
         
         const connectionData = gatherFormData();
-        if (!connectionData) return;
+        console.log('📊 Save connection data:', connectionData);
+        
+        if (!connectionData) {
+            showFormAlert('Please fill in all required fields', 'error');
+            return;
+        }
         
         // Show loading state
-        saveBtn.disabled = true;
-        saveBtnText.innerHTML = '<span class="loading-spinner"></span> Saving...';
+        const saveBtn = document.getElementById('saveConnectionBtn');
+        const saveBtnText = document.getElementById('saveBtnText');
+        
+        if (saveBtn) saveBtn.disabled = true;
+        if (saveBtnText) saveBtnText.innerHTML = '<span class="loading-spinner"></span> Saving...';
+        
+        showFormAlert('Saving database connection...', 'info');
         
         const endpoint = editingConnectionId 
-            ? `/api/databases/${editingConnectionId}`
+            ? `/api/databases/${editingConnectionId}` 
             : '/api/databases/';
         const method = editingConnectionId ? 'PUT' : 'POST';
+        
+        console.log('🌐 Making save API call:', {
+            endpoint: endpoint,
+            method: method,
+            data: connectionData
+        });
         
         fetch(endpoint, {
             method: method,
@@ -817,140 +957,211 @@
             body: JSON.stringify(connectionData)
         })
         .then(response => {
-            if (!response.ok) throw new Error('Failed to save connection');
+            console.log('📡 Save response status:', response.status);
             return response.json();
         })
         .then(data => {
-            saveBtn.disabled = false;
-            saveBtnText.textContent = '💾 Save Connection';
-            
-            const message = editingConnectionId 
-                ? 'Connection updated successfully!' 
-                : 'Connection created successfully!';
-            showAlert(message, 'success');
-            
-            resetForm();
-            loadConnections();
+            console.log('📊 Save response data:', data);
+            if (data.database || data.message === 'Connection created successfully') {
+                showFormAlert(data.message || 'Connection saved successfully!', 'success');
+                setTimeout(() => {
+                    resetForm();
+                    loadConnections();
+                }, 1500);
+            } else {
+                const errorMsg = data.error || data.message || 'Failed to save connection';
+                showFormAlert(errorMsg, 'error');
+            }
         })
         .catch(error => {
-            saveBtn.disabled = false;
-            saveBtnText.textContent = '💾 Save Connection';
-            showAlert('Failed to save connection: ' + error.message, 'error');
-            console.error('Save error:', error);
+            console.error('❌ Save error:', error);
+            showFormAlert(`Save failed: ${error.message}`, 'error');
+        })
+        .finally(() => {
+            if (saveBtn) saveBtn.disabled = false;
+            if (saveBtnText) saveBtnText.innerHTML = '💾 Save Connection';
         });
     }
     
     function gatherFormData() {
-        const name = document.getElementById('connectionName').value.trim();
-        const host = document.getElementById('host').value.trim();
-        const port = document.getElementById('port').value;
-        const database = document.getElementById('databaseName').value.trim();
-        const username = document.getElementById('username').value.trim();
-        const password = document.getElementById('password').value;
-        const workspaceId = document.getElementById('workspaceId').value.trim();
+        console.log('📝 Gathering form data...');
         
-        // Validate required fields
-        const config = DB_CONFIGS[selectedDbType];
-        const requiresHost = config.defaultPort !== null;
+        // Get form elements with better error handling
+        const connectionNameEl = document.getElementById('connectionName');
+        const hostEl = document.getElementById('host');
+        const portEl = document.getElementById('port');
+        const databaseNameEl = document.getElementById('databaseName');
+        const usernameEl = document.getElementById('username');
+        const passwordEl = document.getElementById('password');
+        const workspaceIdEl = document.getElementById('workspaceId');
         
-        if (!name || !database || !username || !password) {
-            showAlert('Please fill in all required fields', 'error');
+        console.log('📋 Form elements found:', {
+            connectionName: !!connectionNameEl,
+            host: !!hostEl,
+            port: !!portEl,
+            databaseName: !!databaseNameEl,
+            username: !!usernameEl,
+            password: !!passwordEl,
+            workspaceId: !!workspaceIdEl
+        });
+        
+        // Get values
+        const connectionName = connectionNameEl?.value?.trim() || '';
+        const host = hostEl?.value?.trim() || '';
+        const port = portEl?.value?.trim() || '';
+        const databaseName = databaseNameEl?.value?.trim() || '';
+        const username = usernameEl?.value?.trim() || '';
+        const password = passwordEl?.value?.trim() || '';
+        const workspaceId = workspaceIdEl?.value?.trim() || '';
+        
+        console.log('📊 Form data gathered:', {
+            connectionName: `"${connectionName}"`,
+            host: `"${host}"`,
+            port: `"${port}"`,
+            databaseName: `"${databaseName}"`,
+            username: `"${username}"`,
+            password: password ? '***' : '(empty)',
+            workspaceId: `"${workspaceId}"`
+        });
+        
+        // Enhanced validation with specific error messages
+        if (!connectionName || connectionName.length === 0) {
+            console.error('❌ Validation failed: Connection name is required');
+            showFormAlert('Please enter a connection name', 'error');
+            connectionNameEl?.focus();
             return null;
         }
         
-        if (requiresHost && !host) {
-            showAlert('Host is required for this database type', 'error');
+        // For cloud services, don't require host/port
+        const requiresHostPort = !['BigQuery', 'Salesforce', 'ODBC', 'Others'].includes(selectedDbType);
+        
+        if (requiresHostPort) {
+            if (!host || host.length === 0) {
+                console.error('❌ Validation failed: Host is required');
+                showFormAlert('Please enter the database host', 'error');
+                hostEl?.focus();
+                return null;
+            }
+            
+            if (!port || port.length === 0) {
+                console.error('❌ Validation failed: Port is required');
+                showFormAlert('Please enter the database port', 'error');
+                portEl?.focus();
+                return null;
+            }
+        }
+        
+        // Database name required for most databases (except ODBC/Others)
+        const requiresDatabase = !['ODBC', 'Others'].includes(selectedDbType);
+        if (requiresDatabase) {
+            if (!databaseName || databaseName.length === 0) {
+                console.error('❌ Validation failed: Database name is required');
+                showFormAlert('Please enter the database name', 'error');
+                databaseNameEl?.focus();
+                return null;
+            }
+        }
+        
+        if (!username || username.length === 0) {
+            console.error('❌ Validation failed: Username is required');
+            showFormAlert('Please enter the database username', 'error');
+            usernameEl?.focus();
             return null;
         }
         
+        if (!password || password.length === 0) {
+            console.error('❌ Validation failed: Password is required');
+            showFormAlert('Please enter the database password', 'error');
+            passwordEl?.focus();
+            return null;
+        }
+        
+        // Construct connection data object
         const data = {
-            name: name,
+            name: connectionName,
             type: selectedDbType,
-            database: database,
             username: username,
             password: password
         };
         
-        if (requiresHost) {
+        if (requiresHostPort) {
             data.host = host;
-            data.port = parseInt(port) || config.defaultPort;
+            data.port = parseInt(port);
+        }
+        
+        if (requiresDatabase) {
+            data.database = databaseName;
         }
         
         if (workspaceId) {
             data.workspace_id = workspaceId;
         }
         
-        // Gather additional fields
-        const additionalFields = config.fields || [];
-        additionalFields.forEach(field => {
-            const element = document.getElementById(field.name);
-            if (element) {
-                if (field.type === 'checkbox') {
-                    data[field.name] = element.checked;
-                } else {
-                    const value = element.value.trim();
-                    if (value || field.required) {
-                        data[field.name] = value;
-                    }
-                }
-            }
+        console.log('✅ Validation passed, returning data:', {
+            ...data,
+            password: '***'
         });
         
         return data;
     }
     
     function loadConnections() {
-        console.log('Loading database connections...');
+        console.log('📥 Loading connections...');
         
         fetch('/api/databases/')
             .then(response => {
-                if (!response.ok) throw new Error('Failed to load connections');
+                console.log('📡 Load connections response status:', response.status);
                 return response.json();
             })
             .then(data => {
-                console.log('Loaded ' + (data.databases?.length || 0) + ' connections');
-                displayConnections(data.databases || []);
+                console.log('📊 Load connections data:', data);
+                if (data.databases) {
+                    displayConnections(data.databases);
+                } else {
+                    displayConnections([]);
+                }
             })
             .catch(error => {
-                console.error('Error loading connections:', error);
-                const tbody = document.getElementById('connectionsTableBody');
-                if (tbody) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ff6b6b; padding: 32px;">Failed to load connections</td></tr>';
-                }
+                console.error('❌ Load connections error:', error);
+                showAlert(`Failed to load connections: ${error.message}`, 'error');
             });
     }
     
     function displayConnections(connections) {
+        console.log('🖼️ Displaying', connections.length, 'connections');
         const tbody = document.getElementById('connectionsTableBody');
-        if (!tbody) return;
+        if (!tbody) {
+            console.error('❌ connectionsTableBody not found!');
+            return;
+        }
         
         if (connections.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 32px;">No database connections configured yet</td></tr>';
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        No database connections configured yet
+                    </td>
+                </tr>
+            `;
             return;
         }
         
         let html = '';
         connections.forEach(conn => {
-            const config = DB_CONFIGS[conn.type] || { icon: '🗄️' };
             const statusClass = conn.status === 'connected' ? 'status-connected' : 'status-disconnected';
             const statusText = conn.status === 'connected' ? 'Connected' : 'Disconnected';
+            const dbConfig = DB_CONFIGS[conn.type] || { icon: '📦' };
             
             html += `
                 <tr>
                     <td><span class="connection-name">${escapeHtml(conn.name)}</span></td>
-                    <td>
-                        <div class="connection-type">
-                            <span>${config.icon}</span>
-                            <span>${escapeHtml(conn.type)}</span>
-                        </div>
-                    </td>
+                    <td><span class="connection-type">${dbConfig.icon} ${escapeHtml(conn.type)}</span></td>
                     <td>${escapeHtml(conn.host || 'N/A')}</td>
                     <td>${escapeHtml(conn.database || 'N/A')}</td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>
                         <div class="action-btn-group">
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="testExistingConnection(${conn.id})">Test</button>
-                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="viewSchema(${conn.id})">Schema</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
                             <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>
                         </div>
@@ -960,93 +1171,78 @@
         });
         
         tbody.innerHTML = html;
+        console.log('✅ Connections displayed');
     }
     
     function testExistingConnection(connectionId) {
-        console.log('Testing connection: ' + connectionId);
-        
-        showAlert('Testing connection...', 'info');
+        console.log('🔧 Testing existing connection:', connectionId);
         
         fetch(`/api/databases/${connectionId}/test`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
         })
         .then(response => response.json())
         .then(data => {
-            if (data.status === 'success') {
-                showAlert(`✓ Connection successful! Latency: ${data.latency_ms || 0}ms`, 'success');
+            if (data.success || data.status === 'connected') {
+                const latency = data.latency ? ` (${data.latency})` : '';
+                showAlert(`Connection test successful!${latency}`, 'success');
             } else {
-                showAlert(`✗ Connection failed: ${data.error || 'Unknown error'}`, 'error');
+                showAlert(data.error || 'Connection test failed', 'error');
             }
+            loadConnections(); // Reload to update status
         })
         .catch(error => {
-            showAlert('Test failed: ' + error.message, 'error');
-            console.error('Test error:', error);
+            console.error('❌ Test error:', error);
+            showAlert(`Test failed: ${error.message}`, 'error');
         });
     }
     
     function viewSchema(connectionId) {
-        console.log('Viewing schema for connection: ' + connectionId);
-        
-        showAlert('Loading schema...', 'info');
-        
-        fetch(`/api/databases/${connectionId}/schema`)
-            .then(response => {
-                if (!response.ok) throw new Error('Failed to load schema');
-                return response.json();
-            })
-            .then(data => {
-                displaySchemaModal(data.schema);
-            })
-            .catch(error => {
-                showAlert('Failed to load schema: ' + error.message, 'error');
-                console.error('Schema error:', error);
-            });
+        console.log('👁️ Viewing schema for connection:', connectionId);
+        // Implementation for schema viewer
     }
     
     function displaySchemaModal(schema) {
-        // For now, just show tables in an alert
-        // You can enhance this with a proper modal later
-        if (schema && schema.tables) {
-            const tableNames = schema.tables.map(t => t.name).join(', ');
-            showAlert(`Tables: ${tableNames}`, 'info');
-        } else {
-            showAlert('No schema information available', 'info');
-        }
+        // Implementation for schema display
+        console.log('Schema:', schema);
     }
     
     function editConnection(connectionId) {
-        console.log('Editing connection: ' + connectionId);
+        console.log('✏️ Editing connection:', connectionId);
         
+        // Fetch connection details
         fetch(`/api/databases/${connectionId}`)
-            .then(response => {
-                if (!response.ok) throw new Error('Failed to load connection');
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
                 const conn = data.database;
+                if (!conn) {
+                    showAlert('Connection not found', 'error');
+                    return;
+                }
                 
-                // Select the database type
-                selectDatabaseType(conn.type);
-                
-                // Populate form fields
-                document.getElementById('connectionName').value = conn.name || '';
-                document.getElementById('host').value = conn.host || '';
-                document.getElementById('port').value = conn.port || '';
-                document.getElementById('databaseName').value = conn.database || '';
-                document.getElementById('username').value = conn.username || '';
-                document.getElementById('workspaceId').value = conn.workspace_id || '';
-                
-                // Set editing state
+                // Set editing mode
                 editingConnectionId = connectionId;
                 
-                // Update button text
-                document.getElementById('saveBtnText').textContent = '💾 Update Connection';
+                // Select database type
+                selectedDbType = conn.type;
+                selectDatabaseType(conn.type);
                 
-                showAlert('Editing connection: ' + conn.name, 'info');
+                // Populate form
+                setTimeout(() => {
+                    document.getElementById('connectionName').value = conn.name || '';
+                    document.getElementById('host').value = conn.host || '';
+                    document.getElementById('port').value = conn.port || '';
+                    document.getElementById('databaseName').value = conn.database || '';
+                    document.getElementById('username').value = conn.username || '';
+                    document.getElementById('workspaceId').value = conn.workspace_id || '';
+                    // Don't populate password for security
+                    
+                    showFormAlert('Editing existing connection. Update the fields as needed.', 'info');
+                }, 500);
             })
             .catch(error => {
-                showAlert('Failed to load connection: ' + error.message, 'error');
-                console.error('Edit error:', error);
+                console.error('❌ Edit error:', error);
+                showAlert(`Failed to load connection: ${error.message}`, 'error');
             });
     }
     
@@ -1055,87 +1251,136 @@
             return;
         }
         
-        console.log('Deleting connection: ' + connectionId);
+        console.log('🗑️ Deleting connection:', connectionId);
         
         fetch(`/api/databases/${connectionId}`, {
             method: 'DELETE'
         })
-        .then(response => {
-            if (!response.ok) throw new Error('Failed to delete connection');
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
-            showAlert('Connection deleted successfully', 'success');
-            loadConnections();
+            if (data.message) {
+                showAlert('Connection deleted successfully', 'success');
+                loadConnections();
+            } else {
+                showAlert(data.error || 'Delete failed', 'error');
+            }
         })
         .catch(error => {
-            showAlert('Failed to delete connection: ' + error.message, 'error');
-            console.error('Delete error:', error);
+            console.error('❌ Delete error:', error);
+            showAlert(`Delete failed: ${error.message}`, 'error');
         });
     }
     
     function resetForm() {
-        console.log('Resetting form...');
+        console.log('🔄 Resetting form...');
         
         const form = document.getElementById('connectionForm');
-        form.classList.remove('show');
+        if (form) {
+            form.classList.remove('show');
+        }
         
         // Clear all inputs
-        document.getElementById('connectionName').value = '';
-        document.getElementById('host').value = '';
-        document.getElementById('port').value = '';
-        document.getElementById('databaseName').value = '';
-        document.getElementById('username').value = '';
-        document.getElementById('password').value = '';
-        document.getElementById('workspaceId').value = '';
-        document.getElementById('additionalFields').innerHTML = '';
+        document.querySelectorAll('.form-input').forEach(input => {
+            input.value = '';
+        });
         
-        // Clear test result
-        const testResult = document.getElementById('testResult');
-        testResult.classList.remove('show', 'success', 'error');
-        
-        // Reset selections
+        // Clear selection
         document.querySelectorAll('.db-type-card').forEach(card => {
             card.classList.remove('selected');
         });
         
+        // Reset state
         selectedDbType = null;
         editingConnectionId = null;
         
-        // Reset button text
-        document.getElementById('saveBtnText').textContent = '💾 Save Connection';
-    }
-    
-    function showAlert(message, type) {
-        // Hide all alerts first
-        document.querySelectorAll('.alert').forEach(alert => {
-            alert.classList.remove('show');
-        });
+        // Hide alerts
+        hideFormAlerts();
         
-        let alertId, messageId;
-        if (type === 'success') {
-            alertId = 'alertSuccess';
-            messageId = 'alertSuccessMessage';
-        } else if (type === 'error') {
-            alertId = 'alertError';
-            messageId = 'alertErrorMessage';
-        } else {
-            alertId = 'alertInfo';
-            messageId = 'alertInfoMessage';
+        // Clear test result
+        const testResult = document.getElementById('testResult');
+        if (testResult) {
+            testResult.classList.remove('show', 'success', 'error');
+            testResult.textContent = '';
         }
         
-        const alert = document.getElementById(alertId);
-        const messageSpan = document.getElementById(messageId);
+        console.log('✅ Form reset complete');
+    }
+    
+    // Enhanced alert functions to support both page-level and form-level alerts
+    function showAlert(message, type) {
+        console.log(`🚨 Showing ${type} alert:`, message);
         
-        if (alert && messageSpan) {
-            messageSpan.textContent = message;
-            alert.classList.add('show');
+        const alertId = type === 'success' ? 'alertSuccess' : 
+                       type === 'error' ? 'alertError' : 'alertInfo';
+        const messageId = type === 'success' ? 'alertSuccessMessage' : 
+                         type === 'error' ? 'alertErrorMessage' : 'alertInfoMessage';
+        
+        const alertEl = document.getElementById(alertId);
+        const messageEl = document.getElementById(messageId);
+        
+        console.log('📍 Alert elements:', {
+            alertId: alertId,
+            alertEl: !!alertEl,
+            messageId: messageId,
+            messageEl: !!messageEl
+        });
+        
+        if (alertEl && messageEl) {
+            // Hide all alerts first
+            document.querySelectorAll('.alert').forEach(alert => {
+                if (!alert.classList.contains('form-alert')) {
+                    alert.classList.remove('show');
+                }
+            });
+            
+            messageEl.textContent = message;
+            alertEl.classList.add('show');
+            
+            console.log('✅ Alert shown successfully');
             
             // Auto-hide after 5 seconds
             setTimeout(() => {
-                alert.classList.remove('show');
+                alertEl.classList.remove('show');
             }, 5000);
+        } else {
+            console.error('❌ Alert elements not found!', { alertEl, messageEl });
         }
+    }
+    
+    function showFormAlert(message, type) {
+        console.log(`🚨 Showing form ${type} alert:`, message);
+        
+        const alertId = type === 'success' ? 'formAlertSuccess' : 
+                       type === 'error' ? 'formAlertError' : 'formAlertInfo';
+        const messageId = type === 'success' ? 'formAlertSuccessMessage' : 
+                         type === 'error' ? 'formAlertErrorMessage' : 'formAlertInfoMessage';
+        
+        const alertEl = document.getElementById(alertId);
+        const messageEl = document.getElementById(messageId);
+        
+        if (alertEl && messageEl) {
+            // Hide all form alerts first
+            hideFormAlerts();
+            
+            messageEl.textContent = message;
+            alertEl.classList.add('show');
+            
+            console.log('✅ Form alert shown successfully');
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                alertEl.classList.remove('show');
+            }, 5000);
+        } else {
+            console.error('❌ Form alert elements not found!');
+        }
+    }
+    
+    function hideFormAlerts() {
+        ['formAlertSuccess', 'formAlertError', 'formAlertInfo'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('show');
+        });
     }
     
     function escapeHtml(text) {
@@ -1144,11 +1389,31 @@
         return div.innerHTML;
     }
     
+    // Add global click handler for debugging
+    document.addEventListener('click', function(e) {
+        if (e.target.tagName === 'BUTTON') {
+            console.log('🖱️ Button clicked:', e.target.id || e.target.className, e.target);
+        }
+    });
+    
     // Initialize when DOM is ready
+    console.log('📍 Setting up initialization...');
     if (document.readyState === 'loading') {
+        console.log('⏳ DOM still loading, adding DOMContentLoaded listener');
         document.addEventListener('DOMContentLoaded', init);
     } else {
+        console.log('✅ DOM already loaded, initializing now');
         init();
     }
+    
+    // Also try a delayed initialization as backup
+    setTimeout(() => {
+        console.log('⏰ Delayed init check...');
+        const grid = document.getElementById('dbTypeGrid');
+        if (grid && !grid.innerHTML) {
+            console.log('🔧 Running delayed initialization');
+            init();
+        }
+    }, 2000);
 </script>
 {% endblock %}
