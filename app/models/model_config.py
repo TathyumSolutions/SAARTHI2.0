@@ -15,7 +15,7 @@ class ModelConfiguration(db.Model):
     settings = db.Column(db.JSON, default={})
     
     workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'))
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('app_users.id'), nullable=False)
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

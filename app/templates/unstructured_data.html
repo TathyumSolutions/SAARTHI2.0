@@ -545,7 +545,7 @@
                     '<td>' + sizeFormatted + '</td>' +
                     '<td>' + file.upload_date + '</td>' +
                     '<td><span class="status-badge status-success">Uploaded</span></td>' +
-                    '<td>' +
+                    '<td>' +'<button class="btn btn-primary" style="padding: 6px 12px; margin-right: 4px;" onclick="window.processFile(\'' + file.document_code + '\')">Process</button>' +
                     '<button class="btn btn-secondary" style="padding: 6px 12px; margin-right: 4px;" onclick="viewFile(\'' + file.document_code + '\')">View</button>' +
                     '<button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteFile(\'' + file.document_code + '\')">Delete</button>' +
                     '</td>' +
@@ -620,9 +620,59 @@
             });
         }
         
-        // Make functions globally accessible for inline onclick handlers
+        
         window.viewFile = function(documentCode) {
             window.open('/api/files/view/' + documentCode, '_blank');
+        };
+
+
+        window.processFile = function(documentCode) {
+            const btn = event.target;
+            const parentCell = btn.parentElement;
+            
+            // Disable button to prevent multi-clicks
+            btn.disabled = true;
+            
+            let resultContainer = parentCell.querySelector('.result-container');
+            if (!resultContainer) {
+                resultContainer = document.createElement('div');
+                resultContainer.className = 'result-container';
+                resultContainer.style.fontSize = '12px';
+                resultContainer.style.marginTop = '8px';
+                parentCell.appendChild(resultContainer);
+            }
+
+            resultContainer.innerHTML = '<span style="color: var(--accent-orange);">⌛ Processing...</span>';
+
+            fetch('/api/datasources/unstructured/process/' + documentCode, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(function(response) {
+                return response.json();
+            })
+            .then(function(data) {
+                if (data.status === 'success') {
+                    // Pulls the "stored in vector database successfully" message from Python
+                    resultContainer.innerHTML = `
+                        <div style="color: var(--accent-green); font-weight: bold;">
+                            ✅ ${data.message}
+                        </div>
+                        <div style="color: var(--text-secondary);">
+                            Chunks Created: ${data.data.chunk_count}
+                        </div>
+                    `;
+                } else {
+                    btn.disabled = false;
+                    resultContainer.innerHTML = `<span style="color: #ff6b6b;">❌ ${data.message}</span>`;
+                }
+            })
+            .catch(function(error) {
+                btn.disabled = false;
+                resultContainer.innerHTML = '<span style="color: #ff6b6b;">❌ Error connecting to backend</span>';
+            });
         };
         
         window.deleteFile = function(documentCode) {

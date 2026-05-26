@@ -2,6 +2,7 @@
 Database Service
 Handles database connections and query execution
 """
+from .database_services import test_postgresql, test_mysql
 
 class DatabaseService:
     """Service for database operations"""
@@ -10,11 +11,20 @@ class DatabaseService:
         pass
     
     def test_connection(self, connection_config):
+
         """
         Test database connection
         """
-        # TODO: Implement connection testing
-        pass
+        #db_type = connection_config.get('type', '').lower()
+        
+        #if db_type == 'postgresql':
+         #   return test_postgresql(connection_config)
+        #elif db_type == 'mysql':
+         #   return test_mysql(connection_config)
+        #else:
+         #   return False, f"Unsupported database type: {db_type}
+        
+     
     
     def execute_query(self, connection_id, sql_query):
         """

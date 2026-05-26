@@ -18,8 +18,12 @@ class Config:
     CORS_HEADERS = 'Content-Type'
     
     # Database
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'sqlite:///saarthi.db')
-    
+    #SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'sqlite:///saarthi.db')
+    #SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'postgresql://saarthi:password@db:5432/saarthi_db')
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+    'DATABASE_URL',
+    'sqlite:///saarthi.db'
+)
     # MongoDB
     MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/saarthi_db')
     

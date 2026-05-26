@@ -7,6 +7,9 @@ import traceback
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models.database_connection import DatabaseConnection
+import subprocess
+import sys  
+import os
 
 bp = Blueprint('database', __name__, url_prefix='/api/databases')
 
@@ -102,7 +105,7 @@ def create_database_connection():
             password=data.get('password'),
             connection_string=data.get('connection_string'),
             workspace_id=data.get('workspace_id', 1),
-            status='active'
+            status='connected'
         )
         
         db.session.add(connection)
@@ -188,6 +191,7 @@ def delete_database_connection(db_id):
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/<int:db_id>/test', methods=['POST'])
+
 def test_database_connection(db_id):
     """
     Test database connection
@@ -248,6 +252,7 @@ def test_database_connection(db_id):
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
+
 @bp.route('/test', methods=['POST'])
 def test_new_connection():
     """
@@ -274,6 +279,7 @@ def test_new_connection():
                     conn.close()
                 except ImportError:
                     pass
+
             elif data.get('type') == 'MySQL':
                 try:
                     import mysql.connector
@@ -371,3 +377,48 @@ def get_database_types():
         'BigQuery', 'Snowflake', 'Redis', 'SAP HANA', 'Salesforce', 'ODBC'
     ]
     return jsonify({'types': types}), 200
+
+#@bp.route('/run-agentic-process/<int:conn_id>', methods=['POST'])
+#def run_agentic_process(conn_id):
+#    try:
+        # Step 1: Build tables in databrige_db
+        # Ensure the path matches your 'services' folder in the sidebar
+#        subprocess.run(["python", "services/databridge_services/db.py"], check=True)
+        
+#        time.sleep(10) # Let the CPU breathe
+
+        # Step 2: Run the 40-minute LLM analysis
+#        subprocess.run(["python", "services/databridge_services/metamind.py"], check=True)
+
+#        return jsonify({"status": "success", "message": "Successfully JSON file created!"}), 200
+#    except Exception as e:
+#        return jsonify({"error": str(e)}), 500
+    
+@bp.route('/run-agentic-process/<int:conn_id>', methods=['POST'])
+def run_agentic_process(conn_id):
+    print(f"🔥 Path verified! Starting Process for ID: {conn_id}")
+    try:
+        # We add the extra /app/ here based on your 'find' command
+        base_path = "/app/app/services/databridge_services"
+        
+        db_script = os.path.join(base_path, "db.py")
+        meta_script = os.path.join(base_path, "metamind.py")
+
+        # Step 1: Build SAP tables
+        print(f"⏳ Executing: {db_script}")
+        subprocess.run([sys.executable, db_script], check=True,timeout=5000)
+        
+        time.sleep(5) 
+
+        # Step 2: Running the 40-minute LLM analysis
+        print(f"⏳ Executing: {meta_script}")
+        subprocess.run([sys.executable, meta_script], check=True,timeout=5000)
+
+        return jsonify({"status": "success", "message": "Successfully JSON file created!"}), 200
+    
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Script Crash: {str(e)}")
+        return jsonify({"error": f"Script failed: {str(e)}"}), 500
+    except Exception as e:
+        print(f"❌ System Error: {str(e)}")
+        return jsonify({"error": str(e)}, 500)

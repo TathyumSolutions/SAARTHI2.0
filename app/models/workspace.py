@@ -11,7 +11,7 @@ class Workspace(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
-    owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    owner_id = db.Column(db.Integer, db.ForeignKey('app_users.id'), nullable=False)
     
     # Settings
     settings = db.Column(db.JSON, default={})

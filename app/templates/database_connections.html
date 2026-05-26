@@ -482,16 +482,20 @@
 
             <!-- Form Actions -->
             <div class="form-actions">
-                <button type="button" id="testConnectionBtn" class="btn btn-secondary">
+                <div id="form-alert-container" style="display: none; margin-bottom: 15px;"></div>
+                <div id="testResult" class="test-result" style="margin-bottom: 10px; padding: 10px; border-radius: 4px; display: none;"></div>
+                <button type="button" id="testConnectionBtn" class="btn btn-secondary">    
                     <span id="testBtnText">🔌 Test Connection</span>
                 </button>
+    
                 <button type="button" id="saveConnectionBtn" class="btn btn-primary">
                     <span id="saveBtnText">💾 Save Connection</span>
                 </button>
                 <button type="button" id="cancelBtn" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
-    </div>
+    </div> 
+           
 
     <!-- Existing Connections -->
     <div class="connection-section">
@@ -537,6 +541,7 @@
 {% block extra_scripts %}
 <script>
     'use strict';
+    let allConnections = [];
     
     console.log('🔄 Database Connections Script loaded');
     console.log('📍 Current URL:', window.location.href);
@@ -673,7 +678,7 @@
         console.log(`✅ Loaded ${Object.keys(DB_CONFIGS).length} database types`);
     }
     
-    function selectDatabaseType(dbType) {
+    /*function selectDatabaseType(dbType) {
         console.log('🎯 Database type selected: ' + dbType);
         
         // Update UI
@@ -745,7 +750,92 @@
         });
         
         console.log('✅ Database type selection completed');
+    }*/
+
+    function selectDatabaseType(dbType, event = null) {
+        console.log('🎯 Database type selected: ' + dbType);
+
+        // 1. Update UI: Clear selection from all cards
+        document.querySelectorAll('.db-type-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+
+        // 2. SAFE UI UPDATE: Only use event if it exists (prevents the 'currentTarget' crash)
+        if (event && event.currentTarget) {
+            event.currentTarget.classList.add('selected');
+        } else {
+            // If called by the "Test" button, find the correct card by its text to show selection
+            document.querySelectorAll('.db-type-card').forEach(card => {
+                if (card.innerText.trim().includes(dbType)) {
+                    card.classList.add('selected');
+                }
+            });
+        }
+
+        selectedDbType = dbType;
+        const config = DB_CONFIGS[dbType];
+
+        // 3. Show and populate form
+        const form = document.getElementById('connectionForm');
+        const typeLabel = document.getElementById('selectedDbType');
+        const dbTypeInput = document.getElementById('databaseType');
+        const portInput = document.getElementById('port');
+
+        if (!form) {
+            console.error('❌ connectionForm not found!');
+            return;
+        }
+
+        form.classList.add('show');
+        if (typeLabel) typeLabel.textContent = dbType;
+        if (dbTypeInput) dbTypeInput.value = dbType;
+
+        // 4. Set default port
+        if (config && config.defaultPort && portInput) {
+            portInput.value = config.defaultPort;
+            portInput.parentElement.style.display = 'block';
+        } else if (portInput) {
+            portInput.parentElement.style.display = 'none';
+        }
+
+        // 5. Handle host/database field visibility based on type
+        const hostInput = document.getElementById('host');
+        const databaseNameInput = document.getElementById('databaseName');
+
+        const isCloudOrGeneric = ['BigQuery', 'Salesforce', 'ODBC', 'Others'].includes(dbType);
+        const isStringBased = ['ODBC', 'Others'].includes(dbType);
+
+        if (hostInput) {
+            hostInput.parentElement.style.display = isCloudOrGeneric ? 'none' : 'block';
+        }
+
+        if (databaseNameInput) {
+            databaseNameInput.parentElement.style.display = isStringBased ? 'none' : 'block';
+        }
+
+        // 6. Run additional field logic for specific DB requirements
+        if (config && typeof renderAdditionalFields === 'function') {
+            renderAdditionalFields(config.fields);
+        }
+
+        // 7. Reset editing state and attach listeners
+        editingConnectionId = null;
+        if (typeof attachFormButtonListeners === 'function') {
+            attachFormButtonListeners();
+        }
+
+        // 8. User feedback and scroll to form area
+        showFormAlert(`${dbType} database type selected. Fill details below.`, 'success');
+
+        form.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'nearest' 
+        });
+
+        console.log('✅ Database type selection completed');
+
     }
+    
     
     function attachFormButtonListeners() {
         console.log('🔘 Attaching form button listeners...');
@@ -884,7 +974,7 @@
         })
         .then(data => {
             console.log('📊 Test response data:', data);
-            if (data.success || data.status === 'connected') {
+            if (data.success || data.status === 'connected'|| data.status === 'success') {
                 const latency = data.latency ? ` (${data.latency})` : '';
                 showFormAlert(`Connection successful!${latency}`, 'success');
                 if (testResult) {
@@ -1128,6 +1218,7 @@
     }
     
     function displayConnections(connections) {
+        allConnections = connections;
         console.log('🖼️ Displaying', connections.length, 'connections');
         const tbody = document.getElementById('connectionsTableBody');
         if (!tbody) {
@@ -1161,6 +1252,10 @@
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>
                         <div class="action-btn-group">
+                            <div id="formAlertSuccess" class="test-result success" style="display: none; margin-bottom: 5px;"><span id="formAlertSuccessMessage"></span></div>
+                            <div id="formAlertError" class="test-result error" style="display: none; margin-bottom: 5px;"><span id="formAlertErrorMessage"></span></div>
+    
+                            <button class="btn btn-secondary" id="processBtn" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id})">Process</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="testExistingConnection(${conn.id})">Test</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
                             <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>
@@ -1174,7 +1269,7 @@
         console.log('✅ Connections displayed');
     }
     
-    function testExistingConnection(connectionId) {
+   /* function testExistingConnection(connectionId) {
         console.log('🔧 Testing existing connection:', connectionId);
         
         fetch(`/api/databases/${connectionId}/test`, {
@@ -1194,6 +1289,50 @@
         .catch(error => {
             console.error('❌ Test error:', error);
             showAlert(`Test failed: ${error.message}`, 'error');
+        });
+    }*/
+
+    function testExistingConnection(connectionId) {
+        console.log('🔧 Testing existing connection:', connectionId);
+        
+        // 1. Find the connection data from your loaded list
+        // Note: 'allConnections' should be the variable where you store your GET results
+        const conn = allConnections.find(c => c.id === connectionId);
+        
+        if (conn) {
+            // 2. Open the form UI first so we can see what's happening
+            selectDatabaseType(conn.database_type || conn.type);
+
+            // 3. Fill the visible form fields
+            setTimeout(() => {
+                if (document.getElementById('host')) document.getElementById('host').value = conn.host || '';
+                if (document.getElementById('port')) document.getElementById('port').value = conn.port || '';
+                if (document.getElementById('databaseName')) document.getElementById('databaseName').value = conn.database_name || '';
+                if (document.getElementById('username')) document.getElementById('username').value = conn.username || '';
+                
+                showFormAlert(`Testing ${conn.database_type} connection...`, 'info');
+            }, 100);
+        }
+
+        // 4. Perform the actual POST request to the backend
+        fetch(`/api/databases/${connectionId}/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success || data.status === 'connected') {
+                const latency = data.latency ? ` (${data.latency})` : '';
+                showFormAlert(`Connection test successful!${latency}`, 'success');
+            } else {
+                // This targets the error shown in your screenshot
+                showFormAlert(data.error || 'Connection test failed', 'error');
+            }
+            loadConnections(); // Refresh the table status
+        })
+        .catch(error => {
+            console.error('❌ Test error:', error);
+            showFormAlert(`Test failed: ${error.message}`, 'error');
         });
     }
     
@@ -1415,5 +1554,37 @@
             init();
         }
     }, 2000);
+
+    async function runAgenticPipeline(id) {
+        const btn = document.getElementById('processBtn');
+        const successDiv = document.getElementById('formAlertSuccess');
+        const errorDiv = document.getElementById('formAlertError');
+        const successMsg = document.getElementById('formAlertSuccessMessage');
+        const errorMsg = document.getElementById('formAlertErrorMessage');
+
+        btn.disabled = true;
+        btn.innerText = "Processing...";
+        successDiv.style.display = 'none';
+        errorDiv.style.display = 'none';
+
+        try {
+        
+            const response = await fetch(`/api/databases/run-agentic-process/${id}`, { method: 'POST' });
+            const result = await response.json();
+
+            if (response.ok) {
+                successMsg.innerText = "✅ Successfully JSON file created!";
+                successDiv.style.display = 'block';
+            } else {
+                throw new Error(result.error || "Pipeline failed");
+            }
+        } catch (err) {
+            errorMsg.innerText = "❌ Error: " + err.message;
+            errorDiv.style.display = 'block';
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Process";
+        }
+    }        
 </script>
 {% endblock %}
