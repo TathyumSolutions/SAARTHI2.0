@@ -43,6 +43,29 @@ saarthi_enterprise_api/
 │   │   ├── llm_service.py
 │   │   ├── database_service.py
 │   │   └── export_service.py
+|   |   ├── stream_manager.py
+|   |   └── databridge_services.py
+|   |        ├──__init__.py
+|   |        ├──agent_nodes.py
+|   |        ├──agent_routes.py
+|   |        ├──agent_state.py
+|   |        ├──agent_tools.py
+|   |        ├──db.py
+|   |        ├──langgraph_agent.py
+|   |        ├── metamind.py
+|   |        ├──sap_schema_with_sap_comments.json
+|   |        └── agents
+|   |             ├──__init__.py
+|   |             ├──data_insight_generator_agent.py
+|   |             ├──data_visualizer_agent.py
+|   |             ├──error_diagnosis_agent.py
+|   |             ├──query_formatter_agent.py
+|   |             ├──query_sense_agent.py
+|   |             ├──query_simplifier_agent.py
+|   |             ├──query_validator_agent.py
+|   |             ├──sql_generator_agent.py
+|   |
+|   |          
 │   ├── utils/                      # Utilities
 │   │   ├── decorators.py
 │   │   ├── validators.py
@@ -253,6 +276,10 @@ The easiest way to spin up the entire Saarthi platform infrastructure (Flask web
    docker-compose build --no-cache
    docker-compose up -d
    docker exec -it saarthi20-db-1 psql -U saarthi -c "CREATE DATABASE databrige_db;" 
+   🔑 **Note for Testing:**
+   To test and save the new database "databridge_db", please find the credentials in the `metamind.py` file located at:
+  `app/services/databridge_services/metamind.py`
+   
 
 2. **🧠 Download the Local LLM Models (Ollama)**
    The Ollama container runs locally but starts empty. Before running the pipeline or clicking "Process", you must pull the specific models used by the multi-agent system. 
