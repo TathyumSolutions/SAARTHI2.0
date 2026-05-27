@@ -275,9 +275,10 @@ The easiest way to spin up the entire Saarthi platform infrastructure (Flask web
    ```bash
    docker-compose build --no-cache
    docker-compose up -d
-   docker exec -it saarthi20-db-1 psql -U saarthi -c "CREATE DATABASE databrige_db;" 
+    
+   docker exec -it saarthi20-db-1 psql -U saarthi -d postgres -c "CREATE DATABASE databrige_db;"
    🔑 **Note for Testing:**
-   To test and save the new database "databridge_db", please find the credentials in the `metamind.py` file located at:
+   To test and save the new database "databridge_db" in the UI, please find the credentials in the `metamind.py` file located at:
   `app/services/databridge_services/metamind.py`
    
 
