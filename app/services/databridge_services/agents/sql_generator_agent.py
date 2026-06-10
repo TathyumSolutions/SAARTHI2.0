@@ -68,6 +68,8 @@
 from typing import Dict, Any
 import requests
 import json
+import os
+from langchain_openai import ChatOpenAI
 
 
 class SQLGeneratorAgent:
@@ -78,6 +80,9 @@ class SQLGeneratorAgent:
 
     def __init__(self, llm_backend: Dict[str, Any]):
         self.llm_backend = llm_backend
+
+        self.openai_key = os.getenv("OPENAI_API_KEY")
+        self.custom_key = ""
 
     def _parse_ollama_ndjson(self, raw_text: str) -> str:
         """
@@ -121,7 +126,9 @@ class SQLGeneratorAgent:
         user_query: str,
         query_sense_output: Dict[str, Any],
         simplified_query: str,
-        error_feedback: str = ""
+        error_feedback: str = "",
+        target_model: str = "llama3"
+
     ) -> str:
         """Generate SQL from QuerySense output using LLM (Ollama-safe)"""
 
@@ -169,30 +176,114 @@ OUTPUT FORMAT:
 SELECT ... FROM ... JOIN ... ON ... WHERE ... GROUP BY ... ORDER BY ... LIMIT ...;
 
 Return ONLY the PostgreSQL query, nothing else.
-"""
+"""         
 
-            payload = {
-                "model": self.llm_backend["model"],
+            if target_model == "gpt-4o":
+                print("🔥 [SQLGeneratorAgent] Routing to ChatOpenAI [gpt-4o] Layer...")
+                
+                llm = ChatOpenAI(
+                model="gpt-4o",
+                temperature=0.0,
+                openai_api_key=self.openai_key
+                )
+                ai_response = llm.invoke(prompt)
+                raw_sql = ai_response.content.strip()
+
+            elif target_model == "gpt-4o-mini":
+                print("🤖 [SQLGeneratorAgent] Routing to ChatOpenAI [gpt-4o-mini] Layer...")
+                
+                llm = ChatOpenAI(
+                model="gpt-4o-mini",
+                temperature=0.0,
+                openai_api_key=self.openai_key
+                )
+                ai_response = llm.invoke(prompt)
+                raw_sql = ai_response.content.strip()
+
+            elif target_model == "llama3":
+                print("🦙 [SQLGeneratorAgent] Routing to local Ollama [llama3] container layer...")
+                payload = {
+                "model": "llama3",  # Forces local Llama 3 image call explicitly
                 "prompt": prompt,
                 "stream": False,
                 "max_tokens": self.llm_backend.get("max_tokens", 1024),
                 "temperature": self.llm_backend.get("temperature", 0.0)
-            }
-
-            response = requests.post(
+                }
+                response = requests.post(
                 self.llm_backend["url"],
                 json=payload,
-                timeout=self.llm_backend.get("timeout", 60)
-            )
+                timeout=self.llm_backend.get("timeout", 300)
+                )
+                response.raise_for_status()
+                raw_text = response.text
+                raw_sql = self._parse_ollama_ndjson(raw_text)
 
-            response.raise_for_status()
+            elif str(target_model).startswith("api://"):
+                actual_model = target_model.replace("api://", "").lower()
+                print(f"🌐 [SQLGeneratorAgent] Dynamic Routing payload to Custom Cloud API model: {actual_model}")
 
-            # IMPORTANT: do NOT call response.json() → causes NDJSON error
-            raw_text = response.text
+                if "claude" in actual_model:
+                    from langchain_anthropic import ChatAnthropic
+                    dynamic_llm = ChatAnthropic(
+                        model=actual_model,
+                        temperature=0,
+                        anthropic_api_key=self.custom_key if self.custom_key else os.getenv("ANTHROPIC_API_KEY")
+                    )
+                    ai_response = dynamic_llm.invoke(prompt)
+                    raw_sql = ai_response.content.strip()
 
-            # Parse NDJSON and extract the model's text
-            raw_sql = self._parse_ollama_ndjson(raw_text)
+                elif "gemini" in actual_model:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    dynamic_llm = ChatGoogleGenerativeAI(
+                        model=actual_model,
+                        temperature=0,
+                        google_api_key=self.custom_key if self.custom_key else os.getenv("GOOGLE_API_KEY")
+                    )
+                    ai_response = dynamic_llm.invoke(prompt)
+                    raw_sql = ai_response.content.strip()
 
+                elif "deepseek" in actual_model:
+                    dynamic_llm = ChatOpenAI(
+                        model=actual_model,
+                        temperature=0,
+                        openai_api_key=self.custom_key if self.custom_key else os.getenv("DEEPSEEK_API_KEY"),
+                        openai_api_base="https://api.deepseek.com/v1"
+                    )
+                    ai_response = dynamic_llm.invoke(prompt)
+                    raw_sql = ai_response.content.strip()
+
+                elif "gpt" in actual_model or "openai" in actual_model:
+                    dynamic_llm = ChatOpenAI(
+                        model=actual_model,
+                        temperature=0,
+                        openai_api_key=self.custom_key if self.custom_key else self.openai_key
+                    )
+                    ai_response = dynamic_llm.invoke(prompt)
+                    raw_sql = ai_response.content.strip()
+                else:
+                    raise ValueError(
+                        f"Custom cloud provider mapping failed: Identifier '{actual_model}' "
+                        f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
+                    )
+
+            elif str(target_model).startswith("ollama://"):
+                actual_model = target_model.replace("ollama://", "")
+                print(f"📦 [SQLGeneratorAgent] Dynamic Routing payload to Custom Local Ollama model: {actual_model}")
+                payload = {
+                    "model": actual_model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.0}
+                }
+                response = requests.post(self.llm_backend["url"], json=payload, timeout=300)
+                response.raise_for_status()
+                raw_text = response.text
+                if "{" in raw_text and "}" in raw_text:
+                    raw_sql = self._parse_ollama_ndjson(raw_text)
+                else:
+                    raw_sql = raw_text.strip()
+            else:
+                raise ValueError(f"Requested model '{target_model}' has no active route configuration.") 
             # Cleanup: remove JSON/object-like lines or explanations
             sql_lines = [
                 line.strip()
@@ -220,11 +311,16 @@ Return ONLY the PostgreSQL query, nothing else.
             simplified_query = state.get("simplified_query", user_query)
             error_feedback = state.get("error_feedback", "")
 
+            chosen_model = state.get("model_name", self.llm_backend["model"])
+            custom_key = state.get("custom_key", "")
+            self.custom_key = custom_key
+
             sql = self.generate_sql_from_querysense(
                 user_query,
                 query_sense_output,
                 simplified_query,
-                error_feedback
+                error_feedback,
+                chosen_model
             )
 
             if not sql:
@@ -249,15 +345,91 @@ Return ONLY the PostgreSQL query, nothing else.
                 """
                 
                 try:
-                    resp = requests.post(self.url, json={
-                        "model": self.model_name, 
+                    if chosen_model == "gpt-4o":
+                        
+                        llm = ChatOpenAI(
+                        model="gpt-4o",
+                        temperature=0.3,
+                        openai_api_key=self.openai_key
+                        )
+                        description = llm.invoke(extra_narration_prompt).content.strip()
+
+                    elif chosen_model == "gpt-4o-mini":
+                        
+                        llm = ChatOpenAI(
+                        model="gpt-4o-mini",
+                        temperature=0.3,
+                        openai_api_key=self.openai_key
+                        )
+                        description = llm.invoke(extra_narration_prompt).content.strip()
+
+                    elif chosen_model == "llama3":
+                        resp = requests.post(self.llm_backend["url"], json={
+                        "model": "llama3", 
                         "prompt": extra_narration_prompt, 
                         "stream": False, 
                         "temperature": 0.3
-                    }, timeout=90)
-                    description = resp.json().get("response", "").strip()
+                        }, timeout=300)
+                        description = resp.json().get("response", "").strip()
+                    elif str(chosen_model).startswith("api://"):
+                        actual_model = chosen_model.replace("api://", "").lower()
+                        
+                        if "claude" in actual_model:
+                            from langchain_anthropic import ChatAnthropic
+                            dynamic_llm = ChatAnthropic(
+                                model=actual_model,
+                                temperature=0.3,
+                                anthropic_api_key=self.custom_key if self.custom_key else os.getenv("ANTHROPIC_API_KEY")
+                            )
+                            description = dynamic_llm.invoke(extra_narration_prompt).content.strip()
+
+                        elif "gemini" in actual_model:
+                            from langchain_google_genai import ChatGoogleGenerativeAI
+                            dynamic_llm = ChatGoogleGenerativeAI(
+                                model=actual_model,
+                                temperature=0.3,
+                                google_api_key=self.custom_key if self.custom_key else os.getenv("GOOGLE_API_KEY")
+                            )
+                            description = dynamic_llm.invoke(extra_narration_prompt).content.strip()
+
+                        elif "deepseek" in actual_model:
+                            dynamic_llm = ChatOpenAI(
+                                model=actual_model,
+                                temperature=0.3,
+                                openai_api_key=self.custom_key if self.custom_key else os.getenv("DEEPSEEK_API_KEY"),
+                                openai_api_base="https://api.deepseek.com/v1"
+                            )
+                            description = dynamic_llm.invoke(extra_narration_prompt).content.strip()
+
+                        elif "gpt" in actual_model or "openai" in actual_model:
+                            dynamic_llm = ChatOpenAI(
+                                model=actual_model,
+                                temperature=0.3,
+                                openai_api_key=self.custom_key if self.custom_key else self.openai_key
+                            )
+                            description = dynamic_llm.invoke(extra_narration_prompt).content.strip()
+                        else:
+                            description = "Successfully generated an optimized SQL query."
+
+                    elif str(chosen_model).startswith("ollama://"):
+                        actual_model = chosen_model.replace("ollama://", "")
+                        resp = requests.post(self.llm_backend["url"], json={
+                            "model": actual_model, 
+                            "prompt": extra_narration_prompt, 
+                            "stream": False, 
+                            "options": {"temperature": 0.3}
+                        }, timeout=600)
+                        
+                        raw_resp = resp.text
+                        if "{" in raw_resp and "}" in raw_resp:
+                            description = self._parse_ollama_ndjson(raw_resp)
+                        else:
+                            description = raw_resp.strip()    
+                    else:
+                        description = "Successfully generated an optimized SQL query."
+            
                 except:
-                    description = "Successfully generated an optimized SQL query."
+                    description = "Successfully generated an optimized SQL query."        
 
                 state["steps"].append(f"SQLGenerator: {description}")
                 query_sense_output["steps"] = state["steps"]

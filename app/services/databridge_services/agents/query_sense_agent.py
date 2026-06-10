@@ -8,7 +8,8 @@ from datetime import datetime
 from typing import Dict, Any, List
 #import ollama 
 import requests 
-
+import os
+from langchain_openai import ChatOpenAI
 
 class QuerySenseAgent:
     """
@@ -25,6 +26,8 @@ class QuerySenseAgent:
             self.model = ollama_model
             self.url = ollama_url
             self.state: Dict[str, Any] = {}
+            self.openai_key = os.getenv("OPENAI_API_KEY")
+            self.custom_key = ""
 
         # -------------------- SCHEMA HELPERS -------------------------
         #def _table_exists(self, table: str) -> bool:
@@ -72,63 +75,10 @@ class QuerySenseAgent:
                 lines.append("")
             return "\n".join(lines)
 
-        # -------------------- LLM PLAN GENERATION ---------------------
-       # def _call_llm_for_plan(self, user_query: str) -> Dict[str, Any]:
-       #     schema_tables = self._all_tables()
-       #     schema_brief = "\n".join(
-       #         f"{t}({', '.join(self.schema['tables'][t]['columns'].keys())})"
-       #         for t in schema_tables
-       #     )
-
-       #     fk_text = self._foreign_keys_text()
-       #     ctx_text = self._schema_context_text()
-
-        #    prompt = f"""
-#You are QuerySense — an expert SQL planner.
-
-#Use ONLY the tables, columns, and foreign-key relationships from the schema.
-#Do NOT invent names.
-
-#Return a concise JSON with:
-#- tables: list of table names
-#- columns: list of "table.column"
-#- intent: SELECTION | AGGREGATION | GROUPED_ANALYSIS | DISTINCT_SELECTION
-#- aggregations: list of {{ "function": "sum|min|max|avg|count", "column": "table.column" or "*" }}
-#- group_by: list of "table.column"
-#- joins: list of {{ "left": "table.col", "right": "table.col" }}
-#- filters: list of SQL boolean expressions
-#- order_by: list of SQL order expressions
-#- limit: integer
-
-#SCHEMA STRUCTURE:
-#{schema_brief}
-
-#FOREIGN-KEY RELATIONS:
-#{fk_text}
-
-#SEMANTIC CONTEXT:
-#{ctx_text}
-
-#USER QUESTION:
-#\"\"\"{user_query}\"\"\"
-#"""
-#            try:
-#                resp = ollama.chat(
-#                    model=self.model,
-#                    messages=[{"role": "user", "content": prompt}],
-#                    options={"temperature": 0.0}
-#                )
-#                text = resp["message"]["content"].strip()
-#                m = re.search(r"\{.*\}", text, re.S)
-#                if not m:
-#                    return {}
-#                return json.loads(m.group(0))
-#            except Exception as e:
-#                print(f"[QuerySense] LLM error: {e}")
-#                return {}
+       
             
 
-        def _call_llm_for_plan(self, user_query: str) -> Dict[str, Any]:
+        def _call_llm_for_plan(self, user_query: str,target_model: str) -> Dict[str, Any]:
             schema_tables = self._all_tables()
             schema_brief = "\n".join(
                 f"Table '{t}': [{', '.join(self.schema['tables'][t]['columns'].keys())}]"
@@ -216,8 +166,106 @@ USER QUESTION:
             }
 
             try:
-                resp = requests.post(self.url, json=payload, timeout=None)
-                text = resp.json().get("response", "").strip()
+
+                if target_model == "gpt-4o":
+                    print("🔥 [QuerySense] Routing to ChatOpenAI [gpt-4o] Layer...")
+                    from langchain_openai import ChatOpenAI
+                    llm = ChatOpenAI(
+                        model="gpt-4o",
+                        temperature=0,
+                        openai_api_key=self.openai_key
+                    )
+                    ai_response = llm.invoke(prompt)
+                    text = ai_response.content.strip()
+
+                elif target_model == "gpt-4o-mini":
+                    print("🤖 [QuerySense] Routing to ChatOpenAI [gpt-4o-mini] Layer...")
+                    from langchain_openai import ChatOpenAI
+                    llm = ChatOpenAI(
+                        model="gpt-4o-mini",
+                        temperature=0,
+                        openai_api_key=self.openai_key
+                    )
+                    ai_response = llm.invoke(prompt)
+                    text = ai_response.content.strip()
+
+                elif target_model == "llama3":
+                    print("🦙 [QuerySense] Routing to local Ollama [llama3] container layer...")
+                    payload = {
+                        "model": "llama3",  # Forces local Llama 3 image call explicitly
+                        "prompt": prompt,
+                        "stream": False,
+                        "options": {"temperature": 0.0}
+                    }
+                    resp = requests.post(self.url, json=payload, timeout=120)
+                    resp.raise_for_status()
+                    text = resp.json().get("response", "").strip()
+
+                elif str(target_model).startswith("api://"):
+                    actual_model = target_model.replace("api://", "").lower()
+                    print(f"🌐 [QuerySense] Dynamic Routing payload to Custom Cloud API model: {actual_model}")
+
+                    if "claude" in actual_model:
+                        from langchain_anthropic import ChatAnthropic
+                        dynamic_llm = ChatAnthropic(
+                            model=actual_model,
+                            temperature=0,
+                            anthropic_api_key=self.custom_key if self.custom_key else os.getenv("ANTHROPIC_API_KEY")
+                        )
+                        ai_response = dynamic_llm.invoke(prompt)
+                        text = ai_response.content.strip()
+
+                    elif "gemini" in actual_model:
+                        from langchain_google_genai import ChatGoogleGenerativeAI
+                        dynamic_llm = ChatGoogleGenerativeAI(
+                            model=actual_model,
+                            temperature=0,
+                            google_api_key=self.custom_key if self.custom_key else os.getenv("GOOGLE_API_KEY")
+                        )
+                        ai_response = dynamic_llm.invoke(prompt)
+                        text = ai_response.content.strip()
+
+                    elif "deepseek" in actual_model:
+                        dynamic_llm = ChatOpenAI(
+                            model=actual_model,
+                            temperature=0,
+                            openai_api_key=self.custom_key if self.custom_key else os.getenv("DEEPSEEK_API_KEY"),
+                            openai_api_base="https://api.deepseek.com/v1"
+                        )
+                        ai_response = dynamic_llm.invoke(prompt)
+                        text = ai_response.content.strip()
+
+                    elif "gpt" in actual_model or "openai" in actual_model:
+                        dynamic_llm = ChatOpenAI(
+                            model=actual_model,
+                            temperature=0,
+                            openai_api_key=self.custom_key if self.custom_key else self.openai_key
+                        )
+                        ai_response = dynamic_llm.invoke(prompt)
+                        text = ai_response.content.strip()
+                    else:
+                        raise ValueError(
+                            f"Custom cloud provider mapping failed: Identifier '{actual_model}' "
+                            f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
+                        )
+
+                elif str(target_model).startswith("ollama://"):
+                    actual_model = target_model.replace("ollama://", "")
+                    print(f"📦 [QuerySense] Dynamic Routing payload to Custom Local Ollama model: {actual_model}")
+                    payload = {
+                        "model": actual_model,
+                        "prompt": prompt,
+                        "stream": False,
+                        "options": {"temperature": 0.0}
+                    }
+                    resp = requests.post(self.url, json=payload, timeout=600)
+                    resp.raise_for_status()
+                    text = resp.json().get("response", "").strip()
+                
+
+                else:
+                    raise ValueError(f"Requested model '{target_model}' has no active route configuration.")    
+    
                 print(f"\n🔍 DEBUG LLM RAW OUTPUT:\n{text}\n")
                 # Logic: Find the FIRST '{' and LAST '}'
                 import re
@@ -428,11 +476,11 @@ USER QUESTION:
                 "grouping_reasoning": str(plan["group_by"]),
             }
 
-        def analyze(self, user_query: str) -> Dict[str, Any]:
+        def analyze(self, user_query: str,target_model: str) -> Dict[str, Any]:
             self.state["timestamp"] = datetime.now().isoformat()
             self.state["user_query"] = user_query
 
-            plan = self._call_llm_for_plan(user_query)
+            plan = self._call_llm_for_plan(user_query,target_model)
             if not plan:
                 plan = self._fallback_simple(user_query)
 
@@ -494,7 +542,11 @@ USER QUESTION:
         """LangGraph-compatible execution method"""
         print(f"\n🤖 [QuerySenseAgent] Starting...")
         simplified_query = state.get("simplified_query") or state.get("user_query", "")
-        analysis = self.query_sense.analyze(simplified_query)
+        chosen_model = state.get("model_name", self.ollama_model)
+        custom_key = state.get("custom_key", "")
+        self.query_sense.custom_key = custom_key
+        self.query_sense.model = chosen_model
+        analysis = self.query_sense.analyze(simplified_query,chosen_model)
 
         state["query_sense_output"] = analysis
         state["current_step"] = "query_sense"

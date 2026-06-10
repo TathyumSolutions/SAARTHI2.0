@@ -788,14 +788,16 @@
                 </div>
                 <div class="sub-items">
                     <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Claude 4.5 Sonnet
+                        <span style="margin-right: 8px;">✓</span>GPT-4o
                         <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
                     </div>
                     <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>GPT-4 Turbo
+                        <span style="margin-right: 8px;">✓</span>GPT-4o-Mini
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
                     </div>
                     <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Llama 3.3 70B
+                        <span style="margin-right: 8px;">✓</span>Llama 3
+                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
                     </div>
                     <div class="sub-item">
                         <span style="margin-right: 8px;">✓</span>Gemini Pro
@@ -803,7 +805,7 @@
                     <div class="sub-item">
                         <span style="margin-right: 8px;">✓</span>Mixtral 8x7B
                     </div>
-                    <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
+                    <div id="plusModelBtn" class="sub-item" style="color: var(--primary-blue); font-weight: 500; cursor: pointer;">
                         <span style="margin-right: 8px;">➕</span>Configure New Model
                     </div>
                 </div>
@@ -891,30 +893,32 @@
                 <div class="llm-group">
                     <div style="min-width: 140px;">
                         <div class="llm-section-header">LLM - Standard API</div>
-                        <select class="llm-dropdown" style="width: 220px;">
-                            <option selected>Claude 4.5 Sonnet</option>
-                            <option>Claude 4.5 Opus</option>
-                            <option>Claude 3.5 Haiku</option>
-                            <option>GPT-4 Turbo</option>
-                            <option>GPT-4o</option>
-                            <option>GPT-3.5 Turbo</option>
-                            <option>Gemini Pro</option>
-                            <option>Gemini Ultra</option>
+                        <select id="standard-llm-dropdown" class="llm-dropdown" style="width: 220px;">
+                            <option value="" disabled selected>Select Cloud Model...</option>
+                            <option value="gpt-4o">GPT-4o</option>
+                            <option value="gpt-4o-mini">GPT-4o Mini</option>
+                            <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                            <option value="claude-4.5-sonnet">Claude 4.5 Sonnet</option>
+                            <option value="claude-4.5-opus">Claude 4.5 Opus</option>
+                            <option value="claude-3.5-haiku">Claude 3.5 Haiku</option>
+                            <option value="gemini-pro">Gemini Pro</option>
+                            <option value="gemini-ultra">Gemini Ultra</option>
                         </select>
                     </div>
                 </div>
                 <div class="llm-group">
                     <div style="min-width: 140px;">
                         <div class="llm-section-header">LLM - Open Source</div>
-                        <select class="llm-dropdown" style="width: 220px;">
-                            <option selected>Llama 3.3 70B</option>
-                            <option>Llama 3.1 405B</option>
-                            <option>Llama 3.1 70B</option>
-                            <option>Llama 3.1 8B</option>
-                            <option>Mixtral 8x7B</option>
-                            <option>Mistral Large</option>
-                            <option>Qwen 2.5 72B</option>
-                            <option>DeepSeek V3</option>
+                        <select id="opensource-llm-dropdown" class="llm-dropdown" style="width: 220px;">
+                            <option value="" disabled selected>Select Local Model...</option>
+                            <option value="llama3">Llama 3</option>
+                            <option value="llama3.1-405b">Llama 3.1 405B</option>
+                            <option value="llama3.1-70b">Llama 3.1 70B</option>
+                            <option value="mixtral-8x7b">Mixtral 8x7B</option>
+                            <option value="mistral-large">Mistral Large</option>
+                            <option value="qwen-2.5">Qwen 2.5 72B</option>
+                            <option value="deepseek-v3">DeepSeek V3</option>
                         </select>
                     </div>
                 </div>
@@ -1043,7 +1047,7 @@
 
                 <div class="form-group">
                     <label class="form-label">Model Name</label>
-                    <input type="text" class="form-input" placeholder="e.g., Claude 4.5 Sonnet, GPT-4o, Llama 3.3">
+                    <input type="text" id="modalModelName" class="form-input" placeholder="e.g., Claude 4.5 Sonnet, GPT-4o, Llama 3.3">
                     <div class="form-help">Enter the exact model identifier</div>
                 </div>
 
@@ -1055,7 +1059,7 @@
 
                 <div class="form-group">
                     <label class="form-label">API Key</label>
-                    <input type="password" class="form-input" placeholder="sk-...">
+                    <input type="password" id="modalApiKey" class="form-input" placeholder="sk-...">
                     <div class="form-help">Your authentication key (encrypted and stored securely)</div>
                 </div>
 
@@ -1424,6 +1428,537 @@
         
      * This function handles the sequential reveal of the Chain of Thought
      */
+    /*
+    document.addEventListener('DOMContentLoaded', function() {
+        const collapseBtn = document.querySelector('.collapse-btn');
+        const sidebar = document.querySelector('.right-sidebar');
+        const thoughtChain = document.querySelector('.thought-chain');
+        const panelTitle = document.querySelector('.panel-title');
+
+        // ==========================================
+        // ADDED DROPDOWN ROUTING LOGIC HERE
+        // ==========================================
+        const standardDropdown = document.getElementById("standard-llm-dropdown");
+        const opensourceDropdown = document.getElementById("opensource-llm-dropdown");
+        
+        // Expose this globally (window object) so your chat submission function can read it
+        window.activeBackendModelName = ""; 
+
+        if (standardDropdown && opensourceDropdown) {
+            // Standard API Dropdown logic
+            standardDropdown.addEventListener("change", function () {
+                opensourceDropdown.selectedIndex = 0; // Clear the other dropdown
+                const selectedValue = this.value;
+                if (selectedValue === "gpt-4o" || selectedValue === "gpt-4o-mini"|| selectedValue.startsWith("api://")) {
+                    window.activeBackendModelName = selectedValue;
+                    console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
+                } else {
+                    const modelText = this.options[this.selectedIndex].text;
+                    alert(`⚠️ "${modelText}" is Coming Soon! Please select GPT-4o or GPT-4o Mini.`);
+                    this.selectedIndex = 0;
+                    window.activeBackendModelName = "";
+                }    
+            });
+
+            // Open Source Dropdown logic
+            opensourceDropdown.addEventListener("change", function () {
+                standardDropdown.selectedIndex = 0;
+                const selectedValue = this.value;
+                if (selectedValue === "llama3"|| selectedValue.startsWith("ollama://")) { 
+                    window.activeBackendModelName = selectedValue;
+                    console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
+                } else {
+                    const modelText = this.options[this.selectedIndex].text;
+                    alert(`⚠️ "${modelText}" is Coming Soon! Please select Llama 3.`);
+                    this.selectedIndex = 0;
+                    window.activeBackendModelName = "";
+                }  
+            });
+        }
+        loadSavedDatabaseModels();
+    });
+
+        const plusModelBtn = document.getElementById('plusModelBtn');
+        if (plusModelBtn) {
+            plusModelBtn.onclick = function() {
+                const modal = document.getElementById('modelModal');
+                if (modal) {
+                    modal.classList.add('active'); 
+                    modal.style.display = 'flex';
+                }
+            };
+        }
+
+        if (typeof loadSavedDatabaseModels === "function") {
+            loadSavedDatabaseModels();
+        }
+
+
+
+        const originalFetch = window.fetch;
+        window.fetch = async function(...args) {
+            let [url, config] = args;
+            if (typeof url === 'string' && url.includes('/api/chat/message')) {
+                
+                // VALIDATION GUARD: Stop empty requests right here before they hit the network
+                if (!window.activeBackendModelName) {
+                    alert("Please select the model before proceeding.");
+                    
+                    // Instantly resolve with a safe warning text to break the frontend's loading loop
+                    return new Response(JSON.stringify({
+                        status: "success",
+                        response: "⚠️ Request cancelled. Please select a model from the dropdown selection panel above to begin.",
+                        session_id: 1,
+                        query_result: {},
+                        suggestions: []
+                    }), {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                }
+                
+                if (config && config.body) {
+                    try {
+                        let body = JSON.parse(config.body);
+                        body.model_name = window.activeBackendModelName;
+                        if (window.activeBackendModelName.includes("://")) {
+                            body.custom_key = localStorage.getItem('presentation_api_key') || "";
+                        }     
+                        config.body = JSON.stringify(body);
+                    } catch (e) {
+                        console.error("Payload injection error:", e);
+                    }
+                }
+            }
+            return originalFetch(...args);
+        };
+    
+    
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.remove('active');
+            modal.style.display = 'none';
+        }
+    }
+    
+    function saveModel() {
+        const modelName = document.getElementById('modalModelName').value.trim();
+        const apiKey = document.getElementById('modalApiKey').value.trim();
+        
+        const isStandard = document.getElementById('standardApi').checked;
+        const modelType = isStandard ? 'api' : 'ollama';
+        if (!modelName) {
+            alert("Please provide a Model Name!");
+            return;
+        }
+        if (modelType === 'api' && !apiKey) {
+            alert("Error: API Key is mandatory for Standard API models!");
+            return;
+        }
+        const prefixedModelString = `${modelType}://${modelName.toLowerCase().replace(/\s+/g, '-')}`;
+        const payload = {
+            name: modelName,
+            model: prefixedModelString,
+            provider: modelProvider,
+            settings: {
+                custom_key: apiKey ? apiKey : null
+            }
+        };
+        console.log("Pushing configuration payload to database matrix endpoint...", payload);
+        fetch('/api/model-config/configurations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Database registration rejected with status code: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {        
+
+        
+        const plusBtnElement = document.getElementById('plusModelBtn');
+        if (plusBtnElement) {
+            const sidebarWrapper = plusBtnElement.parentElement;
+            const newSidebarItem = document.createElement('div');
+            newSidebarItem.className = 'sub-item';
+            newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${modelName}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
+            sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
+        }
+
+        let targetDropdown = (modelType === 'api') ? document.getElementById('standard-llm-dropdown') : document.getElementById('opensource-llm-dropdown');
+        if (targetDropdown) {
+            const newOption = document.createElement('option');
+            newOption.value = `${modelType}://${modelName}`; 
+            newOption.innerHTML = modelName;
+            
+            targetDropdown.appendChild(newOption);
+            targetDropdown.value = newOption.value; 
+            
+            window.activeBackendModelName = newOption.value;
+            console.log(`🎯 Active Custom Model Activated: ${window.activeBackendModelName}`);
+        }
+        alert(`Model "${modelName}" configured and activated successfully!`);
+        closeModal('modelModal');
+
+        document.getElementById('modalModelName').value = '';
+        document.getElementById('modalApiKey').value = '';
+    })
+    
+    function saveModel() {
+        const modelName = document.getElementById('modalModelName').value.trim();
+        const apiKey = document.getElementById('modalApiKey').value.trim();
+        
+        const isStandard = document.getElementById('standardApi').checked;
+        const modelType = isStandard ? 'api' : 'ollama';
+        
+        const providerSelector = document.querySelector('#modelModal select.form-input');
+        const modelProvider = providerSelector ? providerSelector.value : "Unknown";
+
+        if (!modelName) {
+            alert("Please provide a Model Name!");
+            return;
+        }
+        if (modelType === 'api' && !apiKey) {
+            alert("Error: API Key is mandatory for Standard API models!");
+            return;
+        }
+
+        const prefixedModelString = `${modelType}://${modelName.toLowerCase().replace(/\s+/g, '-')}`;
+
+        const payload = {
+            name: modelName,
+            model: prefixedModelString,
+            provider: modelProvider,
+            settings: {
+                custom_key: apiKey ? apiKey : null
+            }
+        };
+
+        fetch('/api/model-config/configurations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Database registration rejected: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            let targetDropdown = (modelType === 'api') ? document.getElementById('standard-llm-dropdown') : document.getElementById('opensource-llm-dropdown');
+            if (targetDropdown) {
+                const newOption = document.createElement('option');
+                newOption.value = prefixedModelString;
+                newOption.innerHTML = modelName;
+                
+                targetDropdown.appendChild(newOption);
+                targetDropdown.value = newOption.value; 
+                
+                window.activeBackendModelName = newOption.value;
+                console.log(`🎯 Active Custom Model Activated: ${window.activeBackendModelName}`);
+            }
+
+            const plusBtnElement = document.getElementById('plusModelBtn');
+            if (plusBtnElement) {
+                const sidebarWrapper = plusBtnElement.parentElement;
+                const newSidebarItem = document.createElement('div');
+                newSidebarItem.className = 'sub-item';
+                newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${modelName}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
+                sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
+            }
+
+            alert(`Model "${modelName}" configured and activated successfully!`);
+            closeModal('modelModal');
+
+            document.getElementById('modalModelName').value = '';
+            document.getElementById('modalApiKey').value = '';
+        })
+        .catch(error => {
+            console.error("Error saving model configuration:", error);
+            alert(`Failed to save model: ${error.message}`);
+        });
+    }*/
+    //////////////////////////////////////////////////////////////////////////////
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        const collapseBtn = document.querySelector('.collapse-btn');
+        const sidebar = document.querySelector('.right-sidebar');
+        const thoughtChain = document.querySelector('.thought-chain');
+        const panelTitle = document.querySelector('.panel-title');
+
+        // ==========================================
+        // DROPDOWN ROUTING LOGIC
+        // ==========================================
+        const standardDropdown = document.getElementById("standard-llm-dropdown");
+        const opensourceDropdown = document.getElementById("opensource-llm-dropdown");
+        
+        window.activeBackendModelName = ""; 
+
+        if (standardDropdown && opensourceDropdown) {
+            standardDropdown.addEventListener("change", function () {
+                opensourceDropdown.selectedIndex = 0; 
+                const selectedValue = this.value;
+                if (selectedValue === "gpt-4o" || selectedValue === "gpt-4o-mini" || selectedValue.startsWith("api://")) {
+                    window.activeBackendModelName = selectedValue;
+                    console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
+                } else {
+                    const modelText = this.options[this.selectedIndex].text;
+                    alert(`⚠️ "${modelText}" is Coming Soon! Please select GPT-4o or GPT-4o Mini.`);
+                    this.selectedIndex = 0;
+                    window.activeBackendModelName = "";
+                }    
+            });
+
+            opensourceDropdown.addEventListener("change", function () {
+                standardDropdown.selectedIndex = 0;
+                const selectedValue = this.value;
+                if (selectedValue === "llama3" || selectedValue.startsWith("ollama://")) { 
+                    window.activeBackendModelName = selectedValue;
+                    console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
+                } else {
+                    const modelText = this.options[this.selectedIndex].text;
+                    alert(`⚠️ "${modelText}" is Coming Soon! Please select Llama 3.`);
+                    this.selectedIndex = 0;
+                    window.activeBackendModelName = "";
+                }  
+            });
+        }
+
+        const plusModelBtn = document.getElementById('plusModelBtn');
+        if (plusModelBtn) {
+            plusModelBtn.onclick = function() {
+                const modal = document.getElementById('modelModal');
+                if (modal) {
+                    modal.classList.add('active'); 
+                    modal.style.display = 'flex';
+                }
+            };
+        }
+
+        if (typeof loadSavedDatabaseModels === "function") {
+            loadSavedDatabaseModels();
+        }
+    });
+
+    // ==========================================
+    // UTILITY UTILS (GLOBAL SCOPE)
+    // ==========================================
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.remove('active');
+            modal.style.display = 'none';
+        }
+    }
+
+    // MATCHED LAYOUT: Starts exactly at line 1536 from your screenshot structure
+    function saveModel() {
+        const modelName = document.getElementById('modalModelName').value.trim();
+        const apiKey = document.getElementById('modalApiKey').value.trim();
+        
+        const isStandard = document.getElementById('standardApi').checked;
+        const modelType = isStandard ? 'api' : 'ollama';
+        
+        const providerSelector = document.querySelector('#modelModal select.form-input');
+        const modelProvider = providerSelector ? providerSelector.value : "Unknown";
+
+        if (!modelName) {
+            alert("Please provide a Model Name!");
+            return;
+        }
+        if (modelType === 'api' && !apiKey) {
+            alert("Error: API Key is mandatory for Standard API models!");
+            return;
+        }
+
+        const prefixedModelString = `${modelType}://${modelName.toLowerCase().replace(/\s+/g, '-')}`;
+
+        const payload = {
+            name: modelName,
+            model: prefixedModelString,
+            //provider: prefixedModelString.startsWith("ollama://") ? "ollama" : modelProvider,
+            provider: modelType === 'ollama' ? 'ollama' : modelProvider,       
+            settings: {
+                custom_key: apiKey ? apiKey : null
+            },
+            workspace_id: 1
+        };
+
+        console.log("Pushing configuration payload to database matrix endpoint...", payload);
+        const authToken = localStorage.getItem('jwt_token') || localStorage.getItem('token') || localStorage.getItem('access_token');
+        //console.log("🔑 Sent Authorization Token Value:", authToken);
+        console.log("TOKEN =", authToken);
+
+        //if (!authToken || authToken === 'null' || authToken === 'undefined') {
+        //    alert("⚠️ Security Guard Blocked Request: Your login token was not found in browser storage. Please open your developer tools console (F12) to inspect keys.");
+        //    return;
+        //}
+
+        fetch('/api/model-config/configurations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+               // 'Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
+                //'Authorization': 'Bearer ' + authToken
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Database registration rejected with status code: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (apiKey) {
+                localStorage.setItem('presentation_api_key', apiKey);
+            }
+
+            let targetDropdown = (modelType === 'api') ? document.getElementById('standard-llm-dropdown') : document.getElementById('opensource-llm-dropdown');
+            if (targetDropdown) {
+                const newOption = document.createElement('option');
+                newOption.value = prefixedModelString; 
+                newOption.innerHTML = modelName;
+                
+                targetDropdown.appendChild(newOption);
+                targetDropdown.value = newOption.value; 
+                
+                window.activeBackendModelName = newOption.value;
+                console.log(`🎯 Active Custom Model Activated: ${window.activeBackendModelName}`);
+            }
+
+            const plusBtnElement = document.getElementById('plusModelBtn');
+            if (plusBtnElement) {
+                const sidebarWrapper = plusBtnElement.parentElement;
+                const newSidebarItem = document.createElement('div');
+                newSidebarItem.className = 'sub-item';
+                newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${modelName}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
+                sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
+            }
+
+            alert(`Model "${modelName}" configured and activated successfully!`);
+            closeModal('modelModal');
+
+            document.getElementById('modalModelName').value = '';
+            document.getElementById('modalApiKey').value = '';
+        })
+        .catch(error => {
+            console.error("Error saving model configuration:", error);
+            alert(`Failed to save model: ${error.message}`);
+        });
+    }
+
+    // ==========================================
+    // CHAT MESSAGE INJECTOR INTERCEPTOR
+    // ==========================================
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+        let [url, config] = args;
+        if (typeof url === 'string' && url.includes('/api/chat/message')) {
+            
+            if (!window.activeBackendModelName) {
+                alert("Please select the model before proceeding.");
+                return new Response(JSON.stringify({
+                    status: "success",
+                    response: "⚠️ Request cancelled. Please select a model from the dropdown selection panel above to begin.",
+                    session_id: 1,
+                    query_result: {},
+                    suggestions: []
+                }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            }
+            
+            if (config && config.body) {
+                try {
+                    let body = JSON.parse(config.body);
+                    body.model_name = window.activeBackendModelName;
+                    if (window.activeBackendModelName.includes("://")) {
+                        body.custom_key = localStorage.getItem('presentation_api_key') || "";
+                    }     
+                    config.body = JSON.stringify(body);
+                } catch (e) {
+                    console.error("Payload injection error:", e);
+                }
+            }
+        }
+        return originalFetch(...args);
+    };
+
+    // ==========================================
+    // DATABASE SYNC: RESTORE MODELS ON REFRESH
+    // ==========================================
+    function loadSavedDatabaseModels() {
+        console.log("🔄 Fetching saved configurations from backend database...");
+        
+        fetch('/api/model-config/configurations')
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                if (!data || !data.configurations) {
+                    console.warn("⚠️ No configurations returned from database matrix.");
+                    return;
+                }
+
+                console.log(`📋 Found ${data.configurations.length} models in DB. Syncing to UI dropdowns...`);
+
+                data.configurations.forEach(config => {
+                    // Check if the configuration belongs to open-source or standard dropdown
+                    const isOllama = config.provider === 'ollama' || config.model.startsWith('ollama://');
+                    let targetDropdown = isOllama ? document.getElementById('opensource-llm-dropdown') : document.getElementById('standard-llm-dropdown');
+                    
+                    if (targetDropdown) {
+                        // 1. Prevent duplicate options from getting appended to the dropdown menu
+                        if (!targetDropdown.querySelector(`option[value="${config.model}"]`)) {
+                            const newOption = document.createElement('option');
+                            newOption.value = config.model;
+                            newOption.innerHTML = config.name;
+                            targetDropdown.appendChild(newOption);
+                            console.log(`✅ Restored model option: ${config.name} -> ${targetDropdown.id}`);
+                        }
+                    }
+
+                    // 2. SIDEBAR INJECTION FIX: Restore the model to the left sidebar "AI & MODELS" menu
+                    const plusBtnElement = document.getElementById('plusModelBtn');
+                    if (plusBtnElement) {
+                        const sidebarWrapper = plusBtnElement.parentElement;
+                        
+                        // Check if this specific model text already exists in the sidebar to avoid duplicates
+                        const existingSidebarItems = Array.from(sidebarWrapper.querySelectorAll('.sub-item'));
+                        const matchesExisting = existingSidebarItems.some(item => item.textContent.includes(config.name));
+
+                        if (!matchesExisting) {
+                            const newSidebarItem = document.createElement('div');
+                            newSidebarItem.className = 'sub-item';
+                            newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${config.name}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
+                            
+                            // Inserts the new item neatly right above the "+ Configure New Model" button
+                            sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
+                            console.log(`✅ Restored sidebar list item: ${config.name}`);
+                        }
+                    }
+                });
+            })
+            .catch(error => {
+                console.error("❌ Failed to parse data stream or populate dropdown elements:", error);
+            });
+    }
+    
+    /////////////////////////////////////////////////////////////////////////////
     document.addEventListener('DOMContentLoaded', function() {
     const collapseBtn = document.querySelector('.collapse-btn');
     const sidebar = document.querySelector('.right-sidebar');

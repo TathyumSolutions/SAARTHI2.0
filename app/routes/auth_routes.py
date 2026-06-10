@@ -12,10 +12,37 @@ def login():
     """
     User login endpoint
     Request: { "email": "user@example.com", "password": "password123" }
-    Response: { "access_token": "...", "user": {...} }
+    Response: { "status": "success", "user_id": 42, "email": "..." }
     """
-    # TODO: Implement login logic
-    pass
+    data = request.get_json() or {}
+    email = data.get("email")
+    password = data.get("password")
+
+    # Guard clause: ensure data was received
+    if not email or not password:
+        return jsonify({"status": "error", "message": "Missing email or password fields."}), 400
+
+    # Simple local check for testing and demo phases
+    if email == "sahith@example.com" and password == "password123":
+        return jsonify({
+            "status": "success",
+            "message": "Authentication successful",
+            "user_id": 42,  # This ID will become the conversation session_id
+            "email": email
+        }), 200
+    
+    # Return an unauthorized error status if text doesn't match
+    return jsonify({"status": "error", "message": "Invalid email or password combination."}), 401
+
+#@bp.route('/login', methods=['POST'])
+#def login():
+#    """
+#    User login endpoint
+#    Request: { "email": "user@example.com", "password": "password123" }
+#    Response: { "access_token": "...", "user": {...} }
+#    """
+    # : Implement login logic
+#    pass
 
 @bp.route('/register', methods=['POST'])
 def register():

@@ -28,6 +28,7 @@ def create_app(config_name='development'):
     
     # Load configuration
     app.config.from_object(config[config_name])
+    print("👉 FLASK IS CURRENTLY CONNECTING TO DATABASE:", app.config.get('SQLALCHEMY_DATABASE_URI'))
    # app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://saarthi:password@db:5432/saarthi_db"
     app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB

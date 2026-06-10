@@ -55,7 +55,7 @@ class DataVisualizerAgent:
     Generates multiple chart configurations (bar, line, pie) based on the data.
     """
 
-    def __init__(self, llm_url: str = "http://ollama:11434/api/generate", model: str = "llama3:latest", top_n: int = 20):
+    def __init__(self, llm_url: str = "http://ollama:11434/api/generate", model: str = "llama3", top_n: int = 20):
         self.llm_url = llm_url
         self.model = model
         self.top_n = top_n
@@ -71,7 +71,9 @@ class DataVisualizerAgent:
         columns = state.get("columns", [])
         user_query = state.get("user_query", "")
 
-        chart_configs = self.generate_multiple_chart_configs(data, columns, user_query)
+        chosen_model = state.get("model_name", self.model)
+
+        chart_configs = self.generate_multiple_chart_configs(data, columns, user_query,target_model=chosen_model)
         state["chart_configs"] = chart_configs
         state["current_step"] = "data_visualizer"
 
@@ -95,9 +97,11 @@ class DataVisualizerAgent:
     # -----------------------------
     # Chart generation logic
     # -----------------------------
-    def generate_multiple_chart_configs(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "") -> Dict[str, Any]:
+    def generate_multiple_chart_configs(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "",target_model: str = None) -> Dict[str, Any]:
         if not data or not columns:
             return {"bar": {}, "line": {}, "pie": {}, "recommended": "bar"}
+        
+        #model_to_use = target_model or self.model
 
         first = data[0]
         col_types = {}

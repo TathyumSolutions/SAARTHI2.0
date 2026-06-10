@@ -56,13 +56,29 @@ class LLMService:
         self.qdrant_url = "http://qdrant:6333"
         self.collection_name = "saarthi_unstructured"
 
-        self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0,
-            openai_api_key=os.getenv("OPENAI_API_KEY")
-        )
+        #self.llm = ChatOpenAI(
+        #    model="gpt-4o-mini",
+        #    temperature=0,
+        #    openai_api_key=os.getenv("OPENAI_API_KEY")
+        #)
 
-
+        self.openai_key = os.getenv("OPENAI_API_KEY")
+        
+        self.models = {
+                "gpt-4o-mini": ChatOpenAI(
+                    model="gpt-4o-mini",
+                    temperature=0,
+                    openai_api_key=self.openai_key
+                ),
+                "gpt-4o": ChatOpenAI(
+                    model="gpt-4o",
+                    temperature=0,
+                    openai_api_key=self.openai_key
+                )
+            }
+        
+        # Keep this as a default fallback pointer if needed
+        self.llm = self.models["gpt-4o-mini"]
 
         # Permanent Docker Config for Ollama (Direct API)
         self.ollama_config = {
@@ -218,7 +234,7 @@ class LLMService:
 
   
 
-    def answer_from_docs(self, user_query, session_id=1):
+    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key=''):
         """
         Retrieves relevant chunks from Qdrant and updates the live steps 
         using the new structured event payload layout.
@@ -280,7 +296,7 @@ class LLMService:
                     "stream": False,
                     "options": {"temperature": self.ollama_config["temperature"]}
                 }
-                cot_res = requests.post(self.ollama_config["url"], json=cot_payload, timeout=10)
+                cot_res = requests.post(self.ollama_config["url"], json=cot_payload, timeout=300)
                 analysis_text = cot_res.json().get("response", "Analyzing document index for relevant parameters.").strip()
             except Exception:
                 analysis_text = "Analyzing natural language inquiry for document matching modules."
@@ -319,21 +335,151 @@ class LLMService:
             # STEP 4: RESPONSE SYNTHESIS
             # ========================================================
             # --- CODE CHANGE START ---
-            push_rag_event("start", "Response Synthesis", f"Processing matrices through {self.llm.model_name} to compile answers...")
+            push_rag_event("start", "Response Synthesis", f"Processing matrices through {model_name} to compile answers...")
             # --- CODE CHANGE END ---
-            
+
             system_prompt = (
                 "You are Saarthi AI, a helpful assistant. Answer the user's question "
                 "using ONLY the following context. If the answer is not in the context, "
                 "politely say you don't know based on the documents.\n\n"
                 f"CONTEXT:\n{context_text}"
             )
-            messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_query)
-            ]
-            ai_response = self.llm.invoke(messages)
+            if model_name == "llama3":
+                print("🦙 Routing payload to local Ollama [llama3] container layer...")
+                ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
+                
+                response = requests.post(
+                    self.ollama_config["url"],
+                    json={
+                        "model": "llama3",  # Forces local container system instance call
+                        "prompt": ollama_prompt,
+                        "stream": False,
+                        "keep_alive": "30m",
+                        "options": {
+                            "temperature": self.ollama_config["temperature"],
+                            "num_ctx": self.ollama_config["num_ctx"],
+                            "num_thread": 4
+                        }
+                    },
+                    timeout=self.ollama_config["timeout"]
+                )
+                response.raise_for_status()
+                final_answer = response.json().get("response", "").strip()
+                
+            elif model_name == "gpt-4o":
+                print("🔥 Routing payload to cloud production instance: GPT-4o Premium...")
+                #self.llm.model_name = "gpt-4o"
+                #llm_instance = ChatOpenAI(
+                #    model="gpt-4o",
+                #    temperature=0,
+                #    openai_api_key=os.getenv("OPENAI_API_KEY")
+                #)
+                messages = [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_query)
+                ]
+                #ai_response = self.llm.invoke(messages)
+                ai_response = self.models["gpt-4o"].invoke(messages)
+                final_answer = ai_response.content
+                
+            elif model_name == "gpt-4o-mini":
+                print("🤖 Routing payload to cloud production instance: GPT-4o Mini...")
+                #self.llm.model_name = "gpt-4o-mini"
+                #llm_instance = ChatOpenAI(
+                #    model="gpt-4o-mini",
+                #    temperature=0,
+                #    openai_api_key=os.getenv("OPENAI_API_KEY")
+                #)
+                messages = [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_query)
+                ]
+                #ai_response = self.llm.invoke(messages)
+                ai_response = self.models["gpt-4o-mini"].invoke(messages)
+                final_answer = ai_response.content
             
+            elif str(model_name).startswith("api://"):
+                actual_model = model_name.replace("api://", "").lower()
+                print(f"🌐 Dynamic RAG Routing payload to Custom Cloud API model: {actual_model}")
+                
+                messages = [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_query)
+                ]
+
+                # 1. ANTHROPIC CLAUDE MODELS
+                if "claude" in actual_model:
+                    from langchain_anthropic import ChatAnthropic
+                    dynamic_llm = ChatAnthropic(
+                        model=actual_model,
+                        temperature=0,
+                        anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY")
+                    )
+                    ai_response = dynamic_llm.invoke(messages)
+                    final_answer = ai_response.content
+
+                # 2. GOOGLE GEMINI MODELS
+                elif "gemini" in actual_model:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    dynamic_llm = ChatGoogleGenerativeAI(
+                        model=actual_model,
+                        temperature=0,
+                        google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY")
+                    )
+                    ai_response = dynamic_llm.invoke(messages)
+                    final_answer = ai_response.content
+
+                # 3. DEEPSEEK MODELS
+                elif "deepseek" in actual_model:
+                    dynamic_llm = ChatOpenAI(
+                        model=actual_model,
+                        temperature=0,
+                        openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"),
+                        openai_api_base="https://api.deepseek.com/v1"
+                    )
+                    ai_response = dynamic_llm.invoke(messages)
+                    final_answer = ai_response.content
+
+                # 4. EXPLICIT CUSTOM OPENAI MODELS
+                elif "gpt" in actual_model or "openai" in actual_model:
+                    dynamic_llm = ChatOpenAI(
+                        model=actual_model,
+                        temperature=0,
+                        openai_api_key=custom_key if custom_key else self.openai_key
+                    )
+                    ai_response = dynamic_llm.invoke(messages)
+                    final_answer = ai_response.content
+                else:
+                    raise ValueError(
+                        f"Custom cloud provider mapping failed: Identifier '{actual_model}' "
+                        f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
+                    )
+
+            elif str(model_name).startswith("ollama://"):
+                actual_model = model_name.replace("ollama://", "")
+                print(f"📦 Dynamic RAG Routing payload to Custom Local Ollama model: {actual_model}")
+                ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
+                
+                response = requests.post(
+                    self.ollama_config["url"],
+                    json={
+                        "model": actual_model,  # Directly maps raw string to local runtime container target
+                        "prompt": ollama_prompt,
+                        "stream": False,
+                        "keep_alive": "30m",
+                        "options": {
+                            "temperature": self.ollama_config["temperature"],
+                            "num_ctx": self.ollama_config["num_ctx"],
+                            "num_thread": 4
+                        }
+                    },
+                    timeout=self.ollama_config["timeout"]
+                )
+                response.raise_for_status()
+                final_answer = response.json().get("response", "").strip()    
+                
+            else:
+                raise ValueError(f"Requested model '{model_name}' has no active route handler configuration.")
             # --- CODE CHANGE START ---
             push_rag_event("complete", "Response Synthesis", "Final descriptive insights generated successfully.")
             # --- CODE CHANGE END ---
@@ -342,7 +488,7 @@ class LLMService:
             stream_manager.push_step(session_id, "DONE", is_sql=False)
 
             return {
-                "answer": ai_response.content,
+                "answer": final_answer,
                 "sql": None,  
                 "table": [],
                 "chart": {},
@@ -361,7 +507,7 @@ class LLMService:
             }    
        
 
-    def get_smart_response(self, user_query, session_id=1):
+    def get_smart_response(self, user_query,model_name, session_id=1,custom_key=''):
         """
         Layered high-speed query execution routing pipeline.
         Uses phi3:mini directly to categorize user query path intent.
@@ -392,7 +538,7 @@ class LLMService:
             if has_rag_phrase and not has_sql_indicator:
             #if has_rag_phrase and not (matched_keywords or has_sql_indicator):
                 print("📄 [INTELLIGENT RAG GUARD] -> Pure descriptive intent detected. Routing directly to RAG.")
-                rag_res = self.answer_from_docs(user_query, session_id=session_id)
+                rag_res = self.answer_from_docs(user_query, model_name=model_name,session_id=session_id,custom_key=custom_key)
                 steps_list = rag_res.get("rag_chain_of_thought", [])
                 return {
                     "answer": rag_res.get("answer"),
@@ -407,7 +553,7 @@ class LLMService:
             # ----------------------------------------------------
             if matched_keywords and sql_intent:
                 print("🚀 [FAST PATH TRIGGERED] -> Confirmed structured operational query. Routing straight to SQL.")
-                full_result = run_data_bridge_agent(user_query, session_id=session_id)
+                full_result = run_data_bridge_agent(user_query, session_id=session_id,model_name=model_name,custom_key=custom_key)
                 return full_result["chat_ui"]
 
 
@@ -470,7 +616,7 @@ Respond with ONLY: SQL or RAG.
                     session_id, 
                     "Router Analysis - Fast Path Heuristic Triggered: Bypassing router LLM.", 
                     is_sql=True)
-                full_result = run_data_bridge_agent(user_query, session_id=session_id)
+                full_result = run_data_bridge_agent(user_query, session_id=session_id,model_name=model_name)
                 stream_manager.push_step(session_id, "DONE", is_sql=True)
 
                 if isinstance(full_result.get("chat_ui"), dict) and "Error at error_diagnosis" in full_result["chat_ui"].get("answer", ""):
@@ -482,7 +628,7 @@ Respond with ONLY: SQL or RAG.
             else:
                 print("📄 ROUTING DIRECTION -> UNSTRUCTURED KNOWLEDGE DATABASE RAG")
                 #return self.answer_from_docs(user_query, session_id=session_id)
-                rag_res = self.answer_from_docs(user_query, session_id=session_id)
+                rag_res = self.answer_from_docs(user_query,model_name=model_name,session_id=session_id,custom_key=custom_key)
                 steps_list = rag_res.get("rag_chain_of_thought", [])
                 #for step in steps_list:
                 #    stream_manager.push_step(session_id, step, is_sql=False)
@@ -496,7 +642,7 @@ Respond with ONLY: SQL or RAG.
                 }
         except requests.exceptions.Timeout:
             print("⏰ Router processing limit reached -> Fallback to RAG")
-            rag_res = self.answer_from_docs(user_query, session_id=session_id)
+            rag_res = self.answer_from_docs(user_query, model_name=model_name,session_id=session_id,custom_key=custom_key)
             steps_list = rag_res.get("rag_chain_of_thought", [])
             
             for step in steps_list:

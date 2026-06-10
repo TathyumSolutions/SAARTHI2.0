@@ -10,6 +10,7 @@ import json
 from app.services.llm_service import LLMService
 from flask import Response, stream_with_context, request
 from app.services.stream_manager import stream_manager
+from app.models.model_config import ModelConfiguration
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
@@ -107,20 +108,36 @@ llm_service = LLMService()
 def send_message():
     """
     Send message in chat
-    Request: { "session_id": 1, "message": "What is in the document?", "mode": "chat" }
+    Request: { "session_id": 1, "message": "What is in the document?", "mode": "chat" ,model_name": "llama3" }
     """
     data = request.get_json()
     user_query = data.get('message')
     session_id = data.get('session_id', 1) # Default to 1 if not provided
+    model_name = data.get('model_name')
+
+    custom_key = data.get('custom_key', '')
 
     if not user_query:
         return jsonify({"error": "Message is required"}), 400
+    
+    if not model_name:
+        return jsonify({"error": "No valid LLM model selected. Please select a model from the dropdown."}), 400
+    
+    if model_name.startswith('api://') or model_name.startswith('ollama://'):
+        # Querying the record to fetch credentials securely on the server
+        config = ModelConfiguration.query.filter_by(model=model_name).first()
+        if config:
+            db_settings = config.settings or {}
+            # If a custom key was saved, use it to override the default credentials pipeline
+            if db_settings.get('custom_key'):
+                custom_key = db_settings.get('custom_key')
+                print(f"DEBUG: Successfully intercepted database router '{model_name}'. Injecting secure custom credentials token.")
 
     try:
         # STEP 1: Get the answer from your RAG logic in LLMService
         # We will build 'answer_from_docs' in the next step
         #ai_response = llm_service.answer_from_docs(user_query)
-        ai_response = llm_service.get_smart_response(user_query,session_id=session_id)
+        ai_response = llm_service.get_smart_response(user_query,session_id=session_id,model_name=model_name,custom_key=custom_key)
         print(f"DEBUG: AI Response from Service: {ai_response}")
 
         # STEP 2: Return the response in the format the frontend expects

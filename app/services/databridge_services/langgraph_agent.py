@@ -35,7 +35,7 @@ LLM_BACKEND = {
     "type": "ollama",
     #"url": "http://ollama:11434/api/generate",
     "url": "http://ollama:11434/api/generate",
-    "model": "llama3:latest",
+    "model": "llama3",
     "max_tokens": 1024,
     "temperature": 0.0,
     "timeout": 600,
@@ -89,12 +89,22 @@ error_diagnosis = ErrorDiagnosisAgent()
 def simplifier_node(state: DataBridgeState) -> DataBridgeState:
     """QuerySimplifierAgent node"""
     session_id = state.get("session_id", 1)
+
     stream_manager.push_step(
         session_id,
         {"event": "start", "title": "Query Simplifier Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
+    print("STATE KEYS =", state.keys())
+    print("STATE MODEL =", state.get("model_name"))
+    print("AGENT MODEL BEFORE =", query_simplifier.model_name)
+    if state.get("model_name"):
+        query_simplifier.model_name = state["model_name"]
+        print("AGENT MODEL AFTER =", query_simplifier.model_name)
+        print("================================")
     return query_simplifier.execute(state)
+    
+
 
 
 def query_sense_node(state: DataBridgeState) -> DataBridgeState:
@@ -105,7 +115,10 @@ def query_sense_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Sense Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
+    if state.get("model_name"):
+        query_sense.ollama_model = state["model_name"]
     return query_sense.execute(state)
+  
 
 
 def validator_node(state: DataBridgeState) -> DataBridgeState:
@@ -116,6 +129,8 @@ def validator_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Validator Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
+    #if state.get("model_name"):
+     #   data_visualizer.model = state["model_name"]
     return query_validator.execute(state)
 
 
@@ -128,7 +143,10 @@ def sql_generator_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "SQL Generator Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
+    if state.get("model_name"):
+        sql_generator.llm_backend["model"] = state["model_name"]
     return sql_generator.execute(state)
+   
 
 
 def query_formatter_node(state: DataBridgeState) -> DataBridgeState:
@@ -139,6 +157,8 @@ def query_formatter_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Formatter Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
+    #if state.get("model_name") and hasattr(query_formatter, "model"):
+    #    query_formatter.model = state["model_name"]
     return query_formatter.execute(state)
 
 
@@ -150,6 +170,7 @@ def insight_generator_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Data Insight Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
+
     return data_insight_generator.execute(state)
 
 
@@ -161,6 +182,8 @@ def visualizer_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Data Visualizer Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
+    #if state.get("model_name"):
+    #    data_visualizer.model = state["model_name"]
     return data_visualizer.execute(state)
 
 
@@ -172,6 +195,8 @@ def error_diagnosis_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Error Diagnosis Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
+    #if state.get("model_name") and hasattr(error_diagnosis, "model"):
+    #    error_diagnosis.model = state["model_name"]
     return error_diagnosis.execute(state)
 
 
@@ -322,11 +347,14 @@ def create_data_bridge_graph():
 langgraph_app = create_data_bridge_graph()
 
 
-def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1) -> dict:
+def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "") -> dict:
     """Run the Data Bridge agent with error recovery"""
     print(f"\n{'='*80}")
     print(f"🚀 Starting LangGraph Data Bridge Agent with Error Recovery")
     print(f"{'='*80}\n")
+    print("RUN_DATA_BRIDGE MODEL =", model_name)
+    if model_name:
+        LLM_BACKEND["model"] = model_name
 
     stream_manager.push_step(
         session_id, 
@@ -355,6 +383,8 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
 
     initial_state = {
         "user_query": user_query,
+        "model_name": model_name,
+        "custom_key": custom_key,
         "steps": [],
         "simplified_query": None,
         "query_sense_output": None,

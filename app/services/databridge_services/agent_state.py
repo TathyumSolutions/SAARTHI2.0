@@ -11,6 +11,7 @@ class DataBridgeState(TypedDict):
     """
     # ===== Input =====
     user_query: str
+    model_name: Optional[str]
     
     # ===== Query Processing =====
     simplified_query: Optional[str]

@@ -313,19 +313,26 @@ import json
 import requests
 import traceback
 import re
+import os
+from langchain_openai import ChatOpenAI
 
 
 class DataInsightGeneratorAgent:
     """
     Embedded DataInsightGenerator for QueryFormatterAgent
     """
-    def __init__(self, llm_url: str = "http://localhost:11434/api/generate", model: str = "llama3:latest"):
+    def __init__(self, llm_url: str = "http://localhost:11434/api/generate", model: str = "llama3"):
         self.llm_url = llm_url
         self.model = model
 
-    def generate_insights(self, data, columns, user_query=""):
+        self.openai_key = os.getenv("OPENAI_API_KEY")
+        self.custom_key = ""
+
+    def generate_insights(self, data, columns, user_query="",target_model=None):
         if not data:
             return {"insights": ["No data available to analyze."], "visualizations": []}
+        
+        model_to_use = target_model or self.default_model
 
         df = pd.DataFrame(data)
         summary = df.describe(include='all').to_string()
@@ -350,9 +357,101 @@ Return ONLY valid JSON.
         payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
 
         try:
-            resp = requests.post(self.llm_url, json=payload, timeout=60)
-            resp.raise_for_status()
-            result = resp.json().get("response", "")
+            if model_to_use == "gpt-4o":
+                print(f"☁️ [DataInsightGenerator] Routing insights to ChatOpenAI [gpt-4o] Layer...")
+                
+                llm = ChatOpenAI(
+                model="gpt-4o",
+                temperature=0.3,
+                openai_api_key=self.openai_key
+                )
+                ai_response = llm.invoke(prompt)
+                result = ai_response.content.strip()
+
+            elif model_to_use == "gpt-4o-mini":
+                print(f"🤖 [DataInsightGenerator] Routing insights to ChatOpenAI [gpt-4o-mini] Layer...")
+                
+                llm = ChatOpenAI(
+                model="gpt-4o-mini",
+                temperature=0.3,
+                openai_api_key=self.openai_key
+                )
+                ai_response = llm.invoke(prompt)
+                result = ai_response.content.strip()
+
+            elif model_to_use == "llama3":
+                print(f"🦙 [DataInsightGenerator] Routing insights to Local Ollama [llama3] Container Layer...")
+                payload = {"model": "llama3", "prompt": prompt, "stream": False, "format": "json"}
+                resp = requests.post(self.llm_url, json=payload, timeout=600)
+                resp.raise_for_status()
+                result = resp.json().get("response", "")
+
+            elif str(model_to_use).startswith("api://"):
+                actual_model = model_to_use.replace("api://", "").lower()
+                print(f"🌐 [DataInsightGenerator] Dynamic Routing insights to Custom Cloud API model: {actual_model}")
+
+                if "claude" in actual_model:
+                    from langchain_anthropic import ChatAnthropic
+                    dynamic_llm = ChatAnthropic(
+                        model=actual_model,
+                        temperature=0.3,
+                        anthropic_api_key=self.custom_key if self.custom_key else os.getenv("ANTHROPIC_API_KEY")
+                    )
+                    ai_response = dynamic_llm.invoke(prompt)
+                    result = ai_response.content.strip()
+
+                elif "gemini" in actual_model:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    dynamic_llm = ChatGoogleGenerativeAI(
+                        model=actual_model,
+                        temperature=0.3,
+                        google_api_key=self.custom_key if self.custom_key else os.getenv("GOOGLE_API_KEY")
+                    )
+                    ai_response = dynamic_llm.invoke(prompt)
+                    result = ai_response.content.strip()
+
+                elif "deepseek" in actual_model:
+                    dynamic_llm = ChatOpenAI(
+                        model=actual_model,
+                        temperature=0.3,
+                        openai_api_key=self.custom_key if self.custom_key else os.getenv("DEEPSEEK_API_KEY"),
+                        openai_api_base="https://api.deepseek.com/v1"
+                    )
+                    ai_response = dynamic_llm.invoke(prompt)
+                    result = ai_response.content.strip()
+
+                elif "gpt" in actual_model or "openai" in actual_model:
+                    dynamic_llm = ChatOpenAI(
+                        model=actual_model,
+                        temperature=0.3,
+                        openai_api_key=self.custom_key if self.custom_key else self.openai_key
+                    )
+                    ai_response = dynamic_llm.invoke(prompt)
+                    result = ai_response.content.strip()
+                else:
+                    raise ValueError(
+                        f"Custom cloud provider mapping failed: Identifier '{actual_model}' "
+                        f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
+                    )
+
+            elif str(model_to_use).startswith("ollama://"):
+                actual_model = model_to_use.replace("ollama://", "")
+                print(f"📦 [DataInsightGenerator] Dynamic Routing insights to Custom Local Ollama model: {actual_model}")
+                payload = {"model": actual_model, "prompt": prompt, "stream": False, "format": "json"}
+                resp = requests.post(self.llm_url, json=payload, timeout=600)
+                resp.raise_for_status()
+                raw_text = resp.text
+                if "{" in raw_text and "}" in raw_text:
+                    result = resp.json().get("response", "")
+                else:
+                    result = raw_text.strip()    
+
+            else:
+                print(f"🦙 [DataInsightGenerator] Routing insights to Local Ollama ({model_to_use})...")
+                payload = {"model": model_to_use, "prompt": prompt, "stream": False, "format": "json"}
+                resp = requests.post(self.llm_url, json=payload, timeout=60)
+                resp.raise_for_status()
+                result = resp.json().get("response", "")
             try:
                 return json.loads(result)
             except json.JSONDecodeError:
@@ -383,7 +482,7 @@ class QueryFormatterAgent:
         self.state = {}
         self.insight_generator = DataInsightGeneratorAgent(llm_url=llm_url, model=model)
 
-    def execute_query(self, sql_query: str, user_query: str = "") -> dict:
+    def execute_query(self, sql_query: str, user_query: str = "",target_model: str = None) -> dict:
 
         if sql_query:
             sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
@@ -461,7 +560,7 @@ class QueryFormatterAgent:
             columns_list = list(df.columns)
             
             raw_insights = self.insight_generator.generate_insights(
-                data_records, columns_list, user_query
+                data_records, columns_list, user_query,target_model=target_model
             )
             
             # FIX: Ensure it always builds a dict with BOTH keys so the bottom code doesn't break
@@ -488,7 +587,7 @@ class QueryFormatterAgent:
             data_records = df.to_dict(orient="records")
             columns_list = list(df.columns)
             raw_insights = self.insight_generator.generate_insights(
-                data_records, columns_list, user_query
+                data_records, columns_list, user_query,target_model=target_model
             )
             if isinstance(raw_insights, dict):
                 insights_data = {
@@ -512,7 +611,7 @@ class QueryFormatterAgent:
             columns_list = list(df.columns)
 
             insights_data = self.insight_generator.generate_insights(
-                data_records, columns_list, user_query
+                data_records, columns_list, user_query,target_model=target_model
             )
 
 
@@ -543,7 +642,12 @@ class QueryFormatterAgent:
         generated_sql = state.get("generated_sql", "")
         user_query = state.get("user_query", "")
 
-        result = self.execute_query(generated_sql, user_query)
+        
+        chosen_model = state.get("model_name", self.insight_generator.model)
+        custom_key = state.get("custom_key", "")
+        self.insight_generator.custom_key = custom_key
+
+        result = self.execute_query(generated_sql, user_query,target_model=chosen_model)
 
         # print("\n[DEBUG] OUTBOUND result to router:", json.dumps(result, indent=4))
 
