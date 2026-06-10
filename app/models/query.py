@@ -16,7 +16,7 @@ class Query(db.Model):
     error_message = db.Column(db.Text)
     execution_time_ms = db.Column(db.Integer)
     
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('app_users.id'), nullable=False)
     database_id = db.Column(db.Integer, db.ForeignKey('database_connections.id'))
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -35,7 +35,7 @@ class SavedQuery(db.Model):
     natural_language_query = db.Column(db.Text)
     sql_query = db.Column(db.Text, nullable=False)
     
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('app_users.id'), nullable=False)
     workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'))
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

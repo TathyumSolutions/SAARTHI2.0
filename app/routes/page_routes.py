@@ -8,7 +8,14 @@ bp = Blueprint('pages', __name__)
 
 print( "I am in the page_routes.py file" )
 # Home/Dashboard
+
 @bp.route('/')
+def show_login_page():
+    """
+    When opening http://localhost:5000/, this forces the 
+    login page to be the very first gatekeeper screen.
+    """
+    return render_template('login.html')
 @bp.route('/index')
 def index():
     """Main dashboard page"""

@@ -1,10 +1,17 @@
 import psycopg2
 
+#DB_CONFIG = {
+#    'host': 'localhost',
+#    'database': 'myflaskdb',
+#    'user': 'myflaskuser',
+#    'password': 'mypassword123',
+#    'port': '5432'
+#}
 DB_CONFIG = {
-    'host': 'localhost',
-    'database': 'myflaskdb',
-    'user': 'myflaskuser',
-    'password': 'mypassword123',
+    'host': 'db',            # Service name from docker-compose
+    'database': 'saarthi_db', # Or whatever you named it in .env
+    'user': 'saarthi', 
+    'password': 'password', 
     'port': '5432'
 }
 

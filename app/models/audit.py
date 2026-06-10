@@ -9,7 +9,7 @@ class AuditLog(db.Model):
     __tablename__ = 'audit_logs'
     
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('app_users.id'), nullable=False)
     action = db.Column(db.String(100), nullable=False)
     resource_type = db.Column(db.String(50))
     resource_id = db.Column(db.Integer)
@@ -27,7 +27,7 @@ class Activity(db.Model):
     __tablename__ = 'activities'
     
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('app_users.id'), nullable=False)
     workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'))
     type = db.Column(db.String(50), nullable=False)
     action = db.Column(db.String(100), nullable=False)

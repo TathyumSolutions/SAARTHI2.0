@@ -15,11 +15,23 @@ class ModelConfiguration(db.Model):
     settings = db.Column(db.JSON, default={})
     
     workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'))
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('app_users.id'), nullable=False)
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     def to_dict(self):
-        # TODO: Implement
-        pass
+        """Serializes the database record into a JSON-compatible dictionary"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "model": self.model,
+            "provider": self.provider,
+            "settings": self.settings,
+            "workspace_id": self.workspace_id,
+            "user_id": self.user_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    

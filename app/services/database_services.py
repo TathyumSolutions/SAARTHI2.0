@@ -11,10 +11,10 @@ class DatabaseService:
             import psycopg2
             
             conn = psycopg2.connect(
-                host=config.get('host'),
+                host=config.get('host','db'),
                 port=config.get('port', 5432),
-                database=config.get('database'),
-                user=config.get('username'),
+                database=config.get('database','saarthi_db'),
+                user=config.get('username','saarthi'),
                 password=config.get('password'),
                 connect_timeout=5
             )

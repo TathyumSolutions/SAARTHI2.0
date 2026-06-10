@@ -12,7 +12,7 @@ class ChatSession(db.Model):
     title = db.Column(db.String(200))
     mode = db.Column(db.String(20), default='query')  # query or chat
     
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('app_users.id'), nullable=False)
     workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'))
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

@@ -43,6 +43,29 @@ saarthi_enterprise_api/
 │   │   ├── llm_service.py
 │   │   ├── database_service.py
 │   │   └── export_service.py
+|   |   ├── stream_manager.py
+|   |   └── databridge_services.py
+|   |        ├──__init__.py
+|   |        ├──agent_nodes.py
+|   |        ├──agent_routes.py
+|   |        ├──agent_state.py
+|   |        ├──agent_tools.py
+|   |        ├──db.py
+|   |        ├──langgraph_agent.py
+|   |        ├── metamind.py
+|   |        ├──sap_schema_with_sap_comments.json
+|   |        └── agents
+|   |             ├──__init__.py
+|   |             ├──data_insight_generator_agent.py
+|   |             ├──data_visualizer_agent.py
+|   |             ├──error_diagnosis_agent.py
+|   |             ├──query_formatter_agent.py
+|   |             ├──query_sense_agent.py
+|   |             ├──query_simplifier_agent.py
+|   |             ├──query_validator_agent.py
+|   |             ├──sql_generator_agent.py
+|   |
+|   |          
 │   ├── utils/                      # Utilities
 │   │   ├── decorators.py
 │   │   ├── validators.py
@@ -66,6 +89,7 @@ saarthi_enterprise_api/
 - PostgreSQL 13+
 - Redis (for caching)
 - MongoDB (optional, for document storage)
+- Docker Desktop** (Required to run the core database and AI stack)
 
 ### Setup Steps
 
@@ -244,6 +268,29 @@ pytest tests/test_auth.py
 
 ## 🚢 Deployment
 
+The easiest way to spin up the entire Saarthi platform infrastructure (Flask web server, PostgreSQL, MongoDB, Redis, Qdrant, and Ollama) is using Docker Compose.
+
+1. **Build and Launch the Containers**
+   Make sure Docker Desktop is running on your machine, then run:
+   ```bash
+   docker-compose build --no-cache
+   docker-compose up -d
+    
+   docker exec -it saarthi20-db-1 psql -U saarthi -d postgres -c "CREATE DATABASE databrige_db;"
+   🔑 **Note for Testing:**
+   To test and save the new database "databridge_db" in the UI, please find the credentials in the `metamind.py` file located at:
+  `app/services/databridge_services/metamind.py`
+   
+
+2. **🧠 Download the Local LLM Models (Ollama)**
+   The Ollama container runs locally but starts empty. Before running the pipeline or clicking "Process", you must pull the specific models used by the multi-agent system. 
+   
+   Run these commands in your terminal:
+   ```bash
+   docker exec -it ollama ollama pull llama3
+   docker exec -it ollama ollama pull llama3:latest
+   docker exec -it ollama ollama pull phi3:mini
+
 ### Docker
 ```bash
 docker build -t saarthi-api .
@@ -314,3 +361,4 @@ Contributions are welcome! Please:
 
 For support, email: support@saarthi.com
 Documentation: https://docs.saarthi.com
+hello 
