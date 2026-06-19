@@ -775,6 +775,12 @@
                     <div class="item-icon">🔌</div>
                     <span>Database Connections</span>
                 </div>
+
+                <div class="section-item" id="apiintegrationIcon" onclick="window.location.href='/api_connectors/rest_apis'">
+                    <div class="item-icon">🔌</div>
+                    <span>API Integrations</span>
+                </div>
+
             </div>
 
             <!-- AI Models Section -->
@@ -943,7 +949,18 @@
                 <button class="collapse-btn">−</button>
             </div>
 
-            <div class="thought-chain">
+            <div class="thought-chain"></div>
+        </div>    
+
+        <!-- Right Sidebar -->
+        <!-- <div class="right-sidebar">
+            <div class="right-panel-header">
+                <span class="panel-title">Chain of Thought</span>
+                <button class="collapse-btn">−</button>
+            </div> -->
+
+
+            <!-- <div class="thought-chain">
                 <div class="thought-step">
                     <div class="thought-number">STEP 1</div>
                     <div class="thought-title">Query Understanding</div>
@@ -1007,7 +1024,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    </div>*/ -->
 
     <!-- Configure New Model Modal -->
     <div class="modal-overlay" id="modelModal">
@@ -2057,10 +2074,192 @@
         }
 
         if (panelTitle) panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
-    }*/    
-
-    
+    }*/
+   
     let stepEventSource = null;
+
+    function initializeLiveStepStream(sessionId, onConnectionOpen) {
+        const thoughtChainContainer = document.querySelector('.thought-chain');
+        const panelTitle = document.querySelector('.panel-title');
+        
+        if (!thoughtChainContainer) return;
+
+        thoughtChainContainer.innerHTML = '';
+        if (panelTitle) panelTitle.innerText = "Analyzing Query Intent...";
+
+        if (stepEventSource) {
+            stepEventSource.close();
+        }
+
+        let liveStepIndex = 0;
+
+        stepEventSource = new EventSource(`/api/chat/stream_steps?session_id=${sessionId}`);
+        stepEventSource.onopen = function() {
+            console.log("⚡ SSE Connection opened successfully!");
+            if (onConnectionOpen) {
+                onConnectionOpen(); 
+            }
+        };
+        
+        stepEventSource.addEventListener('message', function(event) {
+            console.log("STEP EVENT:", event.data);
+
+            const payload = JSON.parse(event.data);
+
+            // Ignore heartbeat
+            if (payload.heartbeat) return;
+
+            // Handle DONE event
+            if (payload.step === "DONE") {
+                finalizeLiveSteps(payload.is_sql);
+                if (stepEventSource) {
+                    stepEventSource.close();
+                }
+                return;
+            }
+
+            const data = payload.step;
+            if (!data) return;
+
+            // =========================================
+            // BACKWARD COMPATIBILITY FOR RAG STRING STEPS
+            // =========================================
+            if (typeof data === "string") {
+                const rawStep = data;
+                let title = rawStep.includes(' - ')
+                    ? rawStep.split(' - ')[0]
+                    : `Step ${liveStepIndex + 1}`;
+
+                let description = rawStep.includes(' - ')
+                    ? rawStep.split(' - ')[1]
+                    : rawStep;
+
+                const stepHtml = `
+                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
+                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
+                            STEP ${liveStepIndex + 1}
+                        </div>
+                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
+                            ${title}
+                        </div>
+                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                            ${description}
+                        </div>
+                        <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
+                            ✓ Completed
+                        </span>
+                    </div>
+                `;
+
+                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+                liveStepIndex++;
+                return;
+            }
+
+            const {
+                event: eventType,
+                title,
+                description,
+                is_sql
+            } = data;
+
+            // =========================================
+            // DYNAMIC PANEL TITLE ROUTER
+            // =========================================
+            if (panelTitle) {
+                if (is_sql) {
+                    panelTitle.innerText = "SQL Agent Analysis";
+                } 
+                else if (title && (title.includes("Automation") || title.includes("Context") || title.includes("Schema") || title.includes("Response"))) {
+                    panelTitle.innerText = "API Workflow Execution";
+                } 
+                else {
+                    panelTitle.innerText = "RAG Document Analysis";
+                }
+            }
+
+            // =========================================
+            // START EVENT
+            // =========================================
+            if (eventType === "start") {
+                const stepHtml = `
+                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
+                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
+                            STEP ${liveStepIndex + 1}
+                        </div>
+                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
+                            ${title}
+                        </div>
+                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                            ${description}
+                        </div>
+                        <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">
+                            ⏳ Processing...
+                        </span>
+                    </div>
+                `;
+
+                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+
+                const element = document.getElementById(`live-step-${liveStepIndex}`);
+                if (element) {
+                    setTimeout(() => {
+                        element.style.opacity = "1";
+                        element.style.transform = "translateY(0)";
+                    }, 50);
+                }
+
+                liveStepIndex++;
+            }
+
+            // =========================================
+            // COMPLETE EVENT
+            // =========================================
+            else if (eventType === "complete") {
+                const currentStep = document.querySelector(`#live-step-${liveStepIndex - 1}`);
+                if (currentStep) {
+                    const descEl = currentStep.querySelector('.thought-description');
+                    const statusEl = currentStep.querySelector('.status-indicator');
+
+                    if (descEl) {
+                        descEl.innerHTML = description;
+                    }
+                    if (statusEl) {
+                        statusEl.innerHTML = "✓ Completed";
+                        statusEl.style.color = "#10B981";
+                    }
+                }
+            }
+        });
+
+        stepEventSource.onerror = function() {
+            if (stepEventSource) {
+                stepEventSource.close();
+            }
+        };
+    }
+
+    function finalizeLiveSteps(isSql) {
+        const panelTitle = document.querySelector('.panel-title');
+        if (panelTitle) {
+            if (panelTitle.innerText.includes("API")) {
+                panelTitle.innerText = "API Execution Complete";
+            } else {
+                panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
+            }
+        }
+
+        const statusIndicators = document.querySelectorAll('.status-indicator');
+        if (statusIndicators.length > 0) {
+            const finalStatus = statusIndicators[statusIndicators.length - 1];
+            finalStatus.innerHTML = "✓ Completed";
+            finalStatus.style.color = "#10B981";
+        }
+    }
+    
+
+   //////////////////////////////////////////////////////////////////////////////////////// 
+   /* let stepEventSource = null;
 
     function initializeLiveStepStream(sessionId,onConnectionOpen) {
         const thoughtChainContainer = document.querySelector('.thought-chain');
@@ -2082,7 +2281,7 @@
             console.log("⚡ SSE Connection opened successfully!");
             if (onConnectionOpen) {
                 onConnectionOpen(); }};
-
+/////////////////////////////////////////////////////////////////////////////////////////////
 
         /*stepEventSource.addEventListener('message', function(event) {
           console.log("STEP EVENT:", event.data);  
@@ -2137,8 +2336,8 @@
 
             liveStepIndex++;
         });*/
-        
-        stepEventSource.addEventListener('message', function(event) {
+ //////////////////////////////////////////////////////////////////////////////////////////       
+       /* stepEventSource.addEventListener('message', function(event) {
 
             console.log("STEP EVENT:", event.data);
 
@@ -2298,7 +2497,7 @@
             stepEventSource.close();
         }*/
         
-        const panelTitle = document.querySelector('.panel-title');
+       /* const panelTitle = document.querySelector('.panel-title');
         if (panelTitle) {
             panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
         }
@@ -2309,8 +2508,8 @@
             finalStatus.innerHTML = "✓ Completed";
             finalStatus.style.color = "#10B981";
         }
-    }
-
+    }*/
+/////////////////////////////////////////////////////////////////////////////////////////////
         const chatInput = document.querySelector('.chat-input');
         const sendBtn = document.querySelector('.send-btn');
         const chatContainer = document.querySelector('.chat-container');

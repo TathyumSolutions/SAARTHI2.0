@@ -16,7 +16,8 @@ saarthi_enterprise_api/
 │   ├── __init__.py                 # Flask app factory
 │   ├── api/
 │   │   ├── __init__.py
-│   │   └── routes/                 # API route modules
+│   │   └── routes/ 
+            ├── api_routes.py       # API routes       # API route modules
 │   │       ├── auth_routes.py      # Authentication endpoints
 │   │       ├── workspace_routes.py # Workspace management
 │   │       ├── llm_routes.py       # LLM provider management
@@ -40,11 +41,14 @@ saarthi_enterprise_api/
 │   │   ├── model_config.py
 │   │   └── audit.py
 │   ├── services/                   # Business logic
-│   │   ├── llm_service.py
+│   │   ├── llm_service.py #rag code
 │   │   ├── database_service.py
 │   │   └── export_service.py
-|   |   ├── stream_manager.py
-|   |   └── databridge_services.py
+│   │   ├──api_db_init_.py
+|   |   ├── stream_manager.py #chain  of thoughts
+│   │   ├──api_services.py #api code
+│   │   ├──router_services.py #routing to the specific datasource code
+|   |   └── databridge_services.py#sql agents
 |   |        ├──__init__.py
 |   |        ├──agent_nodes.py
 |   |        ├──agent_routes.py

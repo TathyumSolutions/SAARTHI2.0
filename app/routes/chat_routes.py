@@ -11,6 +11,7 @@ from app.services.llm_service import LLMService
 from flask import Response, stream_with_context, request
 from app.services.stream_manager import stream_manager
 from app.models.model_config import ModelConfiguration
+from app.services.router_services import RouterService
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
@@ -102,6 +103,7 @@ def stream_message():
 
 
 llm_service = LLMService()
+router_service = RouterService()
 
 @bp.route('/message', methods=['POST'])
 #@jwt_required() # This requires a valid login token from your frontend
@@ -137,7 +139,7 @@ def send_message():
         # STEP 1: Get the answer from your RAG logic in LLMService
         # We will build 'answer_from_docs' in the next step
         #ai_response = llm_service.answer_from_docs(user_query)
-        ai_response = llm_service.get_smart_response(user_query,session_id=session_id,model_name=model_name,custom_key=custom_key)
+        ai_response = router_service.get_smart_response(user_query,session_id=session_id,model_name=model_name,custom_key=custom_key)
         print(f"DEBUG: AI Response from Service: {ai_response}")
 
         # STEP 2: Return the response in the format the frontend expects

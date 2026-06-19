@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saarthi — Sign In</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-deep:      #07091A;
+      --bg-panel:     #0C0E24;
+      --bg-card:      #0F1230;
+      --bg-input:     #161936;
+      --border:       #1F2348;
+      --border-focus: #3B5BFF;
+      --accent:       #3B5BFF;
+      --accent-glow:  rgba(59,91,255,0.22);
+      --teal:         #00D4C8;
+      --amber:        #F5A623;
+      --text-hi:      #ECEEF8;
+      --text-mid:     #8D90B5;
+      --text-lo:      #474A6A;
+      --success:      #22D3A0;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-deep);
+      display: flex;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ════════════════════════════════
+       LEFT PANEL — value proposition
+    ════════════════════════════════ */
+    .left-panel {
+      flex: 1 1 54%;
+      background: var(--bg-panel);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      padding: 34px 64px;
+      position: relative;
+      overflow-y: auto;
+      overflow-x: hidden;
+      border-right: 1px solid var(--border);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    /* keep ambient grid covering the full scroll area */
+    .left-panel::before { min-height: 100%; }
+
+    /* Subtle grid */
+    .left-panel::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(59,91,255,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,91,255,0.035) 1px, transparent 1px);
+      background-size: 44px 44px;
+      pointer-events: none;
+    }
+
+    /* Ambient drifting glow orbs */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(10px);
+      pointer-events: none;
+      opacity: 0.5;
+    }
+    .orb-1 {
+      width: 480px; height: 480px;
+      background: radial-gradient(circle, rgba(59,91,255,0.16) 0%, transparent 70%);
+      top: -160px; right: -140px;
+      animation: driftA 22s ease-in-out infinite alternate;
+    }
+    .orb-2 {
+      width: 380px; height: 380px;
+      background: radial-gradient(circle, rgba(0,212,200,0.12) 0%, transparent 70%);
+      bottom: -120px; left: -100px;
+      animation: driftB 26s ease-in-out infinite alternate;
+    }
+    @keyframes driftA {
+      from { transform: translate(0,0) scale(1); }
+      to   { transform: translate(-40px,50px) scale(1.12); }
+    }
+    @keyframes driftB {
+      from { transform: translate(0,0) scale(1); }
+      to   { transform: translate(50px,-30px) scale(1.08); }
+    }
+
+    .panel-content { position: relative; z-index: 1; max-width: 520px; }
+
+    /* Entrance animation */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .reveal {
+      opacity: 0;
+      animation: fadeUp 0.7s ease forwards;
+    }
+
+    /* Brand */
+    .brand {
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 26px;
+    }
+
+    .brand-mark {
+      width: 54px; height: 54px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%);
+      display: grid; place-items: center;
+      flex-shrink: 0;
+      overflow: hidden;
+      animation: pulseGlow 3.2s ease-in-out infinite;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 18px var(--accent-glow); }
+      50%      { box-shadow: 0 0 34px rgba(0,212,200,0.4); }
+    }
+
+    /* Logo placeholder: shows the uploaded Saarthi logo if available,
+       falls back to the default mark icon (below) if it fails to load */
+    .brand-logo-img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+      grid-area: 1 / 1;
+    }
+    .brand-fallback-icon {
+      display: none;
+      grid-area: 1 / 1;
+    }
+
+    .brand-name {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 32px; font-weight: 700;
+      color: var(--text-hi);
+      letter-spacing: -0.5px;
+      line-height: 1.1;
+    }
+
+    .brand-by {
+      font-size: 12px; color: var(--text-mid);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-top: 3px;
+      font-weight: 500;
+    }
+
+    /* ── Source network animation ── */
+    .source-network {
+      position: relative;
+      height: 156px;
+      margin-bottom: 18px;
+    }
+    .network-svg { width: 100%; height: 156px; overflow: visible; display: block; }
+
+    .flow-path {
+      fill: none;
+      stroke: rgba(59,91,255,0.22);
+      stroke-width: 1.4;
+      stroke-dasharray: 4 7;
+      animation: dashmove 1.4s linear infinite;
+    }
+    @keyframes dashmove { to { stroke-dashoffset: -22; } }
+
+    .flow-particle {
+      fill: var(--teal);
+      filter: drop-shadow(0 0 5px rgba(0,212,200,0.9));
+      animation-name: flowmove;
+      animation-timing-function: linear;
+      animation-iteration-count: infinite;
+    }
+    @keyframes flowmove {
+      0%   { offset-distance: 0%;   opacity: 0; }
+      8%   { opacity: 1; }
+      92%  { opacity: 1; }
+      100% { offset-distance: 100%; opacity: 0; }
+    }
+
+    .hub-pulse {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 1.5;
+      transform-origin: center;
+      animation: hubPulse 2.6s ease-out infinite;
+    }
+    @keyframes hubPulse {
+      0%   { transform: scale(0.85); opacity: 0.55; }
+      80%  { transform: scale(1.5); opacity: 0; }
+      100% { transform: scale(1.5); opacity: 0; }
+    }
+
+    .src-node circle.node-bg {
+      transition: stroke 0.3s, fill 0.3s;
+    }
+    .src-node { animation: fadeUp 0.6s ease forwards; opacity: 0; }
+    .src-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      fill: var(--text-mid);
+      letter-spacing: 0.3px;
+    }
+
+    /* Output node — "One answer" */
+    .output-line {
+      fill: none;
+      stroke: rgba(245,166,35,0.28);
+      stroke-width: 1.4;
+      stroke-dasharray: 4 7;
+      animation: dashmove 1.4s linear infinite reverse;
+    }
+    .output-particle {
+      fill: var(--amber);
+      filter: drop-shadow(0 0 5px rgba(245,166,35,0.9));
+      animation: flowmove 2.4s linear infinite;
+      animation-delay: 0.6s;
+    }
+    .output-pulse {
+      fill: none;
+      stroke: var(--amber);
+      stroke-width: 1.5;
+      transform-origin: center;
+      animation: hubPulse 2.6s ease-out infinite;
+      animation-delay: 0.9s;
+    }
+    .output-box {
+      fill: var(--bg-card);
+      stroke: var(--amber);
+      stroke-width: 1.5;
+    }
+    .output-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      fill: var(--text-hi);
+    }
+    .output-sub {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      fill: var(--text-mid);
+      letter-spacing: 0.3px;
+    }
+
+    /* Headline */
+    .panel-headline {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(28px, 3vw, 40px);
+      font-weight: 700;
+      line-height: 1.18;
+      letter-spacing: -0.8px;
+      color: var(--text-hi);
+      margin-bottom: 12px;
+    }
+
+    .panel-headline em {
+      font-style: normal;
+      background: linear-gradient(90deg, var(--accent), var(--teal));
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 5s linear infinite;
+    }
+    @keyframes shimmer {
+      to { background-position: 200% center; }
+    }
+
+    .panel-sub {
+      font-size: 14.5px;
+      color: var(--text-mid);
+      line-height: 1.7;
+      margin-bottom: 20px;
+      max-width: 440px;
+    }
+
+    /* Live query demo */
+    .query-demo {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 18px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+    }
+
+    .demo-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .demo-dot { width: 9px; height: 9px; border-radius: 50%; }
+    .demo-dot:nth-child(1) { background: #FF5F57; }
+    .demo-dot:nth-child(2) { background: #FFBD2E; }
+    .demo-dot:nth-child(3) { background: #28CA41; }
+    .demo-label {
+      margin-left: auto;
+      font-size: 11px; color: var(--text-lo);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .demo-label::before {
+      content: '';
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--success);
+      animation: blink 1.6s ease-in-out infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,211,160,0.5); }
+      50%      { opacity: 0.4; box-shadow: 0 0 0 4px rgba(34,211,160,0); }
+    }
+
+    /* Body: QnA on the left, chain-of-thought on the right */
+    .demo-body {
+      display: grid;
+      grid-template-columns: 1fr 140px;
+      gap: 14px;
+      padding: 14px 16px;
+      align-items: start;
+    }
+
+    /* ── QnA column ── */
+    .demo-chat { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+    .chat-msg { display: flex; align-items: flex-start; gap: 8px; }
+
+    .chat-avatar {
+      width: 24px; height: 24px; border-radius: 6px;
+      display: grid; place-items: center;
+      flex-shrink: 0; margin-top: 1px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 10px; font-weight: 700;
+    }
+    .chat-avatar-user { background: var(--accent-glow); }
+    .chat-avatar-ai {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%);
+      color: #fff;
+    }
+
+    .chat-bubble {
+      flex: 1; min-width: 0;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 11px;
+    }
+
+    .chat-role {
+      font-size: 9px; color: var(--text-mid);
+      text-transform: uppercase; letter-spacing: 0.6px;
+      margin-bottom: 4px;
+    }
+
+    .chat-text {
+      font-size: 12px; color: var(--text-mid);
+      line-height: 1.55; min-height: 36px;
+    }
+    .chat-text em { font-style: normal; color: var(--text-hi); }
+
+    #demoQuestion::after {
+      content: '';
+      display: inline-block;
+      width: 2px; height: 12px;
+      background: var(--teal);
+      margin-left: 2px;
+      vertical-align: -2px;
+      animation: caretBlink 0.9s step-end infinite;
+    }
+    @keyframes caretBlink { 50% { opacity: 0; } }
+
+    /* AI answer bubble */
+    .chat-bubble.demo-result {
+      background: rgba(0,212,200,0.06);
+      border-color: rgba(0,212,200,0.18);
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .chat-bubble.demo-result.show { opacity: 1; transform: translateY(0); }
+
+    .demo-result-label {
+      font-size: 10px; color: var(--teal);
+      text-transform: uppercase; letter-spacing: 0.7px;
+      margin-bottom: 5px;
+    }
+
+    .demo-result-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 18px; font-weight: 700;
+      color: var(--text-hi);
+      letter-spacing: -0.2px;
+    }
+
+    .demo-result-sub {
+      font-size: 10.5px; color: var(--text-mid);
+      line-height: 1.5;
+      margin-top: 4px;
+    }
+
+    /* ── Chain-of-thought column ── */
+    .demo-cot {
+      border-left: 1px solid var(--border);
+      padding-left: 14px;
+    }
+
+    .cot-title {
+      font-size: 10px; font-weight: 600;
+      color: var(--text-lo);
+      text-transform: uppercase; letter-spacing: 0.8px;
+      margin-bottom: 10px;
+    }
+
+    .demo-step {
+      border-left: 2px solid var(--accent);
+      background: rgba(255,255,255,0.025);
+      border-radius: 0 6px 6px 0;
+      padding: 6px 8px;
+      margin-bottom: 6px;
+      opacity: 0;
+      transform: translateX(8px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+    .demo-step:nth-child(3) { border-left-color: var(--teal); }
+    .demo-step:nth-child(4) { border-left-color: var(--success); }
+    .demo-step:nth-child(5) { border-left-color: var(--amber); }
+    .demo-step.show { opacity: 1; transform: translateX(0); }
+
+    .step-head {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 3px;
+    }
+
+    .step-num {
+      width: 13px; height: 13px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      font-size: 8px; font-weight: 700;
+      display: grid; place-items: center;
+      flex-shrink: 0;
+    }
+    .demo-step:nth-child(3) .step-num { background: var(--teal); }
+    .demo-step:nth-child(4) .step-num { background: var(--success); }
+    .demo-step:nth-child(5) .step-num { background: var(--amber); }
+
+    .step-title {
+      font-size: 10px; font-weight: 600;
+      color: var(--text-hi); line-height: 1.2;
+    }
+
+    .step-check {
+      margin-left: auto;
+      font-size: 9px; color: var(--success);
+      opacity: 0;
+      transition: opacity 0.3s ease 0.15s;
+    }
+    .demo-step.show .step-check { opacity: 1; }
+
+    .step-desc {
+      font-size: 9px; color: var(--text-mid);
+      line-height: 1.4;
+      padding-left: 19px;
+    }
+
+
+    /* Feature pills */
+    .features {
+      display: flex; flex-wrap: wrap; gap: 10px;
+    }
+
+    .feat {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 13px;
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 12px; font-weight: 500;
+      color: var(--text-mid);
+      background: rgba(255,255,255,0.02);
+      transition: border-color 0.25s, color 0.25s, transform 0.25s, background 0.25s;
+    }
+    .feat:hover {
+      border-color: var(--border-focus);
+      color: var(--text-hi);
+      transform: translateY(-2px);
+      background: rgba(59,91,255,0.06);
+    }
+
+    .feat-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      animation: dotGlow 2.4s ease-in-out infinite;
+    }
+    @keyframes dotGlow {
+      0%, 100% { opacity: 0.6; transform: scale(0.9); }
+      50%      { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* ════════════════════════════════
+       RIGHT PANEL — login form
+    ════════════════════════════════ */
+    .right-panel {
+      flex: 0 0 46%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 48px 40px;
+      min-width: 380px;
+    }
+
+    .form-wrap {
+      width: 100%; max-width: 400px;
+      animation: fadeUp 0.7s ease 0.15s forwards;
+      opacity: 0;
+    }
+
+    /* Auth tabs (Sign in / Sign up) */
+    .auth-tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 28px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px 0;
+      border: none;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--text-mid);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13.5px; font-weight: 600;
+      letter-spacing: 0.2px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, var(--accent) 0%, #5A78FF 100%);
+      color: #fff;
+      box-shadow: 0 4px 16px var(--accent-glow);
+    }
+
+    .tab-btn:not(.active):hover { color: var(--text-hi); }
+
+    .form-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 26px; font-weight: 700;
+      color: var(--text-hi);
+      letter-spacing: -0.4px;
+      margin-bottom: 6px;
+    }
+
+    .form-sub {
+      font-size: 14px; color: var(--text-mid);
+      margin-bottom: 28px;
+      line-height: 1.5;
+    }
+
+    /* Fields only shown in Sign up mode */
+    .signup-only { display: none; }
+    .show-signup .signup-only { display: block; }
+    .show-signup .signin-only { display: none; }
+
+    /* Form elements */
+    .field { margin-bottom: 18px; }
+
+    label {
+      display: block;
+      font-size: 11.5px; font-weight: 500;
+      color: var(--text-mid);
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      margin-bottom: 7px;
+    }
+
+    .input-wrap { position: relative; }
+
+    .input-wrap .ico {
+      position: absolute;
+      left: 13px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-lo);
+      pointer-events: none;
+      transition: color 0.2s;
+    }
+
+    input[type="email"],
+    input[type="password"],
+    input[type="text"] {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 13px 14px 13px 42px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      color: var(--text-hi);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input::placeholder { color: var(--text-lo); }
+
+    input:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .input-wrap:focus-within .ico { color: var(--accent); }
+
+    .show-btn {
+      position: absolute;
+      right: 13px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none;
+      font-size: 12px; font-weight: 500;
+      color: var(--accent);
+      cursor: pointer; padding: 4px;
+    }
+
+    .show-btn:hover { color: var(--teal); }
+
+    /* Meta row */
+    .meta-row {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      margin: 4px 0 22px;
+    }
+
+    .remember {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: var(--text-mid);
+      cursor: pointer; user-select: none;
+    }
+
+    .remember input[type="checkbox"] { display: none; }
+
+    .chk {
+      width: 16px; height: 16px;
+      border: 1.5px solid var(--border);
+      border-radius: 4px;
+      display: grid; place-items: center;
+      transition: background 0.2s, border-color 0.2s;
+      flex-shrink: 0;
+    }
+
+    .remember input:checked ~ .chk {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .chk::after {
+      content: '';
+      width: 8px; height: 5px;
+      border-left: 2px solid #fff;
+      border-bottom: 2px solid #fff;
+      transform: rotate(-45deg) translate(1px,-1px);
+      opacity: 0; transition: opacity 0.15s;
+    }
+
+    .remember input:checked ~ .chk::after { opacity: 1; }
+
+    .forgot {
+      font-size: 13px; color: var(--accent);
+      text-decoration: none; font-weight: 500;
+    }
+
+    .forgot:hover { color: var(--teal); }
+
+    /* CTA */
+    .btn-signin {
+      width: 100%; padding: 14px;
+      border-radius: 10px; border: none;
+      background: linear-gradient(135deg, var(--accent) 0%, #5A78FF 100%);
+      color: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 15px; font-weight: 600;
+      letter-spacing: 0.1px;
+      cursor: pointer;
+      position: relative; overflow: hidden;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 20px var(--accent-glow);
+    }
+
+    .btn-signin::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -75%;
+      width: 50%; height: 100%;
+      background: linear-gradient(120deg, transparent, rgba(255,255,255,0.25), transparent);
+      transform: skewX(-20deg);
+      transition: left 0.6s ease;
+    }
+    .btn-signin:hover::after { left: 125%; }
+
+    .btn-signin:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 28px rgba(59,91,255,0.38);
+    }
+
+    .btn-signin:active { transform: translateY(0); }
+
+    /* Divider */
+    .divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 20px 0;
+    }
+
+    .divider-line { flex: 1; height: 1px; background: var(--border); }
+
+    .divider-label {
+      font-size: 11px; color: var(--text-lo);
+      letter-spacing: 0.5px; text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    /* SSO */
+    .sso-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .btn-sso {
+      width: 100%; padding: 12px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg-input);
+      color: var(--text-mid);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      display: flex; align-items: center;
+      justify-content: center; gap: 8px;
+      transition: border-color 0.2s, color 0.2s, transform 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-sso:hover {
+      border-color: var(--border-focus);
+      color: var(--text-hi);
+      transform: translateY(-1px);
+    }
+
+    @media (max-width: 460px) {
+      .sso-row { grid-template-columns: 1fr; }
+    }
+
+    /* Footer */
+    .form-footer {
+      margin-top: 24px;
+      text-align: center;
+      font-size: 11.5px;
+      color: var(--text-lo);
+      line-height: 1.7;
+    }
+
+    .form-footer a { color: var(--text-mid); text-decoration: none; }
+    .form-footer a:hover { color: var(--teal); }
+
+    /* Tathyum tag */
+    .tathyum-tag {
+      margin-top: 36px;
+      text-align: center;
+      font-size: 11px; color: var(--text-lo);
+    }
+
+    .tathyum-tag span {
+      color: var(--teal); font-weight: 600;
+      background: linear-gradient(90deg, var(--teal), var(--accent), var(--teal));
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 6s linear infinite;
+    }
+
+    /* ═══════════ Responsive ═══════════ */
+    @media (max-width: 900px) {
+      body { flex-direction: column; }
+
+      .left-panel {
+        flex: none;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 40px 28px;
+      }
+
+      .query-demo, .source-network { display: none; }
+
+      .right-panel {
+        flex: none;
+        padding: 36px 28px;
+        min-width: auto;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .demo-step, .demo-result, .orb, .brand-mark, .flow-path,
+      .flow-particle, .hub-pulse, .panel-headline em, .tathyum-tag span,
+      .feat-dot, .reveal, .form-wrap, #demoQuestion::after, .demo-label::before,
+      .output-line, .output-particle, .output-pulse {
+        animation: none !important;
+        transition: none !important;
+        opacity: 1 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ LEFT PANEL ══ -->
+<div class="left-panel">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+
+  <div class="panel-content">
+
+    <div class="brand reveal" style="animation-delay:0s">
+      <div class="brand-mark">
+        <img src="saarthi-logo.png" alt="Saarthi" class="brand-logo-img"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+        <svg class="brand-fallback-icon" width="28" height="28" viewBox="0 0 22 22" fill="none">
+          <path d="M11 2L18.5 6.5V15.5L11 20L3.5 15.5V6.5L11 2Z" stroke="white" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="M7.5 11h7M11 7.5v7" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">Saarthi</div>
+        <div class="brand-by">by Tathyum</div>
+      </div>
+    </div>
+
+
+    <h1 class="panel-headline reveal" style="animation-delay:0.1s">
+      One question.<br><em>Every data source.</em><br>The right answer.
+    </h1>
+
+    <p class="panel-sub reveal" style="animation-delay:0.2s">
+      Saarthi connects to all your files, databases, and APIs, then figures out where the answer lives — you never have to point it to the right source. It learns from your corrections, so every answer gets sharper. Secure by design, and built to run economically at scale.
+    </p>
+
+    <!-- Source network animation -->
+    <div class="source-network reveal" style="animation-delay:0.3s">
+      <svg class="network-svg" viewBox="0 0 520 156" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <defs>
+          <radialGradient id="hubGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#3B5BFF" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#3B5BFF" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+
+        <circle cx="180" cy="78" r="64" fill="url(#hubGlow)"/>
+
+        <!-- flow paths -->
+        <path class="flow-path" d="M468,16  C 320,16  318,50  206,74"/>
+        <path class="flow-path" d="M468,47  C 340,47  338,64  206,76"/>
+        <path class="flow-path" d="M468,78  L 206,78"/>
+        <path class="flow-path" d="M468,109 C 340,109 338,92  206,80"/>
+        <path class="flow-path" d="M468,140 C 320,140 318,106 206,82"/>
+
+        <!-- traveling particles -->
+        <circle class="flow-particle" r="3" style="offset-path:path('M468,16  C 320,16  318,50  206,74'); animation-duration:3.2s; animation-delay:0s"></circle>
+        <circle class="flow-particle" r="3" style="offset-path:path('M468,47  C 340,47  338,64  206,76'); animation-duration:3.6s; animation-delay:0.5s"></circle>
+        <circle class="flow-particle" r="3" style="offset-path:path('M468,78  L 206,78'); animation-duration:2.8s; animation-delay:1s"></circle>
+        <circle class="flow-particle" r="3" style="offset-path:path('M468,109 C 340,109 338,92  206,80'); animation-duration:3.4s; animation-delay:1.5s"></circle>
+        <circle class="flow-particle" r="3" style="offset-path:path('M468,140 C 320,140 318,106 206,82'); animation-duration:3.0s; animation-delay:2s"></circle>
+
+        <!-- hub pulse rings -->
+        <circle class="hub-pulse" cx="180" cy="78" r="32"/>
+        <circle class="hub-pulse" cx="180" cy="78" r="32" style="animation-delay:1.3s"/>
+
+        <!-- hub -->
+        <circle cx="180" cy="78" r="30" fill="#0F1230" stroke="#3B5BFF" stroke-width="1.5"/>
+        <path d="M180 60 L200.5 71 V93 L180 104 L159.5 93 V71 Z" stroke="#3B5BFF" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+        <path d="M170 78h20M180 68v20" stroke="#00D4C8" stroke-width="1.6" stroke-linecap="round"/>
+
+        <!-- output: One answer -->
+        <path class="output-line" d="M150,78 L86,78"/>
+        <circle class="output-particle" r="3" style="offset-path:path('M150,78 L86,78'); animation-duration:2.2s"/>
+        <circle class="output-pulse" cx="47" cy="78" r="24"/>
+
+        <g class="src-node" style="animation-delay:0.95s">
+          <rect class="output-box" x="8" y="56" width="78" height="44" rx="10"/>
+          <text class="output-title" x="47" y="71" text-anchor="middle" dominant-baseline="central">One</text>
+          <text class="output-sub" x="47" y="89" text-anchor="middle" dominant-baseline="central">answer</text>
+        </g>
+
+        <!-- source node: Database -->
+        <g class="src-node" style="animation-delay:0.2s">
+          <circle class="node-bg" cx="468" cy="16" r="19" fill="#161936" stroke="#1F2348"/>
+          <g transform="translate(468,16)" stroke="#8D90B5" stroke-width="1.3" fill="none">
+            <ellipse cx="0" cy="-6" rx="8" ry="2.8"/>
+            <path d="M-8,-6 v9 a8,2.8 0 0 0 16,0 v-9"/>
+            <path d="M-8,-1.5 a8,2.8 0 0 0 16,0"/>
+          </g>
+          <text class="src-label" x="438" y="20" text-anchor="end">Database</text>
+        </g>
+
+        <!-- source node: API -->
+        <g class="src-node" style="animation-delay:0.35s">
+          <circle class="node-bg" cx="468" cy="47" r="19" fill="#161936" stroke="#1F2348"/>
+          <g transform="translate(468,47)" stroke="#8D90B5" stroke-width="1.3" fill="none">
+            <circle r="8.5"/>
+            <ellipse rx="3.4" ry="8.5"/>
+            <path d="M-8.5,0 h17 M-8.5,0 a8.5,8.5 0 0 0 17,0 M-8.5,0 a8.5,8.5 0 0 1 17,0"/>
+          </g>
+          <text class="src-label" x="438" y="51" text-anchor="end">APIs</text>
+        </g>
+
+        <!-- source node: Files -->
+        <g class="src-node" style="animation-delay:0.5s">
+          <circle class="node-bg" cx="468" cy="78" r="19" fill="#161936" stroke="#1F2348"/>
+          <g transform="translate(468,78)" stroke="#8D90B5" stroke-width="1.3" fill="none" stroke-linejoin="round">
+            <path d="M-6,-9 h8 l4,4 v14 h-12 z"/>
+            <path d="M2,-9 v4 h4"/>
+            <path d="M-3.5,0 h7 M-3.5,3.5 h7"/>
+          </g>
+          <text class="src-label" x="438" y="82" text-anchor="end">Files</text>
+        </g>
+
+        <!-- source node: Spreadsheets -->
+        <g class="src-node" style="animation-delay:0.65s">
+          <circle class="node-bg" cx="468" cy="109" r="19" fill="#161936" stroke="#1F2348"/>
+          <g transform="translate(468,109)" stroke="#8D90B5" stroke-width="1.3" fill="none">
+            <rect x="-8" y="-8" width="16" height="16" rx="1.5"/>
+            <path d="M-8,-2.6 h16 M-8,2.6 h16 M-2.6,-8 v16 M2.6,-8 v16"/>
+          </g>
+          <text class="src-label" x="438" y="113" text-anchor="end">Spreadsheets</text>
+        </g>
+
+        <!-- source node: Cloud Storage -->
+        <g class="src-node" style="animation-delay:0.8s">
+          <circle class="node-bg" cx="468" cy="140" r="19" fill="#161936" stroke="#1F2348"/>
+          <g transform="translate(468,140)" stroke="#8D90B5" stroke-width="1.3" fill="none" stroke-linejoin="round">
+            <path d="M-8,2 a4,4 0 0 1 0,-8 a5,5 0 0 1 9.5,-1.5 a4.5,4.5 0 0 1 1.5,9 a3,3 0 0 1 -1,0.5 z"/>
+          </g>
+          <text class="src-label" x="438" y="144" text-anchor="end">Cloud Storage</text>
+        </g>
+      </svg>
+    </div>
+    <!-- Live query demo -->
+    <div class="query-demo reveal" style="animation-delay:0.4s">
+      <div class="demo-bar">
+        <div class="demo-dot"></div>
+        <div class="demo-dot"></div>
+        <div class="demo-dot"></div>
+        <span class="demo-label">Live session</span>
+      </div>
+      <div class="demo-body">
+
+        <!-- QnA -->
+        <div class="demo-chat">
+          <div class="chat-msg">
+            <div class="chat-avatar chat-avatar-user">
+              <svg width="13" height="13" fill="none" viewBox="0 0 16 16">
+                <circle cx="8" cy="8" r="7" stroke="#3B5BFF" stroke-width="1.4"/>
+                <path d="M8 7.5v4M8 5h.01" stroke="#3B5BFF" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="chat-bubble">
+              <div class="chat-role">You</div>
+              <div class="chat-text"><em id="demoQuestion"></em></div>
+            </div>
+          </div>
+
+          <div class="chat-msg">
+            <div class="chat-avatar chat-avatar-ai">S</div>
+            <div class="chat-bubble demo-result">
+              <div class="chat-role">Saarthi AI</div>
+              <div class="demo-result-label">Product A · Q3 summary</div>
+              <div class="demo-result-value">₹2.4 Cr revenue · 14 tickets</div>
+              <div class="demo-result-sub">↑ 18.3% revenue · 3 shipments delayed &gt;48h · no source selection needed</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chain of thought -->
+        <div class="demo-cot">
+          <div class="cot-title">Chain of thought</div>
+
+          <div class="demo-step">
+            <div class="step-head">
+              <span class="step-num">1</span>
+              <span class="step-title">Scanning sources</span>
+              <span class="step-check">✓</span>
+            </div>
+            <div class="step-desc">3 DBs, 2 APIs, 1 file store</div>
+          </div>
+
+          <div class="demo-step">
+            <div class="step-head">
+              <span class="step-num">2</span>
+              <span class="step-title">Source selection</span>
+              <span class="step-check">✓</span>
+            </div>
+            <div class="step-desc">sales_db, Zendesk, shipping_logs</div>
+          </div>
+
+          <div class="demo-step">
+            <div class="step-head">
+              <span class="step-num">3</span>
+              <span class="step-title">Query &amp; merge</span>
+              <span class="step-check">✓</span>
+            </div>
+            <div class="step-desc">132 rows merged</div>
+          </div>
+
+          <div class="demo-step">
+            <div class="step-head">
+              <span class="step-num">4</span>
+              <span class="step-title">Synthesis</span>
+              <span class="step-check">✓</span>
+            </div>
+            <div class="step-desc">Cross-source analysis done</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Feature pills -->
+    <div class="features reveal" style="animation-delay:0.5s">
+      <div class="feat">
+        <div class="feat-dot" style="background:#3B5BFF;"></div>
+        Connects files, databases &amp; APIs
+      </div>
+      <div class="feat">
+        <div class="feat-dot" style="background:#00D4C8; animation-delay:0.3s;"></div>
+        Auto-discovers the right source
+      </div>
+      <div class="feat">
+        <div class="feat-dot" style="background:#22D3A0; animation-delay:0.6s;"></div>
+        Learns from your corrections
+      </div>
+      <div class="feat">
+        <div class="feat-dot" style="background:#F5A623; animation-delay:0.9s;"></div>
+        Secure by design
+      </div>
+      <div class="feat">
+        <div class="feat-dot" style="background:#9B8FFF; animation-delay:1.2s;"></div>
+        Built to run economically
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ RIGHT PANEL ══ -->
+<div class="right-panel">
+  <div class="form-wrap" id="formWrap">
+
+    <div class="auth-tabs">
+      <button type="button" class="tab-btn active" id="tabSignin" onclick="switchTab('signin')">Sign In</button>
+      <button type="button" class="tab-btn" id="tabSignup" onclick="switchTab('signup')">Sign Up</button>
+    </div>
+
+    <h2 class="form-title" id="formTitle">Welcome back</h2>
+    <p class="form-sub" id="formSub">Sign in to ask anything, across every connected source.</p>
+
+    <form onsubmit="handleSignIn(event);">
+      <div class="field signup-only">
+        <label for="fullname">Full name</label>
+        <div class="input-wrap">
+          <svg class="ico" width="15" height="15" fill="none" viewBox="0 0 16 16">
+            <circle cx="8" cy="5" r="2.8" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M2.5 13.5c0-2.76 2.46-5 5.5-5s5.5 2.24 5.5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          <input type="text" id="fullname" placeholder="Your full name" autocomplete="name" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="email">Work email</label>
+        <div class="input-wrap">
+          <svg class="ico" width="15" height="15" fill="none" viewBox="0 0 16 16">
+            <path d="M1.5 4.5A1.5 1.5 0 013 3h10a1.5 1.5 0 011.5 1.5v7A1.5 1.5 0 0113 13H3A1.5 1.5 0 011.5 11.5v-7z" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M1.5 4.5l6.5 4.5 6.5-4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          <input type="email" id="email" placeholder="name@company.com" autocomplete="email" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="input-wrap">
+          <svg class="ico" width="15" height="15" fill="none" viewBox="0 0 16 16">
+            <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" />
+          <button type="button" class="show-btn" onclick="togglePwd('password')">Show</button>
+        </div>
+      </div>
+
+      <div class="field signup-only">
+        <label for="confirmPassword">Confirm password</label>
+        <div class="input-wrap">
+          <svg class="ico" width="15" height="15" fill="none" viewBox="0 0 16 16">
+            <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          <input type="password" id="confirmPassword" placeholder="Re-enter your password" autocomplete="new-password" />
+          <button type="button" class="show-btn" onclick="togglePwd('confirmPassword')">Show</button>
+        </div>
+      </div>
+
+      <div class="meta-row signin-only">
+        <label class="remember">
+          <input type="checkbox" id="remember" />
+          <span class="chk"></span>
+          Keep me signed in
+        </label>
+        <a href="#" class="forgot">Forgot password?</a>
+      </div>
+
+      <div class="meta-row signup-only">
+        <label class="remember">
+          <input type="checkbox" id="agreeTerms" />
+          <span class="chk"></span>
+          I agree to the Terms &amp; Privacy Policy
+        </label>
+      </div>
+
+      <button type="submit" class="btn-signin" id="submitBtn">Sign in to Saarthi</button>
+    </form>
+
+    <div class="divider">
+      <div class="divider-line"></div>
+      <span class="divider-label">or continue with</span>
+      <div class="divider-line"></div>
+    </div>
+
+    <div class="sso-row">
+      <button class="btn-sso">
+        <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+          <path d="M17.64 9.2c0-.64-.06-1.25-.17-1.84H9v3.48h4.84c-.21 1.12-.84 2.07-1.79 2.7v2.25h2.9C16.46 14.09 17.64 11.85 17.64 9.2z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.25c-.8.54-1.83.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.32A9 9 0 009 18z" fill="#34A853"/>
+          <path d="M3.95 10.71A5.4 5.4 0 013.67 9c0-.59.1-1.17.28-1.71V4.97H.96A9 9 0 000 9c0 1.45.35 2.82.96 4.03l2.99-2.32z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.32 0 2.51.46 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 00.96 4.97l2.99 2.32C4.66 5.17 6.65 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        Google
+      </button>
+
+      <button class="btn-sso">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 014 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        GitHub
+      </button>
+    </div>
+
+    <p class="form-footer" id="formFooter">
+      By signing in you agree to Tathyum's
+      <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+    </p>
+
+    <p class="tathyum-tag">Powered by <span>Tathyum Intelligence</span></p>
+  </div>
+</div>
+
+<script>
+  function togglePwd(id) {
+    const inp = document.getElementById(id);
+    const btn = inp.parentElement.querySelector('.show-btn');
+    const isHidden = inp.type === 'password';
+    inp.type = isHidden ? 'text' : 'password';
+    btn.textContent = isHidden ? 'Hide' : 'Show';
+  }
+
+  /* Sign In / Sign Up tab switching */
+  function switchTab(mode) {
+    const wrap = document.getElementById('formWrap');
+    const tabSignin = document.getElementById('tabSignin');
+    const tabSignup = document.getElementById('tabSignup');
+    const title = document.getElementById('formTitle');
+    const sub = document.getElementById('formSub');
+    const submitBtn = document.getElementById('submitBtn');
+    const footer = document.getElementById('formFooter');
+
+    if (mode === 'signup') {
+      wrap.classList.add('show-signup');
+      tabSignup.classList.add('active');
+      tabSignin.classList.remove('active');
+      title.textContent = 'Create your account';
+      sub.textContent = 'Sign up to ask anything, across every connected source.';
+      submitBtn.textContent = 'Create account';
+      footer.innerHTML = 'By signing up you agree to Tathyum\'s <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.';
+    } else {
+      wrap.classList.remove('show-signup');
+      tabSignin.classList.add('active');
+      tabSignup.classList.remove('active');
+      title.textContent = 'Welcome back';
+      sub.textContent = 'Sign in to ask anything, across every connected source.';
+      submitBtn.textContent = 'Sign in to Saarthi';
+      footer.innerHTML = 'By signing in you agree to Tathyum\'s <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.';
+    }
+  }
+
+  /* Looping typewriter + chain-of-thought demo */
+  const demoText = "How did our top product perform last quarter, including support tickets and shipping delays?";
+  const demoEl = document.getElementById('demoQuestion');
+  const stepEls = document.querySelectorAll('.demo-step');
+  const resultEl = document.querySelector('.demo-result');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function runDemo() {
+    demoEl.textContent = '';
+    stepEls.forEach(s => s.classList.remove('show'));
+    resultEl.classList.remove('show');
+
+    if (reduced) {
+      demoEl.textContent = demoText;
+      stepEls.forEach(s => s.classList.add('show'));
+      resultEl.classList.add('show');
+      return;
+    }
+
+    let i = 0;
+    function type() {
+      if (i <= demoText.length) {
+        demoEl.textContent = demoText.slice(0, i);
+        i++;
+        setTimeout(type, 22);
+      } else {
+        stepEls.forEach((s, idx) => setTimeout(() => s.classList.add('show'), idx * 600));
+        setTimeout(() => resultEl.classList.add('show'), stepEls.length * 600 + 300);
+      }
+    }
+    type();
+  }
+
+  runDemo();
+  if (!reduced) setInterval(runDemo, 11500);
+
+  async function handleSignIn(event) {
+      event.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      if (!email || !password) {
+          alert("Please enter both email and password.");
+          return;
+      }
+      try {
+          const response = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password })
+          });
+
+          const result = await response.json();
+
+          if (response.ok && result.status === "success") {
+              //alert(`Welcome back! Authentication successful.`);
+              window.location.href = '/index'; 
+          } else {
+              alert(result.message || "Invalid credentials.");
+          }
+      } catch (error) {
+          console.error("Login Connection Error:", error);
+          alert("Could not connect to the backend server.");
+      }
+  }
+</script>
+
+</body>
+</html>
+
+

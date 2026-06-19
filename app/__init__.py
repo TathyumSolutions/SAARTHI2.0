@@ -8,6 +8,7 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from config.config import config
 import os
+from  app.services.api_db__init__ import initialize_api_database
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -25,10 +26,16 @@ def create_app(config_name='development'):
     """Create and configure the Flask application"""
     app = Flask(__name__)
     CORS(app)
-    
+
     # Load configuration
     app.config.from_object(config[config_name])
     print("👉 FLASK IS CURRENTLY CONNECTING TO DATABASE:", app.config.get('SQLALCHEMY_DATABASE_URI'))
+    # 🚀 Extract the exact live URI from your configuration
+    live_db_uri = app.config.get('SQLALCHEMY_DATABASE_URI')
+    print("👉 FLASK IS CURRENTLY CONNECTING TO DATABASE:", live_db_uri)
+    
+    # 🚀 Run the separate database creator using that exact verified connection string!
+    initialize_api_database(live_db_uri)
    # app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://saarthi:password@db:5432/saarthi_db"
     app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
@@ -45,6 +52,7 @@ def create_app(config_name='development'):
         page_routes,
         auth_routes,
         workspace_routes,
+        api_routes,
         llm_routes,
         database_routes,
         query_routes,
@@ -74,6 +82,7 @@ def create_app(config_name='development'):
     app.register_blueprint(export_routes.bp)
     app.register_blueprint(model_config_routes.bp)
     app.register_blueprint(user_routes.bp)
+    app.register_blueprint(api_routes.bp)
     
     from app.routes.upload_routes import upload_bp
     app.register_blueprint(upload_bp)

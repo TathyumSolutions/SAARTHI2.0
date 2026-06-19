@@ -1,3 +1,40 @@
+# """
+# Authentication API Routes
+# Handles user login, logout, registration, and token management
+# """
+# from flask import Blueprint, request, jsonify
+# from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+
+# bp = Blueprint('auth', __name__, url_prefix='/api/auth')
+
+# @bp.route('/login', methods=['POST'])
+# def login():
+#     """
+#     User login endpoint
+#     Request: { "email": "user@example.com", "password": "password123" }
+#     Response: { "status": "success", "user_id": 42, "email": "..." }
+#     """
+#     data = request.get_json() or {}
+#     email = data.get("email")
+#     password = data.get("password")
+
+#     # Guard clause: ensure data was received
+#     if not email or not password:
+#         return jsonify({"status": "error", "message": "Missing email or password fields."}), 400
+
+#     # Simple local check for testing and demo phases
+#     if email == "sahith@example.com" and password == "password123":
+#         return jsonify({
+#             "status": "success",
+#             "message": "Authentication successful",
+#             "user_id": 42,  # This ID will become the conversation session_id
+#             "email": email
+#         }), 200
+    
+#     # Return an unauthorized error status if text doesn't match
+#     return jsonify({"status": "error", "message": "Invalid email or password combination."}), 401
+
+
 """
 Authentication API Routes
 Handles user login, logout, registration, and token management
@@ -11,28 +48,36 @@ bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 def login():
     """
     User login endpoint
-    Request: { "email": "user@example.com", "password": "password123" }
-    Response: { "status": "success", "user_id": 42, "email": "..." }
+    Validates default login credentials for the sign-in screen
     """
-    data = request.get_json() or {}
-    email = data.get("email")
-    password = data.get("password")
+    # Robust data extraction: checks for JSON first, falls back to Form data
+    data = request.get_json(silent=True) or {}
+    
+    email = data.get("email") or request.form.get("email")
+    password = data.get("password") or request.form.get("password")
 
-    # Guard clause: ensure data was received
+    # Guard clause: ensure credentials were sent
     if not email or not password:
-        return jsonify({"status": "error", "message": "Missing email or password fields."}), 400
+        return jsonify({
+            "status": "error", 
+            "message": "Missing email or password fields."
+        }), 400
 
-    # Simple local check for testing and demo phases
+    # Default login credentials validation check
     if email == "sahith@example.com" and password == "password123":
         return jsonify({
             "status": "success",
             "message": "Authentication successful",
-            "user_id": 42,  # This ID will become the conversation session_id
+            "user_id": 42,  # Becomes the active conversation session_id
             "email": email
         }), 200
     
-    # Return an unauthorized error status if text doesn't match
-    return jsonify({"status": "error", "message": "Invalid email or password combination."}), 401
+    # Return unauthorized error if credentials do not match
+    return jsonify({
+        "status": "error", 
+        "message": "Invalid email or password combination."
+    }), 401
+
 
 #@bp.route('/login', methods=['POST'])
 #def login():
