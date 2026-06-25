@@ -273,7 +273,7 @@ class LLMService:
     #         print(f"Analysis Error: {e}")
     #         return "Analyzing natural language inquiry for document matching modules."    
 
-    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key=''):
+    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions=''):
         """
         Retrieves relevant chunks from Qdrant and updates the live steps 
         using the new structured event payload layout.
@@ -465,6 +465,9 @@ class LLMService:
                 "politely say you don't know based on the documents.\n\n"
                 f"CONTEXT:\n{context_text}"
             )
+            if system_instructions.strip():
+                system_prompt += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
+
             if model_name == "llama3":
                 print("🦙 Routing payload to local Ollama [llama3] container layer...")
                 ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
@@ -629,7 +632,7 @@ class LLMService:
 
 _shared_llm_service = LLMService()
 
-def answer_from_docs(user_query, model_name, session_id=1, custom_key=''):
+def answer_from_docs(user_query, model_name, session_id=1, custom_key='',system_instructions=''):
     """
     Top-level module function mapping so your orchestrator router can import 
     it cleanly without needing class-level structural instantiation overhead.
@@ -638,7 +641,8 @@ def answer_from_docs(user_query, model_name, session_id=1, custom_key=''):
         user_query=user_query, 
         model_name=model_name, 
         session_id=session_id, 
-        custom_key=custom_key
+        custom_key=custom_key,
+        system_instructions=''
     )   
        
 

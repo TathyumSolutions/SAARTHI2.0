@@ -10,6 +10,7 @@ from app.services.llm_service import answer_from_docs
 
 # 1. Import your dynamic API service workflows
 from app.services.api_services import fetch_and_translate_tools, ask_dynamic_model_with_tools
+from app.services.automated_metamind import generate_router_config
 
 # 1. THE PYDANTIC SCHEMA (Keep this lightweight for LangChain structured outputs)
 class RouterDecisionSchema(BaseModel):
@@ -21,9 +22,15 @@ class RouterDecisionSchema(BaseModel):
 class RouterService:
     def __init__(self):
         # You can add initialization configs here if needed later
-        pass
+        try:
+            print("\n🔄 Running Router Schema Configuration Sync Check...")
+            # Automatically checks metadata state. Safe cache check skips rewrite if nothing changed!
+            generate_router_config(force=False)
+        except Exception as e:
+            print(f"⚠️ [SCHEMA SYNC CRITICAL]: Failed to check structural drifts: {e}")
+    
 
-    def get_smart_response(self, user_query, model_name="gpt-4o-mini", session_id=1, custom_key=''):
+    def get_smart_response(self, user_query, model_name="gpt-4o-mini", session_id=1, custom_key='',system_instructions=''):
         """
         Enhanced Orchestration Router utilizing Strict Structured Output and 
         Dynamic Postgres Tool Description Injection.
@@ -38,7 +45,7 @@ class RouterService:
             # ----------------------------------------------------
             # Absolute path resolution guarantees Docker finds the file smoothly
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            json_path = os.path.join(current_dir, "router_metamind.json")
+            json_path = os.path.join(current_dir, "metamind_router_config.json")
             with open(json_path, "r") as f:
                 router_config = json.load(f)
 
@@ -73,6 +80,8 @@ LIVE REGISTERED TOOLS AVAILABLE FOR THE 'API' TRACK:
 CRITICAL MATCHING INSTRUCTIONS:
 If the user's request matches any description listed in the dynamic 'LIVE REGISTERED TOOLS AVAILABLE' block above, you MUST choose the "API" track.
 """
+            if system_instructions.strip():
+                system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
 
             # Securely instantiate OpenAI Chat Client
             openai_api_key = custom_key if custom_key else os.getenv("OPENAI_API_KEY")

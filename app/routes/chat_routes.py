@@ -11,7 +11,7 @@ from app.services.llm_service import LLMService
 from flask import Response, stream_with_context, request
 from app.services.stream_manager import stream_manager
 from app.models.model_config import ModelConfiguration
-from app.services.router_services import RouterService
+from app.services.updated_router_services import RouterService
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
@@ -118,6 +118,7 @@ def send_message():
     model_name = data.get('model_name')
 
     custom_key = data.get('custom_key', '')
+    system_instructions = data.get('system_instructions', '')
 
     if not user_query:
         return jsonify({"error": "Message is required"}), 400
@@ -139,7 +140,7 @@ def send_message():
         # STEP 1: Get the answer from your RAG logic in LLMService
         # We will build 'answer_from_docs' in the next step
         #ai_response = llm_service.answer_from_docs(user_query)
-        ai_response = router_service.get_smart_response(user_query,session_id=session_id,model_name=model_name,custom_key=custom_key)
+        ai_response = router_service.get_smart_response(user_query,session_id=session_id,model_name=model_name,custom_key=custom_key,system_instructions=system_instructions)
         print(f"DEBUG: AI Response from Service: {ai_response}")
 
         # STEP 2: Return the response in the format the frontend expects

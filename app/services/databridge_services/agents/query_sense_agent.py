@@ -78,7 +78,7 @@ class QuerySenseAgent:
        
             
 
-        def _call_llm_for_plan(self, user_query: str,target_model: str) -> Dict[str, Any]:
+        def _call_llm_for_plan(self, user_query: str,target_model: str,system_instructions: str = "") -> Dict[str, Any]:
             schema_tables = self._all_tables()
             schema_brief = "\n".join(
                 f"Table '{t}': [{', '.join(self.schema['tables'][t]['columns'].keys())}]"
@@ -476,11 +476,11 @@ USER QUESTION:
                 "grouping_reasoning": str(plan["group_by"]),
             }
 
-        def analyze(self, user_query: str,target_model: str) -> Dict[str, Any]:
+        def analyze(self, user_query: str,target_model: str,system_instructions: str = "") -> Dict[str, Any]:
             self.state["timestamp"] = datetime.now().isoformat()
             self.state["user_query"] = user_query
 
-            plan = self._call_llm_for_plan(user_query,target_model)
+            plan = self._call_llm_for_plan(user_query,target_model,system_instructions)
             if not plan:
                 plan = self._fallback_simple(user_query)
 
@@ -544,9 +544,10 @@ USER QUESTION:
         simplified_query = state.get("simplified_query") or state.get("user_query", "")
         chosen_model = state.get("model_name", self.ollama_model)
         custom_key = state.get("custom_key", "")
+        system_instructions = state.get("system_instructions", "")
         self.query_sense.custom_key = custom_key
         self.query_sense.model = chosen_model
-        analysis = self.query_sense.analyze(simplified_query,chosen_model)
+        analysis = self.query_sense.analyze(simplified_query,chosen_model,system_instructions)
 
         state["query_sense_output"] = analysis
         state["current_step"] = "query_sense"

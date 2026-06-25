@@ -59,7 +59,7 @@ def fetch_and_translate_tools():
     return llm_tools_list
 
 
-def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', ollama_config=None,display_query=None):
+def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', ollama_config=None,display_query=None,system_instructions=''):
       """
       Dynamically routes queries to models, strictly enforcing tool execution,
       performs the actual API execution, and returns a fully parsed response context.
@@ -91,7 +91,8 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
           "3. If the user's request does NOT match any available tool, you must output exactly this text: "
           "'ERROR: No matching workflow tool found to execute this request.' Do not write anything else."
       )
-
+      if system_instructions.strip():
+        system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
       try:
           push_tool_event("start", "Received the user query", f"User query: '{user_message}'")
           messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_message)]

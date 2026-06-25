@@ -328,7 +328,7 @@ class DataInsightGeneratorAgent:
         self.openai_key = os.getenv("OPENAI_API_KEY")
         self.custom_key = ""
 
-    def generate_insights(self, data, columns, user_query="",target_model=None):
+    def generate_insights(self, data, columns, user_query="",target_model=None,system_instructions=""):
         if not data:
             return {"insights": ["No data available to analyze."], "visualizations": []}
         
@@ -353,6 +353,8 @@ Sample Data (first 5 rows):
 
 Return ONLY valid JSON.
 """
+        if system_instructions.strip():
+            prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
 
         payload = {"model": self.model, "prompt": prompt, "stream": False, "format": "json"}
 
@@ -482,7 +484,7 @@ class QueryFormatterAgent:
         self.state = {}
         self.insight_generator = DataInsightGeneratorAgent(llm_url=llm_url, model=model)
 
-    def execute_query(self, sql_query: str, user_query: str = "",target_model: str = None) -> dict:
+    def execute_query(self, sql_query: str, user_query: str = "",target_model: str = None,system_instructions: str = "") -> dict:
 
         if sql_query:
             sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
@@ -560,7 +562,7 @@ class QueryFormatterAgent:
             columns_list = list(df.columns)
             
             raw_insights = self.insight_generator.generate_insights(
-                data_records, columns_list, user_query,target_model=target_model
+                data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions
             )
             
             # FIX: Ensure it always builds a dict with BOTH keys so the bottom code doesn't break
@@ -587,7 +589,7 @@ class QueryFormatterAgent:
             data_records = df.to_dict(orient="records")
             columns_list = list(df.columns)
             raw_insights = self.insight_generator.generate_insights(
-                data_records, columns_list, user_query,target_model=target_model
+                data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions
             )
             if isinstance(raw_insights, dict):
                 insights_data = {
@@ -611,7 +613,7 @@ class QueryFormatterAgent:
             columns_list = list(df.columns)
 
             insights_data = self.insight_generator.generate_insights(
-                data_records, columns_list, user_query,target_model=target_model
+                data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions
             )
 
 
@@ -646,8 +648,9 @@ class QueryFormatterAgent:
         chosen_model = state.get("model_name", self.insight_generator.model)
         custom_key = state.get("custom_key", "")
         self.insight_generator.custom_key = custom_key
+        system_instructions = state.get("system_instructions", "")
 
-        result = self.execute_query(generated_sql, user_query,target_model=chosen_model)
+        result = self.execute_query(generated_sql, user_query,target_model=chosen_model,system_instructions=system_instructions)
 
         # print("\n[DEBUG] OUTBOUND result to router:", json.dumps(result, indent=4))
 

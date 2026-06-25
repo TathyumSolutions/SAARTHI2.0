@@ -1,0 +1,21 @@
+{
+  "general_knowledge_routing": {
+    "description": "Defines patterns for routing queries directly to the GENERAL knowledge track (LLM world knowledge). Checked BEFORE the main datasource router to save API token costs.",
+
+    "strong_general_indicators": {
+      "description": "If a query matches ANY of these phrases, route to the GENERAL track immediately.",
+      "greeting_patterns": [
+        "hello", "hi ", "hey ", "good morning", "good afternoon",
+        "good evening", "how are you", "what's up", "thanks",
+        "thank you", "bye", "goodbye", "nice to meet"
+      ],
+      "time_and_date_patterns": [
+        "what is today", "todays date", "current date", "what day is it", 
+        "what time is it", "current time", "what month", "what year is it", 
+        "current month", "current year"
+      ]
+    },
+
+    "llm_fallback_instruction": "If none of the above heuristic indicators match the incoming query, pass the query to the main LLM router layer (gpt-4o-mini) to decide between DB, FILES, API, and GENERAL based on semantic context."
+  }
+}

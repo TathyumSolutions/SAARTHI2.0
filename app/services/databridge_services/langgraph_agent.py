@@ -347,7 +347,7 @@ def create_data_bridge_graph():
 langgraph_app = create_data_bridge_graph()
 
 
-def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "") -> dict:
+def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "") -> dict:
     """Run the Data Bridge agent with error recovery"""
     print(f"\n{'='*80}")
     print(f"🚀 Starting LangGraph Data Bridge Agent with Error Recovery")
@@ -385,6 +385,7 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
         "user_query": user_query,
         "model_name": model_name,
         "custom_key": custom_key,
+        "system_instructions": system_instructions,
         "steps": [],
         "simplified_query": None,
         "query_sense_output": None,

@@ -746,7 +746,7 @@
 </head>
 <body>
     <div class="header">
-        <div class="logo-section">
+        <div class="logo-section" onclick="window.location.href='/index'"style="cursor: pointer !important;">
             <div class="logo">S</div>
             <div class="app-name">Saarthi</div>
         </div>
@@ -755,9 +755,26 @@
                 <button class="mode-btn active">Standalone</button>
                 <button class="mode-btn">API Mode</button>
             </div>
+            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 6px 14px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 14px; transition: background 0.2s ease;">📝 Instructions.md</button> -->
             <div class="user-profile">A</div>
+            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 6px 14px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 14px; transition: background 0.2s ease;">📝 Instructions.md</button> -->
+            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 4px 10px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 11px; white-space: nowrap; transition: background 0.2s ease;">
+            📝 Instructions.md
+            </button> -->
+            <button onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer !important; padding: 6px 14px !important; border-radius: 6px !important; border: none !important; background-color: #0066cc !important; color: white !important; font-weight: 500 !important; font-size: 14px !important; white-space: nowrap !important; transition: background 0.2s ease !important;" onmouseover="this.style.backgroundColor='#0052a3'" onmouseout="this.style.backgroundColor='#0066cc'">
+        📝 Instructions.md
+            </button> 
         </div>
     </div>
+    <dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid #ddd; width: 400px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <h3 style="margin-top:0; font-family: sans-serif; color: #333;">System Instructions</h3>
+        <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-family: inherit;" placeholder="Type system rules here..."></textarea>
+        <div style="text-align: right;">
+            <button onclick="document.getElementById('inst-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer;">Cancel</button>
+            <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
+        </div>
+    </dialog>
+
 
     <div class="main-container">
         <!-- Left Sidebar -->
@@ -1707,7 +1724,35 @@
         });
     }*/
     //////////////////////////////////////////////////////////////////////////////
+    let currentSystemInstructions = "";
+    function saveInstructions() {
+        const textarea = document.getElementById("instructions-text");
+        const submitBtn = document.getElementById("submit-btn");
+        const dialogBox = document.getElementById("inst-box");
+        currentSystemInstructions = textarea.value.trim();
+        console.log("Captured Data Payload saved globally:", currentSystemInstructions);
     
+        // console.log("Captured Data Payload:", textarea.value.trim());
+
+    // UI Feedback: Change button state visually
+        submitBtn.innerText = "Submitted! ✓";
+        submitBtn.style.background = "#059669";
+        submitBtn.disabled = true;
+
+    // Smooth Delay: Wait 800ms so user reads success message, then close cleanly
+        setTimeout(() => {
+            dialogBox.close();
+        
+        // Reset button state for next time it opens
+            submitBtn.innerText = "Submit";
+            submitBtn.style.background = "#10b981";
+            submitBtn.disabled = false;
+        }, 800);
+    }
+
+
+
+    ///////////////////////////////////////////////////////////////////////////////
     document.addEventListener('DOMContentLoaded', function() {
         const collapseBtn = document.querySelector('.collapse-btn');
         const sidebar = document.querySelector('.right-sidebar');
@@ -1883,6 +1928,15 @@
     window.fetch = async function(...args) {
         let [url, config] = args;
         if (typeof url === 'string' && url.includes('/api/chat/message')) {
+
+            if (!window.activeBackendModelName) {
+                const savedModel = localStorage.getItem('saarthi_active_model');
+                if (savedModel) {
+                    window.activeBackendModelName = savedModel;
+                    console.log(`⚡ Background state auto-recovered: ${window.activeBackendModelName}`);
+                }
+            }
+            localStorage.setItem('saarthi_active_model', window.activeBackendModelName);
             
             if (!window.activeBackendModelName) {
                 alert("Please select the model before proceeding.");
@@ -1911,7 +1965,19 @@
                 }
             }
         }
-        return originalFetch(...args);
+        const response = await originalFetch(...args);
+        // return originalFetch(...args);
+        if (typeof url === 'string' && url.includes('/api/chat/message')) {
+            const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+            if (chatContainer) {
+                localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
+            }
+            // const thoughtChain = document.querySelector('.thought-chain');
+            // if (thoughtChain) {
+            //     localStorage.setItem('saarthi_thought_chain', thoughtChain.innerHTML);
+            // }
+        }
+        return response;
     };
 
     // ==========================================
@@ -2170,6 +2236,9 @@
                 if (is_sql) {
                     panelTitle.innerText = "SQL Agent Analysis";
                 } 
+                else if (title && (title.includes("Request Received") || title.includes("Knowledge Alignment") || title.includes("Model Execution"))) {
+                    panelTitle.innerText = "General Knowledge Assistant";
+                }    
                 else if (title && (title.includes("Automation") || title.includes("Context") || title.includes("Schema") || title.includes("Response"))) {
                     panelTitle.innerText = "API Workflow Execution";
                 } 
@@ -2242,12 +2311,22 @@
     function finalizeLiveSteps(isSql) {
         const panelTitle = document.querySelector('.panel-title');
         if (panelTitle) {
-            if (panelTitle.innerText.includes("API")) {
+            const currentTitle = panelTitle.innerText;
+            if (currentTitle.includes("General")) {
+                panelTitle.innerText = "General Knowledge Complete";
+            } else if (currentTitle.includes("API")) {
                 panelTitle.innerText = "API Execution Complete";
             } else {
                 panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
             }
         }
+        // if (panelTitle) {
+        //     if (panelTitle.innerText.includes("API")) {
+        //         panelTitle.innerText = "API Execution Complete";
+        //     } else {
+        //         panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
+        //     }
+        // }
 
         const statusIndicators = document.querySelectorAll('.status-indicator');
         if (statusIndicators.length > 0) {
@@ -2519,6 +2598,11 @@
         const message = chatInput.value.trim();
         if (!message) return;
 
+        if (!window.activeBackendModelName) {
+            alert("Please select the model before proceeding.");
+            return; 
+        }
+
         const currentSessionId = 1;
 
         // 1. Render User Message
@@ -2536,7 +2620,8 @@
                 body: JSON.stringify({
                     message: message,
                     session_id: 1,
-                    mode: 'chat'
+                    mode: 'chat',
+                    system_instructions: currentSystemInstructions
                 })
             });
 
@@ -2549,6 +2634,11 @@
                 /*finalizeLiveSteps(isSqlResult);*/
                 setTimeout(() => {
                     finalizeLiveSteps(isSqlResult);
+                    // const thoughtChain = document.querySelector('.thought-chain') || document.getElementById('thoughtChain');
+                    // if (thoughtChain) {
+                    //     localStorage.setItem('saarthi_thought_chain', thoughtChain.innerHTML);
+                    //     console.log("🧠 Saved completed thought chain snapshot!");
+                    // }
                 }, 1500);
                 
 
@@ -2702,7 +2792,29 @@
             </div>`;
         chatContainer.insertAdjacentHTML('beforeend', html);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+        localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
+            
+    //     const thoughtChain = document.querySelector('.thought-chain');
+    //     if (thoughtChain) {
+    //         localStorage.setItem('saarthi_thought_chain', thoughtChain.innerHTML);
+    //     }
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+        const savedHistory = localStorage.getItem('saarthi_chat_history');
+        if (savedHistory && chatContainer) {
+            chatContainer.innerHTML = savedHistory;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            console.log("💾 Previous chat conversation successfully restored from storage!");
+        }
+        // const thoughtChain = document.querySelector('.thought-chain');
+        // const savedTimeline = localStorage.getItem('saarthi_thought_chain');
+        // if (savedTimeline && thoughtChain) {
+        //     thoughtChain.innerHTML = savedTimeline;
+        //     console.log("🧠 Chain of thought timeline panel successfully restored!");
+        // }
+    });
 
     // Event Listeners
     sendBtn.addEventListener('click', handleChat);

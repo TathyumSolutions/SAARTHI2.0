@@ -22,7 +22,7 @@ class DataInsightGeneratorAgent:
         self.openai_key = os.getenv("OPENAI_API_KEY")
         self.custom_key = ""
 
-    def generate_insights(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "",target_model: str = None) -> Dict[str, Any]:
+    def generate_insights(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "",target_model: str = None,system_instructions: str = "") -> Dict[str, Any]:
         """
         Analyze data and return insights and visualization suggestions.
         """
@@ -61,6 +61,8 @@ Output Format (JSON):
 
 Return ONLY valid JSON.
 """
+        if system_instructions.strip():
+            prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
 
         payload = {
             "model": self.model,
@@ -210,13 +212,14 @@ Return ONLY valid JSON.
         data = state.get("data", [])
         columns = state.get("columns", [])
         user_query = state.get("user_query", "")
+        system_instructions = state.get("system_instructions", "")
 
         chosen_model = state.get("model_name", self.model)
 
         custom_key = state.get("custom_key", "")
         self.custom_key = custom_key
 
-        insights_data = self.generate_insights(data, columns, user_query,target_model=chosen_model)
+        insights_data = self.generate_insights(data, columns, user_query,target_model=chosen_model,system_instructions=system_instructions)
         state["insights"] = insights_data.get("insights", [])
         state["visualizations"] = insights_data.get("visualizations", [])
         state["current_step"] = "data_insight_generator"
