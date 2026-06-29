@@ -11,51 +11,156 @@ from app.services.llm_service import LLMService
 from flask import Response, stream_with_context, request
 from app.services.stream_manager import stream_manager
 from app.models.model_config import ModelConfiguration
+import os  # 👈 Fixes the 'environ' underline
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from app.services.updated_router_services import RouterService
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
+def get_chats_db_connection():
+    # Fallback default connection URI pointing to the postgres container if not set in environment
+    base_uri = os.environ.get('ENVIRONMENT_DATABASE_URL') or "postgresql://saarthi:password@db:5432/saarthi_db"
+    if "saarthi_db" in base_uri:
+        chats_db_uri = base_uri.replace("saarthi_db", "saarthi_chats_db")
+    else:
+        chats_db_uri = "postgresql://saarthi:password@db:5432/saarthi_chats_db"
+    return psycopg2.connect(chats_db_uri)
+
 @bp.route('/sessions', methods=['GET'])
-@jwt_required()
 def get_chat_sessions():
     """
-    Get all chat sessions
-    Query params: workspace_id
-    Response: { "sessions": [{id, title, last_message_at, message_count}] }
+    Get all chat sessions from saarthi_chats_db ordered chronologically.
+    Response: { "sessions": [{session_id, title, updated_at}] }
     """
-    # TODO: Implement get chat sessions logic
-    pass
+    try:
+        conn = get_chats_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT session_id, title, updated_at FROM chat_sessions ORDER BY updated_at DESC;")
+        sessions = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify({"sessions": sessions})
+    except Exception as e:
+        print(f"Error fetching audit sessions: {e}")
+        return jsonify({"error": "Failed to load audit logs"}), 500
 
 @bp.route('/sessions', methods=['POST'])
-@jwt_required()
 def create_chat_session():
     """
-    Create new chat session
-    Request: { "title": "Sales Analysis", "workspace_id": 1 }
-    Response: { "session": {...} }
+    Save or Update a chat session's visual layout HTML string inside saarthi_chats_db.
+    Request body: { "session_id": "...", "title": "...", "chat_history": "..." }
     """
-    # TODO: Implement create session logic
-    pass
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    title = data.get('title', 'New Chat Session')
+    chat_history = data.get('chat_history', '')
 
-@bp.route('/sessions/<int:session_id>', methods=['GET'])
-@jwt_required()
+    if not session_id:
+        return jsonify({"error": "Session ID token required"}), 400
+
+    try:
+        conn = get_chats_db_connection()
+        cursor = conn.cursor()
+        # Upsert query configuration: Update if session exists, else Insert new
+        query = """
+        INSERT INTO chat_sessions (session_id, title, chat_history, updated_at)
+        VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+        ON CONFLICT (session_id) 
+        DO UPDATE SET title = EXCLUDED.title, chat_history = EXCLUDED.chat_history, updated_at = CURRENT_TIMESTAMP;
+        """
+        cursor.execute(query, (session_id, title, chat_history))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"status": "success", "message": "Session saved persistently"})
+    except Exception as e:
+        print(f"Error saving chat history log: {e}")
+        return jsonify({"error": "Failed to update persistent history trail"}), 500
+
+@bp.route('/sessions/<string:session_id>', methods=['GET'])
 def get_chat_session(session_id):
     """
-    Get chat session with messages
-    Response: { "session": {...}, "messages": [...] }
+    Get a specific chat session's layout logs to rebuild the workspace window.
     """
-    # TODO: Implement get session details
-    pass
+    try:
+        conn = get_chats_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT session_id, title, chat_history FROM chat_sessions WHERE session_id = %s;", (session_id,))
+        session = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if not session:
+            return jsonify({"error": "Historical trail item not found"}), 404
+        return jsonify({"session": session})
+    except Exception as e:
+        print(f"Error viewing single chat trace: {e}")
+        return jsonify({"error": "Failed to open conversation node"}), 500
 
-@bp.route('/sessions/<int:session_id>', methods=['DELETE'])
-@jwt_required()
+@bp.route('/sessions/<string:session_id>', methods=['DELETE'])
 def delete_chat_session(session_id):
     """
-    Delete chat session
-    Response: { "message": "Session deleted" }
+    🗑️ Delete a chat session permanently from the Audit Trail database.
     """
-    # TODO: Implement delete session logic
-    pass
+    try:
+        conn = get_chats_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM chat_sessions WHERE session_id = %s;", (session_id,))
+        conn.commit()
+        deleted_count = cursor.rowcount
+        cursor.close()
+        conn.close()
+        
+        if deleted_count == 0:
+            return jsonify({"error": "Session not found"}), 404
+            
+        return jsonify({"status": "success", "message": "Session deleted from audit records"})
+    except Exception as e:
+        print(f"Error removing audit target frame: {e}")
+        return jsonify({"error": "Failed to drop session tracking state"}), 500    
+
+# @bp.route('/sessions', methods=['GET'])
+# @jwt_required()
+# def get_chat_sessions():
+#     """
+#     Get all chat sessions
+#     Query params: workspace_id
+#     Response: { "sessions": [{id, title, last_message_at, message_count}] }
+#     """
+#     # TODO: Implement get chat sessions logic
+#     pass
+
+# @bp.route('/sessions', methods=['POST'])
+# @jwt_required()
+# def create_chat_session():
+#     """
+#     Create new chat session
+#     Request: { "title": "Sales Analysis", "workspace_id": 1 }
+#     Response: { "session": {...} }
+#     """
+#     # TODO: Implement create session logic
+#     pass
+
+# @bp.route('/sessions/<int:session_id>', methods=['GET'])
+# @jwt_required()
+# def get_chat_session(session_id):
+#     """
+#     Get chat session with messages
+#     Response: { "session": {...}, "messages": [...] }
+#     """
+#     # TODO: Implement get session details
+#     pass
+
+# @bp.route('/sessions/<int:session_id>', methods=['DELETE'])
+# @jwt_required()
+# def delete_chat_session(session_id):
+#     """
+#     Delete chat session
+#     Response: { "message": "Session deleted" }
+#     """
+#     # TODO: Implement delete session logic
+#     pass
 
 #@bp.route('/message', methods=['POST'])
 #@jwt_required()

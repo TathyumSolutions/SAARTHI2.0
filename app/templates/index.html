@@ -834,6 +834,26 @@
                 </div>
             </div>
 
+            <div class="sidebar-section">
+                <div class="section-title">Conversations</div>
+                
+                <div id="new-chat-btn" class="section-item" style="cursor: pointer; background: rgba(37, 99, 235, 0.15); border: 1px dashed rgba(37, 99, 235, 0.4); margin-bottom: 8px; border-radius: 6px; transition: all 0.2s ease;">
+                    <div class="item-icon" style="color: #3b82f6;">➕</div>
+                    <span style="color: #3b82f6; font-weight: 600;">New Chat</span>
+                </div>
+
+                <div class="section-item" style="pointer-events: none; opacity: 0.6; padding-bottom: 4px;">
+                    <div class="item-icon">📜</div>
+                    <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Audit Trail</span>
+                </div>
+                
+                <div id="audit-trail-list" class="sub-items" style="display: block; max-height: 180px; overflow-y: auto;">
+                    <div class="sub-item" style="color: var(--text-muted, #64748b); font-style: italic; pointer-events: none;">
+                        No previous chats found
+                    </div>
+                </div>
+            </div>
+
             <!-- Management Section -->
             <div class="sidebar-section">
                 <div class="section-title">Management</div>
@@ -1724,31 +1744,307 @@
         });
     }*/
     //////////////////////////////////////////////////////////////////////////////
-    let currentSystemInstructions = "";
-    function saveInstructions() {
-        const textarea = document.getElementById("instructions-text");
-        const submitBtn = document.getElementById("submit-btn");
-        const dialogBox = document.getElementById("inst-box");
-        currentSystemInstructions = textarea.value.trim();
-        console.log("Captured Data Payload saved globally:", currentSystemInstructions);
-    
-        // console.log("Captured Data Payload:", textarea.value.trim());
+    // 🚀 Function to reset the main conversation workspace
+//     function startNewChat() {
+//         // Target only the main center chat container
+//         const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+//         if (chatContainer) {
+//             chatContainer.innerHTML = '';
+//         }
 
-    // UI Feedback: Change button state visually
-        submitBtn.innerText = "Submitted! ✓";
-        submitBtn.style.background = "#059669";
-        submitBtn.disabled = true;
+//         console.log("🆕 New Chat initiated: Chat container cleared.");
+//     }
 
-    // Smooth Delay: Wait 800ms so user reads success message, then close cleanly
-        setTimeout(() => {
-            dialogBox.close();
-        
-        // Reset button state for next time it opens
-            submitBtn.innerText = "Submit";
-            submitBtn.style.background = "#10b981";
-            submitBtn.disabled = false;
-        }, 800);
+// // 🔌 Bind the click event listener
+//     document.addEventListener('DOMContentLoaded', () => {
+//         const newChatButton = document.getElementById('new-chat-btn');
+//         if (newChatButton) {
+//             newChatButton.addEventListener('click', startNewChat);
+//         }
+//     });
+    //////////////////////////////////////////////////////////////////////////////
+    // Global array to store our historical chat sessions in memory
+    let chatSessions = [];
+    let currentSessionId = 'session_' + Date.now();
+
+    async function fetchSavedSessions() {
+        try {
+            const response = await fetch('/api/chat/sessions');
+            const data = await response.json();
+            if (data.sessions) {
+                // Map database columns to match your 'id', 'title', and 'html' keys
+                chatSessions = data.sessions.map(s => ({
+                    id: s.session_id,
+                    title: s.title,
+                    html: s.chat_history || ''
+                }));
+                renderAuditTrailList();
+            }
+        } catch (err) {
+            console.error("❌ Failed to pull audit trail records from server:", err);
+        }
     }
+
+    async function saveActiveChatToHistory() {
+        const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+        if (!chatContainer || !chatContainer.innerHTML.trim()) return;
+
+        // Grab the first user message text to use as a clean sidebar title
+        const firstMsg = chatContainer.querySelector('.message-text');
+        let title = firstMsg ? firstMsg.textContent.substring(0, 20) + '...' : 'Conversation ' + (chatSessions.length + 1);
+
+        try {
+            // 🚀 BACKEND SYNC: Send the chat history payload to Flask
+            await fetch('/api/chat/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: currentSessionId,
+                    title: title,
+                    chat_history: chatContainer.innerHTML
+                })
+            });
+            
+            // Refresh our local list state directly from the DB
+            await fetchSavedSessions();
+        } catch (err) {
+            console.error("❌ Error saving chat session to database:", err);
+        }
+    }
+
+    function renderAuditTrailList() {
+        const listContainer = document.getElementById('audit-trail-list');
+        if (!listContainer) return;
+
+        if (chatSessions.length === 0) {
+            listContainer.innerHTML = `<div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">No previous chats found</div>`;
+            return;
+        }
+
+        listContainer.innerHTML = ''; // Clear old layout links
+
+        chatSessions.forEach(session => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'sub-item';
+            wrapper.style.cssText = "display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 4px 6px;";
+            
+            const textSpan = document.createElement('span');
+            textSpan.textContent = `💬 ${session.title}`;
+            textSpan.style.flexGrow = "1";
+            
+            if (session.id === currentSessionId) {
+                textSpan.style.color = 'var(--primary-blue, #3b82f6)';
+                textSpan.style.fontWeight = '600';
+            }
+
+            textSpan.addEventListener('click', async () => {
+                currentSessionId = session.id;
+                
+                try {
+                    const res = await fetch(`/api/chat/sessions/${session.id}`);
+                    const data = await res.json();
+                    if (data.session) {
+                        const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+                        if (chatContainer) {
+                            chatContainer.innerHTML = data.session.chat_history;
+                            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+                            localStorage.setItem('saarthi_chat_history', data.session.chat_history);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error loading chat from database:", err);
+                }
+                renderAuditTrailList();
+            });
+
+            const deleteBtn = document.createElement('span');
+            deleteBtn.innerHTML = '🗑️';
+            deleteBtn.style.cssText = "opacity: 0.4; margin-left: 8px; transition: opacity 0.2s; cursor: pointer;";
+            deleteBtn.onmouseover = () => deleteBtn.style.opacity = "1";
+            deleteBtn.onmouseout = () => deleteBtn.style.opacity = "0.4";
+            
+            deleteBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (confirm("Are you sure you want to delete this chat session permanently?")) {
+                    try {
+                        await fetch(`/api/chat/sessions/${session.id}`, { method: 'DELETE' });
+                        
+                        if (currentSessionId === session.id) {
+                            const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+                            if (chatContainer) chatContainer.innerHTML = '';
+                            currentSessionId = 'session_' + Date.now();
+                        }
+                        await fetchSavedSessions();
+                    } catch (err) {
+                        console.error("Failed to delete session record:", err);
+                    }
+                }
+            });
+
+            wrapper.appendChild(textSpan);
+            wrapper.appendChild(deleteBtn);
+            listContainer.appendChild(wrapper);
+        });
+    }
+
+    async function startNewChat() {
+        await saveActiveChatToHistory();
+
+        const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+        if (chatContainer) {
+            chatContainer.innerHTML = '';
+        }
+
+        const thoughtChain = document.querySelector('.thought-chain') || document.getElementById('thoughtChain');
+        if (thoughtChain) {
+            thoughtChain.innerHTML = '';
+        }
+
+        currentSessionId = 'session_' + Date.now();
+        renderAuditTrailList();
+        console.log("🆕 Switched to a brand new conversation channel.");
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const newChatButton = document.getElementById('new-chat-btn');
+        if (newChatButton) {
+            newChatButton.addEventListener('click', startNewChat);
+        }
+
+        fetchSavedSessions();
+    });
+
+//     async function fetchSavedSessions() {
+//     try {
+//         const response = await fetch('/api/chat/sessions');
+//         const data = await response.json();
+//         if (data.sessions) {
+//             // Map database columns to match your 'id', 'title', and 'html' keys
+//             chatSessions = data.sessions.map(s => ({
+//                 id: s.session_id,
+//                 title: s.title,
+//                 html: s.chat_history || ''
+//             }));
+//             renderAuditTrailList();
+//         }
+//     } catch (err) {
+//         console.error("❌ Failed to pull audit trail records from server:", err);
+//     }
+// }
+
+//     // 📁 Function to save the active chat text into our history array
+//     function saveActiveChatToHistory() {
+//         const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+//         if (!chatContainer || !chatContainer.innerHTML.trim()) return;
+
+//         // Grab the first user message text to use as a clean sidebar title
+//         const firstMsg = chatContainer.querySelector('.message-text');
+//         let title = firstMsg ? firstMsg.textContent.substring(0, 20) + '...' : 'Conversation ' + (chatSessions.length + 1);
+
+//         // Check if we are updating an existing session or adding a brand new one
+//         const existingIndex = chatSessions.findIndex(s => s.id === currentSessionId);
+//         if (existingIndex !== -1) {
+//             chatSessions[existingIndex].html = chatContainer.innerHTML;
+//         } else {
+//             chatSessions.unshift({
+//                 id: currentSessionId,
+//                 title: title,
+//                 html: chatContainer.innerHTML
+//             });
+//         }
+
+//         renderAuditTrailList();
+//     }
+
+//     // 👁️ Function to dynamically build the clickable items in the sidebar
+//     function renderAuditTrailList() {
+//         const listContainer = document.getElementById('audit-trail-list');
+//         if (!listContainer) return;
+
+//         if (chatSessions.length === 0) {
+//             listContainer.innerHTML = `<div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">No previous chats found</div>`;
+//             return;
+//         }
+
+//         listContainer.innerHTML = ''; // Clear old layout links
+
+//         chatSessions.forEach(session => {
+//             const item = document.createElement('div');
+//             item.className = 'sub-item';
+//             item.style.cursor = 'pointer';
+//             item.textContent = `💬 ${session.title}`;
+            
+//             // Highlight active session
+//             if (session.id === currentSessionId) {
+//                 item.style.color = 'var(--primary-blue, #3b82f6)';
+//                 item.style.fontWeight = '600';
+//             }
+
+//             // 🔄 Click event to load the historic chat state back to screen
+//             item.addEventListener('click', () => {
+//                 currentSessionId = session.id;
+//                 const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+//                 if (chatContainer) {
+//                     chatContainer.innerHTML = session.html;
+//                     chatContainer.scrollTop = chatContainer.scrollHeight;
+//                 }
+//                 renderAuditTrailList(); // Redraw to update active text highlight
+//             });
+
+//             listContainer.appendChild(item);
+//         });
+//     }
+
+//     // 🔄 Modify your existing startNewChat function to handle the session save
+//     function startNewChat() {
+//         // 1. Save the old active chat history before erasing it
+//         saveActiveChatToHistory();
+
+//         const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+//         if (chatContainer) {
+//             chatContainer.innerHTML = '';
+//         }
+
+//         // 2. Generate a clean tracking ID for your fresh upcoming conversation session
+//         currentSessionId = 'session_' + Date.now();
+//         renderAuditTrailList();
+//         console.log("🆕 Switched to a brand new conversation channel.");
+//     }
+//     document.addEventListener('DOMContentLoaded', () => {
+//     const newChatButton = document.getElementById('new-chat-btn');
+//     if (newChatButton) {
+//         newChatButton.addEventListener('click', startNewChat);
+//     }
+// });
+
+
+        //////////////////////////////////////////////////////////////////////////////
+        let currentSystemInstructions = "";
+        function saveInstructions() {
+            const textarea = document.getElementById("instructions-text");
+            const submitBtn = document.getElementById("submit-btn");
+            const dialogBox = document.getElementById("inst-box");
+            currentSystemInstructions = textarea.value.trim();
+            console.log("Captured Data Payload saved globally:", currentSystemInstructions);
+        
+            // console.log("Captured Data Payload:", textarea.value.trim());
+
+        // UI Feedback: Change button state visually
+            submitBtn.innerText = "Submitted! ✓";
+            submitBtn.style.background = "#059669";
+            submitBtn.disabled = true;
+
+        // Smooth Delay: Wait 800ms so user reads success message, then close cleanly
+            setTimeout(() => {
+                dialogBox.close();
+            
+            // Reset button state for next time it opens
+                submitBtn.innerText = "Submit";
+                submitBtn.style.background = "#10b981";
+                submitBtn.disabled = false;
+            }, 800);
+        }
 
 
 

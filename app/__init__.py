@@ -9,6 +9,7 @@ from flask_jwt_extended import JWTManager
 from config.config import config
 import os
 from  app.services.api_db__init__ import initialize_api_database
+from app.services.chat_db__init__ import initialize_chats_database
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -36,6 +37,7 @@ def create_app(config_name='development'):
     
     # 🚀 Run the separate database creator using that exact verified connection string!
     initialize_api_database(live_db_uri)
+    initialize_chats_database(live_db_uri)
    # app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://saarthi:password@db:5432/saarthi_db"
     app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
