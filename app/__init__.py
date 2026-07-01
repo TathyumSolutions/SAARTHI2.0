@@ -8,8 +8,12 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from config.config import config
 import os
+#from app.routes.auth_routes import bp as auth_blueprint
 from  app.services.api_db__init__ import initialize_api_database
 from app.services.chat_db__init__ import initialize_chats_database
+from app.services.auth_db__init__ import init_auth_database
+
+
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -38,6 +42,7 @@ def create_app(config_name='development'):
     # 🚀 Run the separate database creator using that exact verified connection string!
     initialize_api_database(live_db_uri)
     initialize_chats_database(live_db_uri)
+    init_auth_database(live_db_uri)
    # app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://saarthi:password@db:5432/saarthi_db"
     app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
@@ -70,7 +75,6 @@ def create_app(config_name='development'):
     
     # HTML page routes (no prefix)
     app.register_blueprint(page_routes.bp)
-    
     # API routes
     app.register_blueprint(auth_routes.bp)
     app.register_blueprint(workspace_routes.bp)

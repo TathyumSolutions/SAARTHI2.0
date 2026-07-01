@@ -177,7 +177,7 @@
         ],
         "vector_store_info": {
           "collection": "saarthi_unstructured",
-          "points_count": 1
+          "points_count": 3
         }
       },
       "API": {
@@ -219,6 +219,6 @@
       "rule_6": "When in doubt between DB and FILES -> prefer FILES",
       "output_format": "Return ONLY a JSON array. Example: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"DB\", \"FILES\"]"
     },
-    "generated_at": "2026-06-19T11:51:00.529597Z"
+    "generated_at": "2026-06-30T13:31:04.268817Z"
   }
 }

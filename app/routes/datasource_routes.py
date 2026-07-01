@@ -7,6 +7,8 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 import os
 import json
 from app.services.llm_service import LLMService
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
 
 bp = Blueprint('datasource', __name__, url_prefix='/api/datasources')
 
@@ -53,15 +55,15 @@ def update_datasource(datasource_id):
     # TODO: Implement update datasource logic
     pass
 
-@bp.route('/<int:datasource_id>', methods=['DELETE'])
-@jwt_required()
-def delete_datasource(datasource_id):
-    """
-    Delete datasource
-    Response: { "message": "Datasource deleted" }
-    """
-    # TODO: Implement delete datasource logic
-    pass
+# @bp.route('/<int:datasource_id>', methods=['DELETE'])
+# @jwt_required()
+# def delete_datasource(datasource_id):
+#     """
+#     Delete datasource
+#     Response: { "message": "Datasource deleted" }
+#     """
+#     #  Implement delete datasource logic
+#     pass
 
 @bp.route('/<int:datasource_id>/sync', methods=['POST'])
 @jwt_required()
@@ -119,7 +121,116 @@ def upload_file():
 llm_service = LLMService()
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
-METADATA_FILE = os.path.join(UPLOAD_FOLDER, 'file_metadata.json')    
+METADATA_FILE = os.path.join(UPLOAD_FOLDER, 'file_metadata.json')
+
+# @bp.route('/<string:document_code>', methods=['DELETE'])
+# def delete_datasource(document_code):
+#     """
+#     Delete datasource file from metadata, disk storage, and Qdrant vector database
+#     Response: { "message": "Datasource deleted completely" }
+#     """
+#     try:
+#         if not os.path.exists(METADATA_FILE):
+#             return jsonify({"status": "error", "message": "Metadata file missing."}), 404
+
+#         with open(METADATA_FILE, 'r') as f:
+#             metadata = json.load(f)
+
+#         # 1. Look up the specific document info using the code
+#         file_info = next((item for item in metadata if item['document_code'] == document_code), None)
+#         if not file_info:
+#             return jsonify({"status": "error", "message": f"Document code {document_code} not found."}), 404
+
+#         file_path = file_info.get('file_path')
+
+#         # 2. Clear out the vector chunks from your Qdrant Docker container
+#         qdrant_client = QdrantClient(url="http://localhost:6333")
+#         qdrant_client.delete(
+#             collection_name="saarthi_collection",  # Update to your actual Qdrant collection name
+#             points_selector=models.FilterSelector(
+#                 filter=models.Filter(
+#                     must=[
+#                         models.FieldCondition(
+#                             key="document_code",
+#                             match=models.MatchValue(value=document_code),
+#                         )
+#                     ]
+#                 )
+#             ),
+#         )
+
+#         # 3. Remove physical document from server disk storage if it exists
+#         if file_path and os.path.exists(file_path):
+#             os.remove(file_path)
+
+#         # 4. Filter out the deleted item from metadata and resave json tracking index
+#         updated_metadata = [item for item in metadata if item['document_code'] != document_code]
+#         with open(METADATA_FILE, 'w') as f:
+#             json.dump(updated_metadata, f, indent=4)
+
+#         return jsonify({
+#             "status": "success",
+#             "message": f"Successfully deleted {file_info.get('file_name')} from system storage and Qdrant vectors."
+#         }), 200
+
+#     except Exception as e:
+#         return jsonify({"status": "error", "message": str(e)}), 500
+@bp.route('/unstructured/<document_code>', methods=['DELETE'])
+def delete_datasource(document_code):
+    """
+    Delete datasource file from metadata, disk storage, and Qdrant vector database
+    Response: { "message": "Datasource deleted completely" }
+    """
+    try:
+        if not os.path.exists(METADATA_FILE):
+            return jsonify({"status": "error", "message": "Metadata file missing."}), 404
+
+        with open(METADATA_FILE, 'r') as f:
+            metadata = json.load(f)
+
+        # 1. Look up the specific document info using the code
+        file_info = next((item for item in metadata if item['document_code'] == document_code), None)
+        if not file_info:
+            return jsonify({"status": "error", "message": f"Document code {document_code} not found."}), 404
+
+        file_path = file_info.get('file_path')
+
+        # 2. Clear out the vector chunks from your Qdrant Docker container
+        # FIX 1: URL changed to http://qdrant:6333 for internal Docker communication
+        qdrant_client = QdrantClient(url="http://qdrant:6333")
+        
+        qdrant_client.delete(
+            # FIX 2: Collection name changed to match saarthi_unstructured
+            collection_name="saarthi_unstructured",  
+            points_selector=models.FilterSelector(
+                filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            # FIX 3: Key path changed to metadata.document_code to match LangChain's structure
+                            key="metadata.document_code",
+                            match=models.MatchValue(value=document_code),
+                        )
+                    ]
+                )
+            ),
+        )
+
+        # 3. Remove physical document from server disk storage if it exists
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+
+        # 4. Filter out the deleted item from metadata and resave json tracking index
+        updated_metadata = [item for item in metadata if item['document_code'] != document_code]
+        with open(METADATA_FILE, 'w') as f:
+            json.dump(updated_metadata, f, indent=4)
+
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully deleted {file_info.get('file_name')} from system storage and Qdrant vectors."
+        }), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500    
 
 @bp.route('/unstructured/process/<document_code>', methods=['POST'])
 def process_unstructured_file(document_code):

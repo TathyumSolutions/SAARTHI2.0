@@ -680,7 +680,7 @@
                 return;
             }
             
-            fetch('/api/files/' + documentCode, {
+            fetch('/api/datasources/unstructured/' + documentCode, {
                 method: 'DELETE'
             })
             .then(function(response) {

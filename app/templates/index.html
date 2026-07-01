@@ -755,22 +755,65 @@
                 <button class="mode-btn active">Standalone</button>
                 <button class="mode-btn">API Mode</button>
             </div>
+
+            <div class="user-dropdown-container" style="position: relative; display: inline-block;">
+                <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)" style="cursor: pointer;">A</div>
+                
+                <div class="user-dropdown-menu" id="userDropdownMenu" style="display: none; position: absolute; right: 0; top: 100%; background: transparent; border: 1px solid #22252a; border-radius: 6px; padding: 8px; z-index: 1000; min-width: 140px;">
+                    <button type="button" onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
+                        📝 Instructions.md
+                    </button>
+                    <hr style="border: none; border-top: 1px solid #1F2348; margin: 4px 0;">
+                    <button type="button" onclick="handleLogout()" style="cursor: pointer; background: none; border: none; color: #FF5F57; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
+                        🚪 Log out
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+            <!-- <div class="user-dropdown-container" style="position: relative; display: inline-block;">
+                <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)" style="cursor: pointer;">A</div>
+                
+                <div class="user-dropdown-menu" id="userDropdownMenu" style="display: none; position: absolute; right: 0; top: 100%; background: #0F1230; border: 1px solid #1F2348; border-radius: 6px; padding: 8px; z-index: 1000; min-width: 140px;">
+                    <button type="button" onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
+                        📝 Instructions.md
+                    </button>
+                    <hr style="border: none; border-top: 1px solid #1F2348; margin: 4px 0;">
+                    <button type="button" onclick="handleLogout()" style="cursor: pointer; background: none; border: none; color: #FF5F57; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
+                        🚪 Log out
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div> -->
+
+            
+            
             <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 6px 14px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 14px; transition: background 0.2s ease;">📝 Instructions.md</button> -->
-            <div class="user-profile">A</div>
+            <!-- <div class="user-profile">A</div>
             <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 6px 14px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 14px; transition: background 0.2s ease;">📝 Instructions.md</button> -->
             <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 4px 10px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 11px; white-space: nowrap; transition: background 0.2s ease;">
             📝 Instructions.md
             </button> -->
-            <button onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer !important; padding: 6px 14px !important; border-radius: 6px !important; border: none !important; background-color: #0066cc !important; color: white !important; font-weight: 500 !important; font-size: 14px !important; white-space: nowrap !important; transition: background 0.2s ease !important;" onmouseover="this.style.backgroundColor='#0052a3'" onmouseout="this.style.backgroundColor='#0066cc'">
-        📝 Instructions.md
-            </button> 
+            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer !important; padding: 6px 14px !important; border-radius: 6px !important; border: none !important; background-color: #0066cc !important; color: white !important; font-weight: 500 !important; font-size: 14px !important; white-space: nowrap !important; transition: background 0.2s ease !important;" onmouseover="this.style.backgroundColor='#0052a3'" onmouseout="this.style.backgroundColor='#0066cc'">
+        📝 Instructions.md -->
+            <!-- </button> 
         </div>
-    </div>
-    <dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid #ddd; width: 400px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+    </div> -->
+    <!-- <dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid #ddd; width: 400px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
         <h3 style="margin-top:0; font-family: sans-serif; color: #333;">System Instructions</h3>
         <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-family: inherit;" placeholder="Type system rules here..."></textarea>
         <div style="text-align: right;">
             <button onclick="document.getElementById('inst-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer;">Cancel</button>
+            <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
+        </div>
+    </dialog> -->
+    <dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid transparent; width: 400px; background: #292a33; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        <h3 style="margin-top:0; font-family: sans-serif; color: white;">System Instructions</h3>
+        <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; background: #07091e; border: 1px solid #1F2348; border-radius: 4px; font-family: inherit; color: white;" placeholder="Type system rules here..."></textarea>
+        <div style="text-align: right;">
+            <button onclick="document.getElementById('inst-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer; background: none; border: 1px solid #1F2348; color: #8D90B5; border-radius: 4px;">Cancel</button>
             <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
         </div>
     </dialog>
@@ -844,7 +887,7 @@
 
                 <div class="section-item" style="pointer-events: none; opacity: 0.6; padding-bottom: 4px;">
                     <div class="item-icon">📜</div>
-                    <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Audit Trail</span>
+                    <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Recents</span>
                 </div>
                 
                 <div id="audit-trail-list" class="sub-items" style="display: block; max-height: 180px; overflow-y: auto;">
@@ -1764,6 +1807,46 @@
 //     });
     //////////////////////////////////////////////////////////////////////////////
     // Global array to store our historical chat sessions in memory
+    function toggleUserMenu(event) {
+        event.stopPropagation(); // Prevents the window click listener from immediately closing it
+        const menu = document.getElementById('userDropdownMenu');
+    
+        if (menu.style.display === 'none' || menu.style.display === '') {
+            menu.style.display = 'block';
+            avatar.style.setProperty('background-color', 'transparent', 'important');
+            avatar.style.setProperty('border', '1px solid #22252a', 'important');
+        } else {
+            menu.style.display = 'none';
+            avatar.style.removeProperty('background-color');
+            avatar.style.removeProperty('border');
+        }
+    }
+
+    function handleLogout() {
+        // Clear your local authentication storage
+        localStorage.removeItem('saarthi_token');
+        
+        // Jump straight back to your login screen
+        window.location.href = '/'; 
+    }
+
+    // Automatically hides the dropdown if you click anywhere else on the screen
+    window.addEventListener('click', function() {
+        const menu = document.getElementById('userDropdownMenu');
+        if (menu) {
+            menu.style.display = 'none';
+            if (avatar) {
+                avatar.style.removeProperty('background-color');
+                avatar.style.removeProperty('border');
+            }
+        }
+    });
+
+
+
+
+
+    /////////////////////////////////////////////////////////////////////////
     let chatSessions = [];
     let currentSessionId = 'session_' + Date.now();
 

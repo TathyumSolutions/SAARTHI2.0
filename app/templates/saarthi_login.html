@@ -1073,7 +1073,8 @@
     <h2 class="form-title" id="formTitle">Welcome back</h2>
     <p class="form-sub" id="formSub">Sign in to ask anything, across every connected source.</p>
 
-    <form onsubmit="handleSignIn(event);">
+    <!-- <form onsubmit="handleSignIn(event);"> -->
+    <form onsubmit="handleFormSubmit(event);"> 
       <div class="field signup-only">
         <label for="fullname">Full name</label>
         <div class="input-wrap">
@@ -1081,7 +1082,8 @@
             <circle cx="8" cy="5" r="2.8" stroke="currentColor" stroke-width="1.3"/>
             <path d="M2.5 13.5c0-2.76 2.46-5 5.5-5s5.5 2.24 5.5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
-          <input type="text" id="fullname" placeholder="Your full name" autocomplete="name" />
+          <!-- <input type="text" id="fullname" placeholder="Your full name" autocomplete="name" /> -->
+          <input type="text" id="name" placeholder="Your full name" autocomplete="name" />
         </div>
       </div>
 
@@ -1093,6 +1095,7 @@
             <path d="M1.5 4.5l6.5 4.5 6.5-4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
           <input type="email" id="email" placeholder="name@company.com" autocomplete="email" />
+          
         </div>
       </div>
 
@@ -1104,6 +1107,7 @@
             <path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
           <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" />
+          <!-- <input type="password" id="confirm_password" placeholder="Re-enter your password" autocomplete="new-password" /> -->
           <button type="button" class="show-btn" onclick="togglePwd('password')">Show</button>
         </div>
       </div>
@@ -1115,7 +1119,8 @@
             <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
             <path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
-          <input type="password" id="confirmPassword" placeholder="Re-enter your password" autocomplete="new-password" />
+          <!-- <input type="password" id="confirmPassword" placeholder="Re-enter your password" autocomplete="new-password" /> -->
+          <input type="password" id="confirm_password" placeholder="Re-enter your password" autocomplete="new-password" />
           <button type="button" class="show-btn" onclick="togglePwd('confirmPassword')">Show</button>
         </div>
       </div>
@@ -1248,8 +1253,20 @@
   runDemo();
   if (!reduced) setInterval(runDemo, 11500);
 
-  async function handleSignIn(event) {
+  /* Central Form Submission Router */
+  async function handleFormSubmit(event) {
       event.preventDefault();
+      const wrap = document.getElementById('formWrap');
+      
+      // If the UI is currently toggled to Sign Up mode, fire registration
+      if (wrap.classList.contains('show-signup')) {
+          await handleSignUp();
+      } else {
+          await handleSignIn();
+      }
+  }
+
+  async function handleSignIn() {
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       if (!email || !password) {
@@ -1266,7 +1283,8 @@
           const result = await response.json();
 
           if (response.ok && result.status === "success") {
-              //alert(`Welcome back! Authentication successful.`);
+              // Store the secure JWT access token safely inside browser storage
+              localStorage.setItem('saarthi_token', result.access_token);
               window.location.href = '/index'; 
           } else {
               alert(result.message || "Invalid credentials.");
@@ -1276,6 +1294,146 @@
           alert("Could not connect to the backend server.");
       }
   }
+
+  async function handleSignUp() {
+      const name = document.getElementById('name')?.value?.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const confirm_password = document.getElementById('confirm_password')?.value;
+
+      if (!name || !email || !password || !confirm_password) {
+          alert("Please fill out all fields to register.");
+          return;
+      }
+
+      if (password !== confirm_password) {
+          alert("Passwords do not match.");
+          return;
+      }
+
+      try {
+          const response = await fetch('/api/auth/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name, email, password, confirm_password })
+          });
+
+          const result = await response.json();
+
+          if (response.ok && result.status === "success") {
+              alert("Account created successfully! Switching to login screen.");
+              // Automatically switch tabs and let them sign in
+              switchTab('signin');
+          } else {
+              alert(result.message || "Registration failed.");
+          }
+      } catch (error) {
+          console.error("Registration Connection Error:", error);
+          alert("Could not reach backend application server.");
+      }
+  }
+
+  // function togglePwd(id) {
+  //   const inp = document.getElementById(id);
+  //   const btn = inp.parentElement.querySelector('.show-btn');
+  //   const isHidden = inp.type === 'password';
+  //   inp.type = isHidden ? 'text' : 'password';
+  //   btn.textContent = isHidden ? 'Hide' : 'Show';
+  // }
+
+  // /* Sign In / Sign Up tab switching */
+  // function switchTab(mode) {
+  //   const wrap = document.getElementById('formWrap');
+  //   const tabSignin = document.getElementById('tabSignin');
+  //   const tabSignup = document.getElementById('tabSignup');
+  //   const title = document.getElementById('formTitle');
+  //   const sub = document.getElementById('formSub');
+  //   const submitBtn = document.getElementById('submitBtn');
+  //   const footer = document.getElementById('formFooter');
+
+  //   if (mode === 'signup') {
+  //     wrap.classList.add('show-signup');
+  //     tabSignup.classList.add('active');
+  //     tabSignin.classList.remove('active');
+  //     title.textContent = 'Create your account';
+  //     sub.textContent = 'Sign up to ask anything, across every connected source.';
+  //     submitBtn.textContent = 'Create account';
+  //     footer.innerHTML = 'By signing up you agree to Tathyum\'s <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.';
+  //   } else {
+  //     wrap.classList.remove('show-signup');
+  //     tabSignin.classList.add('active');
+  //     tabSignup.classList.remove('active');
+  //     title.textContent = 'Welcome back';
+  //     sub.textContent = 'Sign in to ask anything, across every connected source.';
+  //     submitBtn.textContent = 'Sign in to Saarthi';
+  //     footer.innerHTML = 'By signing in you agree to Tathyum\'s <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.';
+  //   }
+  // }
+
+  // /* Looping typewriter + chain-of-thought demo */
+  // const demoText = "How did our top product perform last quarter, including support tickets and shipping delays?";
+  // const demoEl = document.getElementById('demoQuestion');
+  // const stepEls = document.querySelectorAll('.demo-step');
+  // const resultEl = document.querySelector('.demo-result');
+  // const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // function runDemo() {
+  //   demoEl.textContent = '';
+  //   stepEls.forEach(s => s.classList.remove('show'));
+  //   resultEl.classList.remove('show');
+
+  //   if (reduced) {
+  //     demoEl.textContent = demoText;
+  //     stepEls.forEach(s => s.classList.add('show'));
+  //     resultEl.classList.add('show');
+  //     return;
+  //   }
+
+  //   let i = 0;
+  //   function type() {
+  //     if (i <= demoText.length) {
+  //       demoEl.textContent = demoText.slice(0, i);
+  //       i++;
+  //       setTimeout(type, 22);
+  //     } else {
+  //       stepEls.forEach((s, idx) => setTimeout(() => s.classList.add('show'), idx * 600));
+  //       setTimeout(() => resultEl.classList.add('show'), stepEls.length * 600 + 300);
+  //     }
+  //   }
+  //   type();
+  // }
+
+  // runDemo();
+  // if (!reduced) setInterval(runDemo, 11500);
+
+  // async function handleSignIn(event) {
+  //     event.preventDefault();
+  //     const email = document.getElementById('email').value.trim();
+  //     const password = document.getElementById('password').value;
+  //     if (!email || !password) {
+  //         alert("Please enter both email and password.");
+  //         return;
+  //     }
+  //     try {
+  //         const response = await fetch('/api/auth/login', {
+  //             method: 'POST',
+  //             headers: { 'Content-Type': 'application/json' },
+  //             body: JSON.stringify({ email, password })
+  //         });
+
+  //         const result = await response.json();
+
+  //         if (response.ok && result.status === "success") {
+  //             //alert(`Welcome back! Authentication successful.`);
+  //             window.location.href = '/index'; 
+  //         } else {
+  //             alert(result.message || "Invalid credentials.");
+  //         }
+  //     } catch (error) {
+  //         console.error("Login Connection Error:", error);
+  //         alert("Could not connect to the backend server.");
+  //     }
+  // }
 </script>
 
 </body>
