@@ -51,7 +51,8 @@ class QuerySimplifierAgent:
         chosen_model = state_model if state_model else self.model_name
         print(f"DEBUG: target_model received in execution layer is: '{chosen_model}' (Type: {type(chosen_model)})")
         custom_key = state.get("custom_key", "")
-        simplified = self.simplify(user_query, chosen_model,custom_key)
+        system_instructions = state.get("system_instructions", "")
+        simplified = self.simplify(user_query, chosen_model,custom_key,system_instructions)
         #chosen_model = state.get("model_name", self.model_name)
         #simplified = self.simplify(user_query,chosen_model)
         
@@ -69,7 +70,7 @@ class QuerySimplifierAgent:
         print(f"✅ [QuerySimplifierAgent] Simplified: {simplified}")
         return state
     
-    def simplify(self, user_query: str,target_model: str,custom_key: str = "") -> str:
+    def simplify(self, user_query: str,target_model: str,custom_key: str = "",system_instructions:str = "") -> str:
         """Simplify the user query using LLM"""
         # Get table names for context
         table_names = list(self.schema.keys())
@@ -110,7 +111,9 @@ User: "Show sales orders and customer names"
 Output: sales orders and customer names
 
 Return ONLY the simplified query, nothing else.
-"""      
+""" 
+        if system_instructions.strip():
+            prompt += f"\n\nADDITIONAL INSTRUCTIONS:\n{system_instructions}"     
         try:
             if target_model == "gpt-4o":
                 print("🔥 [QuerySimplifierAgent] Routing to ChatOpenAI [gpt-4o] Layer...")

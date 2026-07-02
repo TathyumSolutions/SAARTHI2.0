@@ -127,10 +127,12 @@ class SQLGeneratorAgent:
         query_sense_output: Dict[str, Any],
         simplified_query: str,
         error_feedback: str = "",
-        target_model: str = "llama3"
+        target_model: str = "llama3",
+        system_instructions: str = ""
 
     ) -> str:
         """Generate SQL from QuerySense output using LLM (Ollama-safe)"""
+
 
         try:
             prompt = f"""
@@ -177,6 +179,10 @@ SELECT ... FROM ... JOIN ... ON ... WHERE ... GROUP BY ... ORDER BY ... LIMIT ..
 
 Return ONLY the PostgreSQL query, nothing else.
 """         
+            if system_instructions.strip():
+                prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
+
+            prompt += "\n\nReturn ONLY the PostgreSQL query, nothing else.\n"
 
             if target_model == "gpt-4o":
                 print("🔥 [SQLGeneratorAgent] Routing to ChatOpenAI [gpt-4o] Layer...")
@@ -313,14 +319,17 @@ Return ONLY the PostgreSQL query, nothing else.
 
             chosen_model = state.get("model_name", self.llm_backend["model"])
             custom_key = state.get("custom_key", "")
+            system_instructions = state.get("system_instructions", "")
             self.custom_key = custom_key
+
 
             sql = self.generate_sql_from_querysense(
                 user_query,
                 query_sense_output,
                 simplified_query,
                 error_feedback,
-                chosen_model
+                chosen_model,
+                system_instructions=system_instructions
             )
 
             if not sql:

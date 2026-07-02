@@ -746,7 +746,7 @@
 </head>
 <body>
     <div class="header">
-        <div class="logo-section">
+        <div class="logo-section" onclick="window.location.href='/index'"style="cursor: pointer !important;">
             <div class="logo">S</div>
             <div class="app-name">Saarthi</div>
         </div>
@@ -755,9 +755,69 @@
                 <button class="mode-btn active">Standalone</button>
                 <button class="mode-btn">API Mode</button>
             </div>
-            <div class="user-profile">A</div>
+
+            <div class="user-dropdown-container" style="position: relative; display: inline-block;">
+                <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)" style="cursor: pointer;">A</div>
+                
+                <div class="user-dropdown-menu" id="userDropdownMenu" style="display: none; position: absolute; right: 0; top: 100%; background: transparent; border: 1px solid #22252a; border-radius: 6px; padding: 8px; z-index: 1000; min-width: 140px;">
+                    <button type="button" onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
+                        📝 Instructions.md
+                    </button>
+                    <hr style="border: none; border-top: 1px solid #1F2348; margin: 4px 0;">
+                    <button type="button" onclick="handleLogout()" style="cursor: pointer; background: none; border: none; color: #FF5F57; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
+                        🚪 Log out
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
+
+            <!-- <div class="user-dropdown-container" style="position: relative; display: inline-block;">
+                <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)" style="cursor: pointer;">A</div>
+                
+                <div class="user-dropdown-menu" id="userDropdownMenu" style="display: none; position: absolute; right: 0; top: 100%; background: #0F1230; border: 1px solid #1F2348; border-radius: 6px; padding: 8px; z-index: 1000; min-width: 140px;">
+                    <button type="button" onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
+                        📝 Instructions.md
+                    </button>
+                    <hr style="border: none; border-top: 1px solid #1F2348; margin: 4px 0;">
+                    <button type="button" onclick="handleLogout()" style="cursor: pointer; background: none; border: none; color: #FF5F57; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
+                        🚪 Log out
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div> -->
+
+            
+            
+            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 6px 14px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 14px; transition: background 0.2s ease;">📝 Instructions.md</button> -->
+            <!-- <div class="user-profile">A</div>
+            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 6px 14px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 14px; transition: background 0.2s ease;">📝 Instructions.md</button> -->
+            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 4px 10px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 11px; white-space: nowrap; transition: background 0.2s ease;">
+            📝 Instructions.md
+            </button> -->
+            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer !important; padding: 6px 14px !important; border-radius: 6px !important; border: none !important; background-color: #0066cc !important; color: white !important; font-weight: 500 !important; font-size: 14px !important; white-space: nowrap !important; transition: background 0.2s ease !important;" onmouseover="this.style.backgroundColor='#0052a3'" onmouseout="this.style.backgroundColor='#0066cc'">
+        📝 Instructions.md -->
+            <!-- </button> 
+        </div>
+    </div> -->
+    <!-- <dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid #ddd; width: 400px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <h3 style="margin-top:0; font-family: sans-serif; color: #333;">System Instructions</h3>
+        <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-family: inherit;" placeholder="Type system rules here..."></textarea>
+        <div style="text-align: right;">
+            <button onclick="document.getElementById('inst-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer;">Cancel</button>
+            <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
+        </div>
+    </dialog> -->
+    <dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid transparent; width: 400px; background: #292a33; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        <h3 style="margin-top:0; font-family: sans-serif; color: white;">System Instructions</h3>
+        <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; background: #07091e; border: 1px solid #1F2348; border-radius: 4px; font-family: inherit; color: white;" placeholder="Type system rules here..."></textarea>
+        <div style="text-align: right;">
+            <button onclick="document.getElementById('inst-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer; background: none; border: 1px solid #1F2348; color: #8D90B5; border-radius: 4px;">Cancel</button>
+            <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
+        </div>
+    </dialog>
+
 
     <div class="main-container">
         <!-- Left Sidebar -->
@@ -775,6 +835,12 @@
                     <div class="item-icon">🔌</div>
                     <span>Database Connections</span>
                 </div>
+
+                <div class="section-item" id="apiintegrationIcon" onclick="window.location.href='/api_connectors/rest_apis'">
+                    <div class="item-icon">🔌</div>
+                    <span>API Integrations</span>
+                </div>
+
             </div>
 
             <!-- AI Models Section -->
@@ -807,6 +873,26 @@
                     </div>
                     <div id="plusModelBtn" class="sub-item" style="color: var(--primary-blue); font-weight: 500; cursor: pointer;">
                         <span style="margin-right: 8px;">➕</span>Configure New Model
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="section-title">Conversations</div>
+                
+                <div id="new-chat-btn" class="section-item" style="cursor: pointer; background: rgba(37, 99, 235, 0.15); border: 1px dashed rgba(37, 99, 235, 0.4); margin-bottom: 8px; border-radius: 6px; transition: all 0.2s ease;">
+                    <div class="item-icon" style="color: #3b82f6;">➕</div>
+                    <span style="color: #3b82f6; font-weight: 600;">New Chat</span>
+                </div>
+
+                <div class="section-item" style="pointer-events: none; opacity: 0.6; padding-bottom: 4px;">
+                    <div class="item-icon">📜</div>
+                    <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Recents</span>
+                </div>
+                
+                <div id="audit-trail-list" class="sub-items" style="display: block; max-height: 180px; overflow-y: auto;">
+                    <div class="sub-item" style="color: var(--text-muted, #64748b); font-style: italic; pointer-events: none;">
+                        No previous chats found
                     </div>
                 </div>
             </div>
@@ -943,7 +1029,18 @@
                 <button class="collapse-btn">−</button>
             </div>
 
-            <div class="thought-chain">
+            <div class="thought-chain"></div>
+        </div>    
+
+        <!-- Right Sidebar -->
+        <!-- <div class="right-sidebar">
+            <div class="right-panel-header">
+                <span class="panel-title">Chain of Thought</span>
+                <button class="collapse-btn">−</button>
+            </div> -->
+
+
+            <!-- <div class="thought-chain">
                 <div class="thought-step">
                     <div class="thought-number">STEP 1</div>
                     <div class="thought-title">Query Understanding</div>
@@ -1007,7 +1104,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    </div>*/ -->
 
     <!-- Configure New Model Modal -->
     <div class="modal-overlay" id="modelModal">
@@ -1690,7 +1787,351 @@
         });
     }*/
     //////////////////////////////////////////////////////////////////////////////
+    // 🚀 Function to reset the main conversation workspace
+//     function startNewChat() {
+//         // Target only the main center chat container
+//         const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+//         if (chatContainer) {
+//             chatContainer.innerHTML = '';
+//         }
+
+//         console.log("🆕 New Chat initiated: Chat container cleared.");
+//     }
+
+// // 🔌 Bind the click event listener
+//     document.addEventListener('DOMContentLoaded', () => {
+//         const newChatButton = document.getElementById('new-chat-btn');
+//         if (newChatButton) {
+//             newChatButton.addEventListener('click', startNewChat);
+//         }
+//     });
+    //////////////////////////////////////////////////////////////////////////////
+    // Global array to store our historical chat sessions in memory
+    function toggleUserMenu(event) {
+        event.stopPropagation(); // Prevents the window click listener from immediately closing it
+        const menu = document.getElementById('userDropdownMenu');
     
+        if (menu.style.display === 'none' || menu.style.display === '') {
+            menu.style.display = 'block';
+            avatar.style.setProperty('background-color', 'transparent', 'important');
+            avatar.style.setProperty('border', '1px solid #22252a', 'important');
+        } else {
+            menu.style.display = 'none';
+            avatar.style.removeProperty('background-color');
+            avatar.style.removeProperty('border');
+        }
+    }
+
+    function handleLogout() {
+        // Clear your local authentication storage
+        localStorage.removeItem('saarthi_token');
+        
+        // Jump straight back to your login screen
+        window.location.href = '/'; 
+    }
+
+    // Automatically hides the dropdown if you click anywhere else on the screen
+    window.addEventListener('click', function() {
+        const menu = document.getElementById('userDropdownMenu');
+        if (menu) {
+            menu.style.display = 'none';
+            if (avatar) {
+                avatar.style.removeProperty('background-color');
+                avatar.style.removeProperty('border');
+            }
+        }
+    });
+
+
+
+
+
+    /////////////////////////////////////////////////////////////////////////
+    let chatSessions = [];
+    let currentSessionId = 'session_' + Date.now();
+
+    async function fetchSavedSessions() {
+        try {
+            const response = await fetch('/api/chat/sessions');
+            const data = await response.json();
+            if (data.sessions) {
+                // Map database columns to match your 'id', 'title', and 'html' keys
+                chatSessions = data.sessions.map(s => ({
+                    id: s.session_id,
+                    title: s.title,
+                    html: s.chat_history || ''
+                }));
+                renderAuditTrailList();
+            }
+        } catch (err) {
+            console.error("❌ Failed to pull audit trail records from server:", err);
+        }
+    }
+
+    async function saveActiveChatToHistory() {
+        const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+        if (!chatContainer || !chatContainer.innerHTML.trim()) return;
+
+        // Grab the first user message text to use as a clean sidebar title
+        const firstMsg = chatContainer.querySelector('.message-text');
+        let title = firstMsg ? firstMsg.textContent.substring(0, 20) + '...' : 'Conversation ' + (chatSessions.length + 1);
+
+        try {
+            // 🚀 BACKEND SYNC: Send the chat history payload to Flask
+            await fetch('/api/chat/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: currentSessionId,
+                    title: title,
+                    chat_history: chatContainer.innerHTML
+                })
+            });
+            
+            // Refresh our local list state directly from the DB
+            await fetchSavedSessions();
+        } catch (err) {
+            console.error("❌ Error saving chat session to database:", err);
+        }
+    }
+
+    function renderAuditTrailList() {
+        const listContainer = document.getElementById('audit-trail-list');
+        if (!listContainer) return;
+
+        if (chatSessions.length === 0) {
+            listContainer.innerHTML = `<div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">No previous chats found</div>`;
+            return;
+        }
+
+        listContainer.innerHTML = ''; // Clear old layout links
+
+        chatSessions.forEach(session => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'sub-item';
+            wrapper.style.cssText = "display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 4px 6px;";
+            
+            const textSpan = document.createElement('span');
+            textSpan.textContent = `💬 ${session.title}`;
+            textSpan.style.flexGrow = "1";
+            
+            if (session.id === currentSessionId) {
+                textSpan.style.color = 'var(--primary-blue, #3b82f6)';
+                textSpan.style.fontWeight = '600';
+            }
+
+            textSpan.addEventListener('click', async () => {
+                currentSessionId = session.id;
+                
+                try {
+                    const res = await fetch(`/api/chat/sessions/${session.id}`);
+                    const data = await res.json();
+                    if (data.session) {
+                        const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+                        if (chatContainer) {
+                            chatContainer.innerHTML = data.session.chat_history;
+                            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+                            localStorage.setItem('saarthi_chat_history', data.session.chat_history);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error loading chat from database:", err);
+                }
+                renderAuditTrailList();
+            });
+
+            const deleteBtn = document.createElement('span');
+            deleteBtn.innerHTML = '🗑️';
+            deleteBtn.style.cssText = "opacity: 0.4; margin-left: 8px; transition: opacity 0.2s; cursor: pointer;";
+            deleteBtn.onmouseover = () => deleteBtn.style.opacity = "1";
+            deleteBtn.onmouseout = () => deleteBtn.style.opacity = "0.4";
+            
+            deleteBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (confirm("Are you sure you want to delete this chat session permanently?")) {
+                    try {
+                        await fetch(`/api/chat/sessions/${session.id}`, { method: 'DELETE' });
+                        
+                        if (currentSessionId === session.id) {
+                            const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+                            if (chatContainer) chatContainer.innerHTML = '';
+                            currentSessionId = 'session_' + Date.now();
+                        }
+                        await fetchSavedSessions();
+                    } catch (err) {
+                        console.error("Failed to delete session record:", err);
+                    }
+                }
+            });
+
+            wrapper.appendChild(textSpan);
+            wrapper.appendChild(deleteBtn);
+            listContainer.appendChild(wrapper);
+        });
+    }
+
+    async function startNewChat() {
+        await saveActiveChatToHistory();
+
+        const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+        if (chatContainer) {
+            chatContainer.innerHTML = '';
+        }
+
+        const thoughtChain = document.querySelector('.thought-chain') || document.getElementById('thoughtChain');
+        if (thoughtChain) {
+            thoughtChain.innerHTML = '';
+        }
+
+        currentSessionId = 'session_' + Date.now();
+        renderAuditTrailList();
+        console.log("🆕 Switched to a brand new conversation channel.");
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const newChatButton = document.getElementById('new-chat-btn');
+        if (newChatButton) {
+            newChatButton.addEventListener('click', startNewChat);
+        }
+
+        fetchSavedSessions();
+    });
+
+//     async function fetchSavedSessions() {
+//     try {
+//         const response = await fetch('/api/chat/sessions');
+//         const data = await response.json();
+//         if (data.sessions) {
+//             // Map database columns to match your 'id', 'title', and 'html' keys
+//             chatSessions = data.sessions.map(s => ({
+//                 id: s.session_id,
+//                 title: s.title,
+//                 html: s.chat_history || ''
+//             }));
+//             renderAuditTrailList();
+//         }
+//     } catch (err) {
+//         console.error("❌ Failed to pull audit trail records from server:", err);
+//     }
+// }
+
+//     // 📁 Function to save the active chat text into our history array
+//     function saveActiveChatToHistory() {
+//         const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+//         if (!chatContainer || !chatContainer.innerHTML.trim()) return;
+
+//         // Grab the first user message text to use as a clean sidebar title
+//         const firstMsg = chatContainer.querySelector('.message-text');
+//         let title = firstMsg ? firstMsg.textContent.substring(0, 20) + '...' : 'Conversation ' + (chatSessions.length + 1);
+
+//         // Check if we are updating an existing session or adding a brand new one
+//         const existingIndex = chatSessions.findIndex(s => s.id === currentSessionId);
+//         if (existingIndex !== -1) {
+//             chatSessions[existingIndex].html = chatContainer.innerHTML;
+//         } else {
+//             chatSessions.unshift({
+//                 id: currentSessionId,
+//                 title: title,
+//                 html: chatContainer.innerHTML
+//             });
+//         }
+
+//         renderAuditTrailList();
+//     }
+
+//     // 👁️ Function to dynamically build the clickable items in the sidebar
+//     function renderAuditTrailList() {
+//         const listContainer = document.getElementById('audit-trail-list');
+//         if (!listContainer) return;
+
+//         if (chatSessions.length === 0) {
+//             listContainer.innerHTML = `<div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">No previous chats found</div>`;
+//             return;
+//         }
+
+//         listContainer.innerHTML = ''; // Clear old layout links
+
+//         chatSessions.forEach(session => {
+//             const item = document.createElement('div');
+//             item.className = 'sub-item';
+//             item.style.cursor = 'pointer';
+//             item.textContent = `💬 ${session.title}`;
+            
+//             // Highlight active session
+//             if (session.id === currentSessionId) {
+//                 item.style.color = 'var(--primary-blue, #3b82f6)';
+//                 item.style.fontWeight = '600';
+//             }
+
+//             // 🔄 Click event to load the historic chat state back to screen
+//             item.addEventListener('click', () => {
+//                 currentSessionId = session.id;
+//                 const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+//                 if (chatContainer) {
+//                     chatContainer.innerHTML = session.html;
+//                     chatContainer.scrollTop = chatContainer.scrollHeight;
+//                 }
+//                 renderAuditTrailList(); // Redraw to update active text highlight
+//             });
+
+//             listContainer.appendChild(item);
+//         });
+//     }
+
+//     // 🔄 Modify your existing startNewChat function to handle the session save
+//     function startNewChat() {
+//         // 1. Save the old active chat history before erasing it
+//         saveActiveChatToHistory();
+
+//         const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+//         if (chatContainer) {
+//             chatContainer.innerHTML = '';
+//         }
+
+//         // 2. Generate a clean tracking ID for your fresh upcoming conversation session
+//         currentSessionId = 'session_' + Date.now();
+//         renderAuditTrailList();
+//         console.log("🆕 Switched to a brand new conversation channel.");
+//     }
+//     document.addEventListener('DOMContentLoaded', () => {
+//     const newChatButton = document.getElementById('new-chat-btn');
+//     if (newChatButton) {
+//         newChatButton.addEventListener('click', startNewChat);
+//     }
+// });
+
+
+        //////////////////////////////////////////////////////////////////////////////
+        let currentSystemInstructions = "";
+        function saveInstructions() {
+            const textarea = document.getElementById("instructions-text");
+            const submitBtn = document.getElementById("submit-btn");
+            const dialogBox = document.getElementById("inst-box");
+            currentSystemInstructions = textarea.value.trim();
+            console.log("Captured Data Payload saved globally:", currentSystemInstructions);
+        
+            // console.log("Captured Data Payload:", textarea.value.trim());
+
+        // UI Feedback: Change button state visually
+            submitBtn.innerText = "Submitted! ✓";
+            submitBtn.style.background = "#059669";
+            submitBtn.disabled = true;
+
+        // Smooth Delay: Wait 800ms so user reads success message, then close cleanly
+            setTimeout(() => {
+                dialogBox.close();
+            
+            // Reset button state for next time it opens
+                submitBtn.innerText = "Submit";
+                submitBtn.style.background = "#10b981";
+                submitBtn.disabled = false;
+            }, 800);
+        }
+
+
+
+    ///////////////////////////////////////////////////////////////////////////////
     document.addEventListener('DOMContentLoaded', function() {
         const collapseBtn = document.querySelector('.collapse-btn');
         const sidebar = document.querySelector('.right-sidebar');
@@ -1866,6 +2307,15 @@
     window.fetch = async function(...args) {
         let [url, config] = args;
         if (typeof url === 'string' && url.includes('/api/chat/message')) {
+
+            if (!window.activeBackendModelName) {
+                const savedModel = localStorage.getItem('saarthi_active_model');
+                if (savedModel) {
+                    window.activeBackendModelName = savedModel;
+                    console.log(`⚡ Background state auto-recovered: ${window.activeBackendModelName}`);
+                }
+            }
+            localStorage.setItem('saarthi_active_model', window.activeBackendModelName);
             
             if (!window.activeBackendModelName) {
                 alert("Please select the model before proceeding.");
@@ -1894,7 +2344,19 @@
                 }
             }
         }
-        return originalFetch(...args);
+        const response = await originalFetch(...args);
+        // return originalFetch(...args);
+        if (typeof url === 'string' && url.includes('/api/chat/message')) {
+            const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+            if (chatContainer) {
+                localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
+            }
+            // const thoughtChain = document.querySelector('.thought-chain');
+            // if (thoughtChain) {
+            //     localStorage.setItem('saarthi_thought_chain', thoughtChain.innerHTML);
+            // }
+        }
+        return response;
     };
 
     // ==========================================
@@ -2057,10 +2519,205 @@
         }
 
         if (panelTitle) panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
-    }*/    
-
-    
+    }*/
+   
     let stepEventSource = null;
+
+    function initializeLiveStepStream(sessionId, onConnectionOpen) {
+        const thoughtChainContainer = document.querySelector('.thought-chain');
+        const panelTitle = document.querySelector('.panel-title');
+        
+        if (!thoughtChainContainer) return;
+
+        thoughtChainContainer.innerHTML = '';
+        if (panelTitle) panelTitle.innerText = "Analyzing Query Intent...";
+
+        if (stepEventSource) {
+            stepEventSource.close();
+        }
+
+        let liveStepIndex = 0;
+
+        stepEventSource = new EventSource(`/api/chat/stream_steps?session_id=${sessionId}`);
+        stepEventSource.onopen = function() {
+            console.log("⚡ SSE Connection opened successfully!");
+            if (onConnectionOpen) {
+                onConnectionOpen(); 
+            }
+        };
+        
+        stepEventSource.addEventListener('message', function(event) {
+            console.log("STEP EVENT:", event.data);
+
+            const payload = JSON.parse(event.data);
+
+            // Ignore heartbeat
+            if (payload.heartbeat) return;
+
+            // Handle DONE event
+            if (payload.step === "DONE") {
+                finalizeLiveSteps(payload.is_sql);
+                if (stepEventSource) {
+                    stepEventSource.close();
+                }
+                return;
+            }
+
+            const data = payload.step;
+            if (!data) return;
+
+            // =========================================
+            // BACKWARD COMPATIBILITY FOR RAG STRING STEPS
+            // =========================================
+            if (typeof data === "string") {
+                const rawStep = data;
+                let title = rawStep.includes(' - ')
+                    ? rawStep.split(' - ')[0]
+                    : `Step ${liveStepIndex + 1}`;
+
+                let description = rawStep.includes(' - ')
+                    ? rawStep.split(' - ')[1]
+                    : rawStep;
+
+                const stepHtml = `
+                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
+                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
+                            STEP ${liveStepIndex + 1}
+                        </div>
+                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
+                            ${title}
+                        </div>
+                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                            ${description}
+                        </div>
+                        <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
+                            ✓ Completed
+                        </span>
+                    </div>
+                `;
+
+                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+                liveStepIndex++;
+                return;
+            }
+
+            const {
+                event: eventType,
+                title,
+                description,
+                is_sql
+            } = data;
+
+            // =========================================
+            // DYNAMIC PANEL TITLE ROUTER
+            // =========================================
+            if (panelTitle) {
+                if (is_sql) {
+                    panelTitle.innerText = "SQL Agent Analysis";
+                } 
+                else if (title && (title.includes("Request Received") || title.includes("Knowledge Alignment") || title.includes("Model Execution"))) {
+                    panelTitle.innerText = "General Knowledge Assistant";
+                }    
+                else if (title && (title.includes("Automation") || title.includes("Context") || title.includes("Schema") || title.includes("Response"))) {
+                    panelTitle.innerText = "API Workflow Execution";
+                } 
+                else {
+                    panelTitle.innerText = "RAG Document Analysis";
+                }
+            }
+
+            // =========================================
+            // START EVENT
+            // =========================================
+            if (eventType === "start") {
+                const stepHtml = `
+                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
+                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
+                            STEP ${liveStepIndex + 1}
+                        </div>
+                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
+                            ${title}
+                        </div>
+                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                            ${description}
+                        </div>
+                        <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">
+                            ⏳ Processing...
+                        </span>
+                    </div>
+                `;
+
+                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+
+                const element = document.getElementById(`live-step-${liveStepIndex}`);
+                if (element) {
+                    setTimeout(() => {
+                        element.style.opacity = "1";
+                        element.style.transform = "translateY(0)";
+                    }, 50);
+                }
+
+                liveStepIndex++;
+            }
+
+            // =========================================
+            // COMPLETE EVENT
+            // =========================================
+            else if (eventType === "complete") {
+                const currentStep = document.querySelector(`#live-step-${liveStepIndex - 1}`);
+                if (currentStep) {
+                    const descEl = currentStep.querySelector('.thought-description');
+                    const statusEl = currentStep.querySelector('.status-indicator');
+
+                    if (descEl) {
+                        descEl.innerHTML = description;
+                    }
+                    if (statusEl) {
+                        statusEl.innerHTML = "✓ Completed";
+                        statusEl.style.color = "#10B981";
+                    }
+                }
+            }
+        });
+
+        stepEventSource.onerror = function() {
+            if (stepEventSource) {
+                stepEventSource.close();
+            }
+        };
+    }
+
+    function finalizeLiveSteps(isSql) {
+        const panelTitle = document.querySelector('.panel-title');
+        if (panelTitle) {
+            const currentTitle = panelTitle.innerText;
+            if (currentTitle.includes("General")) {
+                panelTitle.innerText = "General Knowledge Complete";
+            } else if (currentTitle.includes("API")) {
+                panelTitle.innerText = "API Execution Complete";
+            } else {
+                panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
+            }
+        }
+        // if (panelTitle) {
+        //     if (panelTitle.innerText.includes("API")) {
+        //         panelTitle.innerText = "API Execution Complete";
+        //     } else {
+        //         panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
+        //     }
+        // }
+
+        const statusIndicators = document.querySelectorAll('.status-indicator');
+        if (statusIndicators.length > 0) {
+            const finalStatus = statusIndicators[statusIndicators.length - 1];
+            finalStatus.innerHTML = "✓ Completed";
+            finalStatus.style.color = "#10B981";
+        }
+    }
+    
+
+   //////////////////////////////////////////////////////////////////////////////////////// 
+   /* let stepEventSource = null;
 
     function initializeLiveStepStream(sessionId,onConnectionOpen) {
         const thoughtChainContainer = document.querySelector('.thought-chain');
@@ -2082,7 +2739,7 @@
             console.log("⚡ SSE Connection opened successfully!");
             if (onConnectionOpen) {
                 onConnectionOpen(); }};
-
+/////////////////////////////////////////////////////////////////////////////////////////////
 
         /*stepEventSource.addEventListener('message', function(event) {
           console.log("STEP EVENT:", event.data);  
@@ -2137,8 +2794,8 @@
 
             liveStepIndex++;
         });*/
-        
-        stepEventSource.addEventListener('message', function(event) {
+ //////////////////////////////////////////////////////////////////////////////////////////       
+       /* stepEventSource.addEventListener('message', function(event) {
 
             console.log("STEP EVENT:", event.data);
 
@@ -2298,7 +2955,7 @@
             stepEventSource.close();
         }*/
         
-        const panelTitle = document.querySelector('.panel-title');
+       /* const panelTitle = document.querySelector('.panel-title');
         if (panelTitle) {
             panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
         }
@@ -2309,8 +2966,8 @@
             finalStatus.innerHTML = "✓ Completed";
             finalStatus.style.color = "#10B981";
         }
-    }
-
+    }*/
+/////////////////////////////////////////////////////////////////////////////////////////////
         const chatInput = document.querySelector('.chat-input');
         const sendBtn = document.querySelector('.send-btn');
         const chatContainer = document.querySelector('.chat-container');
@@ -2319,6 +2976,11 @@
       async function handleChat() {
         const message = chatInput.value.trim();
         if (!message) return;
+
+        if (!window.activeBackendModelName) {
+            alert("Please select the model before proceeding.");
+            return; 
+        }
 
         const currentSessionId = 1;
 
@@ -2337,7 +2999,8 @@
                 body: JSON.stringify({
                     message: message,
                     session_id: 1,
-                    mode: 'chat'
+                    mode: 'chat',
+                    system_instructions: currentSystemInstructions
                 })
             });
 
@@ -2350,6 +3013,11 @@
                 /*finalizeLiveSteps(isSqlResult);*/
                 setTimeout(() => {
                     finalizeLiveSteps(isSqlResult);
+                    // const thoughtChain = document.querySelector('.thought-chain') || document.getElementById('thoughtChain');
+                    // if (thoughtChain) {
+                    //     localStorage.setItem('saarthi_thought_chain', thoughtChain.innerHTML);
+                    //     console.log("🧠 Saved completed thought chain snapshot!");
+                    // }
                 }, 1500);
                 
 
@@ -2503,7 +3171,29 @@
             </div>`;
         chatContainer.insertAdjacentHTML('beforeend', html);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+        localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
+            
+    //     const thoughtChain = document.querySelector('.thought-chain');
+    //     if (thoughtChain) {
+    //         localStorage.setItem('saarthi_thought_chain', thoughtChain.innerHTML);
+    //     }
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+        const savedHistory = localStorage.getItem('saarthi_chat_history');
+        if (savedHistory && chatContainer) {
+            chatContainer.innerHTML = savedHistory;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            console.log("💾 Previous chat conversation successfully restored from storage!");
+        }
+        // const thoughtChain = document.querySelector('.thought-chain');
+        // const savedTimeline = localStorage.getItem('saarthi_thought_chain');
+        // if (savedTimeline && thoughtChain) {
+        //     thoughtChain.innerHTML = savedTimeline;
+        //     console.log("🧠 Chain of thought timeline panel successfully restored!");
+        // }
+    });
 
     // Event Listeners
     sendBtn.addEventListener('click', handleChat);

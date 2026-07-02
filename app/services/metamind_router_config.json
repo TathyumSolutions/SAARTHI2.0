@@ -1,0 +1,224 @@
+{
+  "routing_menu": {
+    "instructions": "Analyze the user query carefully. Select ONE or MORE datasources from the list below. Return ONLY a valid JSON array like: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"DB\", \"FILES\"]",
+    "datasources": {
+      "DB": {
+        "description": "Use when query needs structured data, row counts, calculations, filters, aggregations, or specific column values from business database tables.",
+        "trigger_keywords": [
+          "how many",
+          "list",
+          "show",
+          "count",
+          "total",
+          "sum",
+          "average",
+          "top",
+          "find",
+          "fetch",
+          "records",
+          "entries"
+        ],
+        "example_queries": [
+          "Show top 5 materials",
+          "How many customers are in Germany?",
+          "Total invoice amount for last month",
+          "List all sales orders"
+        ],
+        "tables": {
+          "bkpf": {
+            "description": "Table storing bkpf records.",
+            "columns": [
+              "document_number",
+              "company_code",
+              "fiscal_year",
+              "document_type",
+              "document_date",
+              "posting_date",
+              "currency",
+              "reference"
+            ]
+          },
+          "bseg": {
+            "description": "Table storing bseg records.",
+            "columns": [
+              "document_number",
+              "item_number",
+              "posting_key",
+              "account_type",
+              "account_number",
+              "amount",
+              "tax_code",
+              "cost_center",
+              "profit_center",
+              "text"
+            ]
+          },
+          "kna1": {
+            "description": "Table storing kna1 records.",
+            "columns": [
+              "customer_id",
+              "name",
+              "country",
+              "city",
+              "postal_code"
+            ]
+          },
+          "lfa1": {
+            "description": "Table storing lfa1 records.",
+            "columns": [
+              "vendor_id",
+              "name",
+              "country",
+              "city",
+              "postal_code"
+            ]
+          },
+          "likp": {
+            "description": "Table storing likp records.",
+            "columns": [
+              "delivery_number",
+              "sales_document",
+              "delivery_date"
+            ]
+          },
+          "lips": {
+            "description": "Table storing lips records.",
+            "columns": [
+              "delivery_number",
+              "item_number",
+              "material_id",
+              "quantity"
+            ]
+          },
+          "mara": {
+            "description": "Table storing mara records.",
+            "columns": [
+              "material_id",
+              "description",
+              "base_unit",
+              "material_group"
+            ]
+          },
+          "ska1": {
+            "description": "Table storing ska1 records.",
+            "columns": [
+              "gl_account",
+              "account_name",
+              "account_group"
+            ]
+          },
+          "skb1": {
+            "description": "Table storing skb1 records.",
+            "columns": [
+              "gl_account",
+              "company_code",
+              "currency"
+            ]
+          },
+          "vbak": {
+            "description": "Table storing vbak records.",
+            "columns": [
+              "sales_document",
+              "customer_id",
+              "document_date",
+              "total_amount"
+            ]
+          },
+          "vbap": {
+            "description": "Table storing vbap records.",
+            "columns": [
+              "sales_document",
+              "item_number",
+              "material_id",
+              "quantity"
+            ]
+          },
+          "vbrk": {
+            "description": "Table storing vbrk records.",
+            "columns": [
+              "billing_number",
+              "sales_document",
+              "billing_date",
+              "total_amount"
+            ]
+          },
+          "vbrp": {
+            "description": "Table storing vbrp records.",
+            "columns": [
+              "billing_number",
+              "item_number",
+              "material_id",
+              "quantity"
+            ]
+          }
+        }
+      },
+      "FILES": {
+        "description": "Use when query asks for explanations, policies, summaries, company information, documentation content, or any textual knowledge stored in uploaded documents.",
+        "trigger_keywords": [
+          "what is",
+          "explain",
+          "describe",
+          "tell me about",
+          "who is",
+          "where is",
+          "what does",
+          "summarize",
+          "policy",
+          "process",
+          "company"
+        ],
+        "example_queries": [
+          "What is the company name?",
+          "Explain the procurement process",
+          "What does the company do?",
+          "Where is the headquarters?",
+          "Summarize the uploaded document"
+        ],
+        "vector_store_info": {
+          "collection": "saarthi_unstructured",
+          "points_count": 3
+        }
+      },
+      "API": {
+        "description": "Use when query needs real-time data, live statuses, or explicitly matches any available integration capabilities listed in registered_tools below.",
+        "trigger_keywords": [
+          "real-time",
+          "live",
+          "current status",
+          "api",
+          "endpoint",
+          "connection",
+          "integration",
+          "latest",
+          "lookup",
+          "fetch external"
+        ],
+        "example_queries": [
+          "What is the current stock price?",
+          "Check the API connection status",
+          "Get live data from the endpoint",
+          "What does the API return for this request?"
+        ],
+        "registered_tools": [
+          {
+            "name": "university_names",
+            "description": "Use this tool to find and retrieve list details of universities, including their official website domains and country locations",
+            "method": "GET",
+            "endpoint": "search?country=United+States"
+          }
+        ]
+      }
+    },
+    "routing_rules": {
+      "rule_1": "If query mentions table names or columns shown under DB.tables -> always choose DB",
+      "rule_2": "If query has count/sum/list/show/how many -> prefer DB",
+      "rule_3": "If query asks what/why/explain/describe and matches FILES content -> prefer FILES",
+      "rule_4": "If query asks for live/real-time data or matches a registered_tools name/description under API -> always choose API",
+      "rule_5": "If query could match more than one active datasource -> return all matching ones, e.g. [\"DB\", \"FILES\"]",
+      "rule_6": "When in doubt between DB and FILES -> prefer FILES",
+      "output_format": "Return ONLY a JSON array. Example: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"DB\", \"FILES\"]"
+    },
+    "generated_at": "2026-06-30T13:31:04.268817Z"
+  }
+}

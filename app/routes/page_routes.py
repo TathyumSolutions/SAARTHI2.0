@@ -15,7 +15,7 @@ def show_login_page():
     When opening http://localhost:5000/, this forces the 
     login page to be the very first gatekeeper screen.
     """
-    return render_template('login.html')
+    return render_template('saarthi_login.html')
 @bp.route('/index')
 def index():
     """Main dashboard page"""
@@ -110,11 +110,19 @@ def teradata():
 def cassandra():
     return render_template('databases/cassandra.html')
 
+
+
 # Database Connections Management
 @bp.route('/database_connections')
 def database_connections():
     """Database connections management page"""
     return render_template('database_connections.html')
+
+#API integration
+@bp.route('/api_connectors/rest_apis')
+def rest_apis_page():
+    print("Rendering rest_apis fields")
+    return render_template('api_connectors/rest_apis.html')
 
 # AI Models
 @bp.route('/models/claude-sonnet')

@@ -91,75 +91,75 @@ class LLMService:
             "num_ctx":8192
         }
 
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        schema_path = os.path.join(BASE_DIR, 'databridge_services', 'sap_schema_with_sap_comments.json')
+    #     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    #     schema_path = os.path.join(BASE_DIR, 'databridge_services', 'sap_schema_with_sap_comments.json')
         
-        try:
-            with open(schema_path, 'r') as f:
-                self.schema_data = json.load(f)
+    #     try:
+    #         with open(schema_path, 'r') as f:
+    #             self.schema_data = json.load(f)
             
-            # Pre-compile human-readable string version for LLM context fallback
-            tables_dict = self.schema_data.get("tables", self.schema_data)
+    #         # Pre-compile human-readable string version for LLM context fallback
+    #         tables_dict = self.schema_data.get("tables", self.schema_data)
             
-            schema_lines = []
-            for table_name, table_info in tables_dict.items():
-                cols_dict = table_info.get("columns", {})
-                cols_list = list(cols_dict.keys())
-                schema_lines.append(f"Table '{table_name}': columns = {', '.join(cols_list)}")
+    #         schema_lines = []
+    #         for table_name, table_info in tables_dict.items():
+    #             cols_dict = table_info.get("columns", {})
+    #             cols_list = list(cols_dict.keys())
+    #             schema_lines.append(f"Table '{table_name}': columns = {', '.join(cols_list)}")
             
-            self.schema_str = "\n".join(schema_lines)
-            print("✅ Schema loaded successfully into LLMService memory")
-        except Exception as e:
-            print(f"⚠️ Schema loading failed: {e}")
-            self.schema_data = {}
-            self.schema_str = "No schema available"
+    #         self.schema_str = "\n".join(schema_lines)
+    #         print("✅ Schema loaded successfully into LLMService memory")
+    #     except Exception as e:
+    #         print(f"⚠️ Schema loading failed: {e}")
+    #         self.schema_data = {}
+    #         self.schema_str = "No schema available"
 
 
-        # ============================================
-        # PREBUILD LOOKUP KEYWORDS FOR FAST HEURISTICS
-        # ============================================
-        self.schema_keywords = self.build_schema_keywords()
-        print(f"✅ Loaded {len(self.schema_keywords)} quick-lookup schema tokens")
+    #     # ============================================
+    #     # PREBUILD LOOKUP KEYWORDS FOR FAST HEURISTICS
+    #     # ============================================
+    #     self.schema_keywords = self.build_schema_keywords()
+    #     print(f"✅ Loaded {len(self.schema_keywords)} quick-lookup schema tokens")
 
-        self.sql_patterns = {
-            "list", "show", "count", "total", "find", "fetch", 
-            "display", "records", "entries", "all", "how many", 
-            "top", "highest", "lowest", "average", "sum"
-        }
+    #     self.sql_patterns = {
+    #         "list", "show", "count", "total", "find", "fetch", 
+    #         "display", "records", "entries", "all", "how many", 
+    #         "top", "highest", "lowest", "average", "sum"
+    #     }
 
-    # --- Fast Lookup Helper Methods ---
+    # # --- Fast Lookup Helper Methods ---
     
-    def build_schema_keywords(self):
-        keywords = set()
-        # Safe handling for the "tables" wrapper key in your schema JSON layout
-        tables_dict = self.schema_data.get("tables", self.schema_data)
+    # def build_schema_keywords(self):
+    #     keywords = set()
+    #     # Safe handling for the "tables" wrapper key in your schema JSON layout
+    #     tables_dict = self.schema_data.get("tables", self.schema_data)
         
-        for table_name, table_info in tables_dict.items():
-            keywords.add(str(table_name).lower())
+    #     for table_name, table_info in tables_dict.items():
+    #         keywords.add(str(table_name).lower())
             
-            # Extract nested keys from inside the columns dictionary block
-            cols_dict = table_info.get("columns", {})
-            if isinstance(cols_dict, dict):
-                for col_name in cols_dict.keys():
-                    keywords.add(str(col_name).lower())
-                    # Split column names containing underscores to capture separate words
-                    if "_" in col_name:
-                        keywords.update(col_name.lower().split("_"))
+    #         # Extract nested keys from inside the columns dictionary block
+    #         cols_dict = table_info.get("columns", {})
+    #         if isinstance(cols_dict, dict):
+    #             for col_name in cols_dict.keys():
+    #                 keywords.add(str(col_name).lower())
+    #                 # Split column names containing underscores to capture separate words
+    #                 if "_" in col_name:
+    #                     keywords.update(col_name.lower().split("_"))
                         
-        keywords = {kw.strip() for kw in keywords if len(kw.strip()) > 1}
-        return keywords
+    #     keywords = {kw.strip() for kw in keywords if len(kw.strip()) > 1}
+    #     return keywords
 
     
 
-    def fast_sql_check(self, user_query):
-        clean_query = re.sub(r'[^\w\s]', ' ', user_query.lower())
-        query_words = set(clean_query.split())
-        matched_keywords = query_words.intersection(self.schema_keywords)
-        return list(matched_keywords)
+    # def fast_sql_check(self, user_query):
+    #     clean_query = re.sub(r'[^\w\s]', ' ', user_query.lower())
+    #     query_words = set(clean_query.split())
+    #     matched_keywords = query_words.intersection(self.schema_keywords)
+    #     return list(matched_keywords)
 
-    def has_sql_intent(self, user_query):
-        query_lower = user_query.lower()
-        return any(pattern in query_lower for pattern in self.sql_patterns)   
+    # def has_sql_intent(self, user_query):
+    #     query_lower = user_query.lower()
+    #     return any(pattern in query_lower for pattern in self.sql_patterns)   
 
     # --- Placeholder Functions (Kept exactly as requested) ---
     def generate_sql(self, natural_language_query, database_schema):
@@ -232,9 +232,48 @@ class LLMService:
         except Exception as e:
             return {"error": f"Processing failed: {str(e)}"}
 
-  
+    
+    # def perform_intent_analysis(self, user_query, model_name, custom_key):
+    #     """Helper to handle Step 2 intent analysis dynamically."""
+    #     analysis_prompt = f"Describe the analysis of this query in one short sentence: '{user_query}'. Output only the sentence."
+        
+    #     try:
+    #         # Check if it's one of your pre-configured GPT models
+    #         if model_name in self.models:
+    #             messages = [HumanMessage(content=analysis_prompt)]
+    #             return self.models[model_name].invoke(messages).content.strip()
+            
+    #         # Logic for other providers (Claude, Gemini, etc.) would go here...
+    #         # ... (same logic as the snippet I provided earlier)
+            
+    #     except Exception:
+    #         return "Analyzing natural language inquiry for document matching modules."
+        
+    # def perform_intent_analysis(self, user_query, model_name, custom_key):
+    #     """Helper to handle Step 2 intent analysis dynamically."""
+    #     analysis_prompt = f"Describe the analysis of this query in one short sentence: '{user_query}'. Output only the sentence."
+    #     messages = [HumanMessage(content=analysis_prompt)]
+        
+    #     try:
+    #         # 1. Check if the model_name is one of your pre-configured GPT models
+    #         if model_name in self.models:
+    #             # If a custom_key is provided, we override the default key for this specific call
+    #             if custom_key:
+    #                 # Temporary instance with the custom key
+    #                 temp_llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key)
+    #                 return temp_llm.invoke(messages).content.strip()
+                
+    #             # Otherwise, use the pre-initialized model
+    #             return self.models[model_name].invoke(messages).content.strip()
+            
+    #         # 2. If it's not a pre-configured model, it returns the default
+    #         return "Analyzing natural language inquiry for document matching modules."
+            
+    #     except Exception as e:
+    #         print(f"Analysis Error: {e}")
+    #         return "Analyzing natural language inquiry for document matching modules."    
 
-    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key=''):
+    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions=''):
         """
         Retrieves relevant chunks from Qdrant and updates the live steps 
         using the new structured event payload layout.
@@ -243,32 +282,39 @@ class LLMService:
         session_id = str(session_id)
         
         # ========================================================
-        # --- CODE CHANGE START ---
+       
         # HELPER FUNCTION TO STREAM DICTIONARY OBJECTS TO THE NEW UI
         # ========================================================
         def push_rag_event(event_type, title, description):
+            ui_title = title
+            if title == "Query Intent Analysis":
+                ui_title = "Context Intent Analysis"
+            
             payload = {
                 "event": event_type,
                 "title": title,
                 "description": description,
                 "is_sql": False
             }
+
             if event_type == "start":
                 rag_chain_of_thought.append(f"{title} - {description}")
             
             # Pushes the required map data structure down to StepStreamManager
             stream_manager.push_step(session_id, payload, is_sql=False)
             time.sleep(0.3) # Give frontend rendering engine time to execute animations
-        # --- CODE CHANGE END ---
+        
         # ========================================================
 
         try:
             # ========================================================
             # STEP 1: INQUIRY RECEIVED
             # ========================================================
-            # --- CODE CHANGE START ---
+            push_rag_event("start", "Query Received", f"'{user_query}'")
+            push_rag_event("complete", "Query Received", f"'{user_query}'")
+           
             # Old implementation: stream_manager.push_step(session_id, "Step 1: Document Query Parsing...", False)
-            push_rag_event("start", "Document Query Parsing", f"Analyzing raw unstructured prompt: '{user_query}'")
+            push_rag_event("start", "Query Parsing", f"Analyzing raw unstructured prompt: '{user_query}'")
             # --- CODE CHANGE END ---
             
             client = QdrantClient(url=self.qdrant_url)
@@ -279,31 +325,106 @@ class LLMService:
             )
             
             # --- CODE CHANGE START ---
-            push_rag_event("complete", "Document Query Parsing", "Query successfully processed and converted to dense vectors.")
+            push_rag_event("complete", "Query Parsing", "Query successfully processed and converted to dense vectors.")
             # --- CODE CHANGE END ---
 
             # ========================================================
             # STEP 2: INTENT ANALYSIS
             # ========================================================
+
+            # push_rag_event("start", "Context Intent Analysis", "Analyzing...")
+            # analysis_text = self.perform_intent_analysis(user_query, model_name, custom_key)
+            # push_rag_event("complete", "Context Intent Analysis", analysis_text)
             # --- CODE CHANGE START ---
-            push_rag_event("start", "Context Intent Analysis", "Querying local LLM instance for contextual definition profiles...")
-            # --- CODE CHANGE END ---
+            # ========================================================
+            # STEP 2: INTENT ANALYSIS
+            # ========================================================
+            push_rag_event("start", "Query Intent Analysis", f"Querying {model_name} instance for contextual definition profiles...")
+            
+            analysis_prompt = f"Describe the analysis of this query in one short sentence: '{user_query}'. Output only the sentence."
             
             try:
-                cot_payload = {
-                    "model": self.ollama_config["model"],
-                    "prompt": f"Describe the analysis of this query in one short sentence: '{user_query}'. Output only the sentence.",
-                    "stream": False,
-                    "options": {"temperature": self.ollama_config["temperature"]}
-                }
-                cot_res = requests.post(self.ollama_config["url"], json=cot_payload, timeout=300)
-                analysis_text = cot_res.json().get("response", "Analyzing document index for relevant parameters.").strip()
-            except Exception:
+                # 1. CLOUD OPENAI INSTANCES FROM THE DICTIONARY
+                if model_name in self.models:
+                    messages = [HumanMessage(content=analysis_prompt)]
+                    ai_response = self.models[model_name].invoke(messages)
+                    analysis_text = ai_response.content.strip()
+                
+                # 2. DYNAMIC CUSTOM API ROUTING (Claude, Gemini, DeepSeek, etc.)
+                elif str(model_name).startswith("api://"):
+                    actual_model = model_name.replace("api://", "").lower()
+                    messages = [HumanMessage(content=analysis_prompt)]
+                    
+                    if "claude" in actual_model:
+                        from langchain_anthropic import ChatAnthropic
+                        dynamic_llm = ChatAnthropic(
+                            model=actual_model,
+                            temperature=0,
+                            anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY")
+                        )
+                    elif "gemini" in actual_model:
+                        from langchain_google_genai import ChatGoogleGenerativeAI
+                        dynamic_llm = ChatGoogleGenerativeAI(
+                            model=actual_model,
+                            temperature=0,
+                            google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY")
+                        )
+                    elif "deepseek" in actual_model:
+                        dynamic_llm = ChatOpenAI(
+                            model=actual_model,
+                            temperature=0,
+                            openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"),
+                            openai_api_base="https://api.deepseek.com/v1"
+                        )
+                    else:  # Custom GPT models
+                        dynamic_llm = ChatOpenAI(
+                            model=actual_model,
+                            temperature=0,
+                            openai_api_key=custom_key if custom_key else self.openai_key
+                        )
+                    
+                    ai_response = dynamic_llm.invoke(messages)
+                    analysis_text = ai_response.content.strip()
+
+                # 3. DYNAMIC OLLAMA ROUTING
+                elif str(model_name).startswith("ollama://") or model_name == "llama3":
+                    actual_model = model_name.replace("ollama://", "") if str(model_name).startswith("ollama://") else "llama3"
+                    cot_payload = {
+                        "model": actual_model,
+                        "prompt": analysis_prompt,
+                        "stream": False,
+                        "options": {"temperature": self.ollama_config["temperature"]}
+                    }
+                    cot_res = requests.post(self.ollama_config["url"], json=cot_payload, timeout=60)
+                    analysis_text = cot_res.json().get("response", "").strip()
+                
+                else:
+                    analysis_text = "Analyzing natural language inquiry for document matching modules."
+
+            except Exception as e:
+                print(f"⚠️ Step 2 Dynamic Analysis Fallback Trace: {e}")
                 analysis_text = "Analyzing natural language inquiry for document matching modules."
             
-            # --- CODE CHANGE START ---
-            push_rag_event("complete", "Context Intent Analysis", analysis_text)
-            # --- CODE CHANGE END ---
+            push_rag_event("complete", "Query Intent Analysis", analysis_text)
+
+            #################################################
+            # push_rag_event("start", "Context Intent Analysis", "Querying local LLM instance for contextual definition profiles...")
+            # # --- CODE CHANGE END ---
+            # try:
+            #      cot_payload = {
+            #         "model": self.ollama_config["model"],
+            #         "prompt": f"Describe the analysis of this query in one short sentence: '{user_query}'. Output only the sentence.",
+            #         "stream": False,
+            #          "options": {"temperature": self.ollama_config["temperature"]}
+            #     }
+            #      cot_res = requests.post(self.ollama_config["url"], json=cot_payload, timeout=300)
+            #      analysis_text = cot_res.json().get("response", "Analyzing document index for relevant parameters.").strip()
+            # except Exception:
+            #      analysis_text = "Analyzing natural language inquiry for document matching modules."
+            
+            # # # --- CODE CHANGE START ---
+            # push_rag_event("complete", "Context Intent Analysis", analysis_text)
+            # # --- CODE CHANGE END ---
 
             # ========================================================
             # STEP 3: KNOWLEDGE BASE RETRIEVAL
@@ -335,7 +456,7 @@ class LLMService:
             # STEP 4: RESPONSE SYNTHESIS
             # ========================================================
             # --- CODE CHANGE START ---
-            push_rag_event("start", "Response Synthesis", f"Processing matrices through {model_name} to compile answers...")
+            push_rag_event("start", "Output Synthesis", f"Processing matrices through {model_name} to compile answers...")
             # --- CODE CHANGE END ---
 
             system_prompt = (
@@ -344,6 +465,9 @@ class LLMService:
                 "politely say you don't know based on the documents.\n\n"
                 f"CONTEXT:\n{context_text}"
             )
+            if system_instructions.strip():
+                system_prompt += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
+
             if model_name == "llama3":
                 print("🦙 Routing payload to local Ollama [llama3] container layer...")
                 ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
@@ -481,7 +605,7 @@ class LLMService:
             else:
                 raise ValueError(f"Requested model '{model_name}' has no active route handler configuration.")
             # --- CODE CHANGE START ---
-            push_rag_event("complete", "Response Synthesis", "Final descriptive insights generated successfully.")
+            push_rag_event("complete", "Output Synthesis", f"generated response through {model_name}")
             # --- CODE CHANGE END ---
 
             # Final execution loop boundary closeout
@@ -504,181 +628,196 @@ class LLMService:
                 "table": [],
                 "chart": {},
                 "rag_chain_of_thought": rag_chain_of_thought
-            }    
+            } 
+
+_shared_llm_service = LLMService()
+
+def answer_from_docs(user_query, model_name, session_id=1, custom_key='',system_instructions=''):
+    """
+    Top-level module function mapping so your orchestrator router can import 
+    it cleanly without needing class-level structural instantiation overhead.
+    """
+    return _shared_llm_service.answer_from_docs(
+        user_query=user_query, 
+        model_name=model_name, 
+        session_id=session_id, 
+        custom_key=custom_key,
+        system_instructions=''
+    )   
        
 
-    def get_smart_response(self, user_query,model_name, session_id=1,custom_key=''):
-        """
-        Layered high-speed query execution routing pipeline.
-        Uses phi3:mini directly to categorize user query path intent.
-        """
-        try:
-            print("\n" + "=" * 60)
-            print(f"🧠 SMART ROUTER PROCESSING QUERY: {user_query}")
+#     def get_smart_response(self, user_query,model_name, session_id=1,custom_key=''):
+#         """
+#         Layered high-speed query execution routing pipeline.
+#         Uses phi3:mini directly to categorize user query path intent.
+#         """
+#         try:
+#             print("\n" + "=" * 60)
+#             print(f"🧠 SMART ROUTER PROCESSING QUERY: {user_query}")
 
-            # ----------------------------------------------------
-            # LAYER 1: FAST HEURISTIC PATTERN PASS
-            # ----------------------------------------------------
-            matched_keywords = self.fast_sql_check(user_query)
-            sql_intent = self.has_sql_intent(user_query)
+#             # ----------------------------------------------------
+#             # LAYER 1: FAST HEURISTIC PATTERN PASS
+#             # ----------------------------------------------------
+#             matched_keywords = self.fast_sql_check(user_query)
+#             sql_intent = self.has_sql_intent(user_query)
 
-            lower_query = user_query.lower().strip()
+#             lower_query = user_query.lower().strip()
             
-            # 1. Broad conversational/informational phrase triggers
-            rag_phrases = ["what is", "what does", "tell me about", "explain", "meaning of", "who is", "how do i", "where can i"]
+#             # 1. Broad conversational/informational phrase triggers
+#             rag_phrases = ["what is", "what does", "tell me about", "explain", "meaning of", "who is", "how do i", "where can i"]
             
-            # 2. Key operational indicators that clearly target structured computational data
-            sql_indicators = ["total", "how many", "count", "sum", "average", "avg", "list", "top", "maximum", "max", "highest", "lowest"]
+#             # 2. Key operational indicators that clearly target structured computational data
+#             sql_indicators = ["total", "how many", "count", "sum", "average", "avg", "list", "top", "maximum", "max", "highest", "lowest"]
             
-            has_rag_phrase = any(phrase in lower_query for phrase in rag_phrases)
-            has_sql_indicator = any(indicator in lower_query for indicator in sql_indicators)
+#             has_rag_phrase = any(phrase in lower_query for phrase in rag_phrases)
+#             has_sql_indicator = any(indicator in lower_query for indicator in sql_indicators)
             
-            # If a query matches a conversational pattern but contains NO data computation keywords 
-            # and triggers no specific database table keywords, intercept it immediately as a RAG document request.
-            if has_rag_phrase and not has_sql_indicator:
-            #if has_rag_phrase and not (matched_keywords or has_sql_indicator):
-                print("📄 [INTELLIGENT RAG GUARD] -> Pure descriptive intent detected. Routing directly to RAG.")
-                rag_res = self.answer_from_docs(user_query, model_name=model_name,session_id=session_id,custom_key=custom_key)
-                steps_list = rag_res.get("rag_chain_of_thought", [])
-                return {
-                    "answer": rag_res.get("answer"),
-                    "sql": None,
-                    "table": [],
-                    "chart": {},
-                    "steps": steps_list
-                }
+#             # If a query matches a conversational pattern but contains NO data computation keywords 
+#             # and triggers no specific database table keywords, intercept it immediately as a RAG document request.
+#             if has_rag_phrase and not has_sql_indicator:
+#             #if has_rag_phrase and not (matched_keywords or has_sql_indicator):
+#                 print("📄 [INTELLIGENT RAG GUARD] -> Pure descriptive intent detected. Routing directly to RAG.")
+#                 rag_res = self.answer_from_docs(user_query, model_name=model_name,session_id=session_id,custom_key=custom_key)
+#                 steps_list = rag_res.get("rag_chain_of_thought", [])
+#                 return {
+#                     "answer": rag_res.get("answer"),
+#                     "sql": None,
+#                     "table": [],
+#                     "chart": {},
+#                     "steps": steps_list
+#                 }
 
-            # ----------------------------------------------------
-            # LAYER 2: FAST HEURISTIC PATTERN PASS FOR PURE SQL
-            # ----------------------------------------------------
-            if matched_keywords and sql_intent:
-                print("🚀 [FAST PATH TRIGGERED] -> Confirmed structured operational query. Routing straight to SQL.")
-                full_result = run_data_bridge_agent(user_query, session_id=session_id,model_name=model_name,custom_key=custom_key)
-                return full_result["chat_ui"]
+#             # ----------------------------------------------------
+#             # LAYER 2: FAST HEURISTIC PATTERN PASS FOR PURE SQL
+#             # ----------------------------------------------------
+#             if matched_keywords and sql_intent:
+#                 print("🚀 [FAST PATH TRIGGERED] -> Confirmed structured operational query. Routing straight to SQL.")
+#                 full_result = run_data_bridge_agent(user_query, session_id=session_id,model_name=model_name,custom_key=custom_key)
+#                 return full_result["chat_ui"]
 
 
 
-            router_prompt = f"""
-You are an intelligent query router for an enterprise AI system.
+#             router_prompt = f"""
+# You are an intelligent query router for an enterprise AI system.
 
-DATABASE SCHEMA:
-{self.schema_str}
+# DATABASE SCHEMA:
+# {self.schema_str}
 
-USER QUERY:
-"{user_query}"
+# USER QUERY:
+# "{user_query}"
 
-YOUR JOB:
-Decide if this query should be answered from:
-1. SQL - database tables shown above
-2. RAG - uploaded documents/PDFs/text files
+# YOUR JOB:
+# Decide if this query should be answered from:
+# 1. SQL - database tables shown above
+# 2. RAG - uploaded documents/PDFs/text files
 
-RULES:
-- If the query is asking for data that EXISTS as a column in the schema above, choose SQL.
-- If the query is asking for information NOT found in the schema (explanations, descriptions, policies, document content,summaries), choose RAG.
-- If the same word (like "company") exists both in schema AND could be in documents, look at the INTENT:
-  * "List all companies" → SQL (wants rows/records)
-  * "What does the company do?" → RAG (wants description)
-  * "How many companies?" → SQL (wants count)
-  * "Tell me about the company" → RAG (wants explanation)
+# RULES:
+# - If the query is asking for data that EXISTS as a column in the schema above, choose SQL.
+# - If the query is asking for information NOT found in the schema (explanations, descriptions, policies, document content,summaries), choose RAG.
+# - If the same word (like "company") exists both in schema AND could be in documents, look at the INTENT:
+#   * "List all companies" → SQL (wants rows/records)
+#   * "What does the company do?" → RAG (wants description)
+#   * "How many companies?" → SQL (wants count)
+#   * "Tell me about the company" → RAG (wants explanation)
 
-Respond with ONLY: SQL or RAG.
-"""
+# Respond with ONLY: SQL or RAG.
+# """
 
-            response = requests.post(
-                self.ollama_config["url"],
-                json={
-                    "model": self.ollama_config["model"],  # ⚡ Explicitly runs phi3:mini
-                    "prompt": router_prompt,
-                    "stream": False,
-                    "keep_alive": "30m",
-                    "options": {
-                        "temperature": 0.0,
-                        "num_ctx": 8192,
-                        "num_predict": 3,
-                        "num_thread": 4
-                    }
-                },
-                timeout=60
-            )
-            response.raise_for_status()
-            res_text = response.json().get("response", "").strip().upper()
-            print(f"🧠 Router LLM Decision: {res_text}")
+#             response = requests.post(
+#                 self.ollama_config["url"],
+#                 json={
+#                     "model": self.ollama_config["model"],  # ⚡ Explicitly runs phi3:mini
+#                     "prompt": router_prompt,
+#                     "stream": False,
+#                     "keep_alive": "30m",
+#                     "options": {
+#                         "temperature": 0.0,
+#                         "num_ctx": 8192,
+#                         "num_predict": 3,
+#                         "num_thread": 4
+#                     }
+#                 },
+#                 timeout=60
+#             )
+#             response.raise_for_status()
+#             res_text = response.json().get("response", "").strip().upper()
+#             print(f"🧠 Router LLM Decision: {res_text}")
 
-            # ----------------------------------------------------
-            # LAYER 3: PATH SPECIFIC EXECUTION ASSIGNMENT
-            # ----------------------------------------------------
-            if "SQL" in res_text:
-                print("📊 ROUTING DIRECTION -> DATA BRIDGE LANGRAPH NETWORK")
+#             # ----------------------------------------------------
+#             # LAYER 3: PATH SPECIFIC EXECUTION ASSIGNMENT
+#             # ----------------------------------------------------
+#             if "SQL" in res_text:
+#                 print("📊 ROUTING DIRECTION -> DATA BRIDGE LANGRAPH NETWORK")
 
-                import time
-                time.sleep(0.2)
-                stream_manager.push_step(
-                    session_id, 
-                    "Router Analysis - Fast Path Heuristic Triggered: Bypassing router LLM.", 
-                    is_sql=True)
-                full_result = run_data_bridge_agent(user_query, session_id=session_id,model_name=model_name)
-                stream_manager.push_step(session_id, "DONE", is_sql=True)
+#                 import time
+#                 time.sleep(0.2)
+#                 stream_manager.push_step(
+#                     session_id, 
+#                     "Router Analysis - Fast Path Heuristic Triggered: Bypassing router LLM.", 
+#                     is_sql=True)
+#                 full_result = run_data_bridge_agent(user_query, session_id=session_id,model_name=model_name)
+#                 stream_manager.push_step(session_id, "DONE", is_sql=True)
 
-                if isinstance(full_result.get("chat_ui"), dict) and "Error at error_diagnosis" in full_result["chat_ui"].get("answer", ""):
-                    full_result["chat_ui"]["answer"] = (
-                        "I encountered an issue while generating the database query. Please check if the requested column or table exists in your schema."
-                    )
+#                 if isinstance(full_result.get("chat_ui"), dict) and "Error at error_diagnosis" in full_result["chat_ui"].get("answer", ""):
+#                     full_result["chat_ui"]["answer"] = (
+#                         "I encountered an issue while generating the database query. Please check if the requested column or table exists in your schema."
+#                     )
 
-                return full_result["chat_ui"]
-            else:
-                print("📄 ROUTING DIRECTION -> UNSTRUCTURED KNOWLEDGE DATABASE RAG")
-                #return self.answer_from_docs(user_query, session_id=session_id)
-                rag_res = self.answer_from_docs(user_query,model_name=model_name,session_id=session_id,custom_key=custom_key)
-                steps_list = rag_res.get("rag_chain_of_thought", [])
-                #for step in steps_list:
-                #    stream_manager.push_step(session_id, step, is_sql=False)
+#                 return full_result["chat_ui"]
+#             else:
+#                 print("📄 ROUTING DIRECTION -> UNSTRUCTURED KNOWLEDGE DATABASE RAG")
+#                 #return self.answer_from_docs(user_query, session_id=session_id)
+#                 rag_res = self.answer_from_docs(user_query,model_name=model_name,session_id=session_id,custom_key=custom_key)
+#                 steps_list = rag_res.get("rag_chain_of_thought", [])
+#                 #for step in steps_list:
+#                 #    stream_manager.push_step(session_id, step, is_sql=False)
 
-                return {
-                    "answer": rag_res.get("answer"),
-                    "sql": None,
-                    "table": [],
-                    "chart": {},
-                    "steps": steps_list  # Maps rag_chain_of_thought to steps
-                }
-        except requests.exceptions.Timeout:
-            print("⏰ Router processing limit reached -> Fallback to RAG")
-            rag_res = self.answer_from_docs(user_query, model_name=model_name,session_id=session_id,custom_key=custom_key)
-            steps_list = rag_res.get("rag_chain_of_thought", [])
+#                 return {
+#                     "answer": rag_res.get("answer"),
+#                     "sql": None,
+#                     "table": [],
+#                     "chart": {},
+#                     "steps": steps_list  # Maps rag_chain_of_thought to steps
+#                 }
+#         except requests.exceptions.Timeout:
+#             print("⏰ Router processing limit reached -> Fallback to RAG")
+#             rag_res = self.answer_from_docs(user_query, model_name=model_name,session_id=session_id,custom_key=custom_key)
+#             steps_list = rag_res.get("rag_chain_of_thought", [])
             
-            for step in steps_list:
-                stream_manager.push_step(session_id, step, is_sql=False)
-            stream_manager.push_step(session_id, "DONE", is_sql=False)    
-            return {
-                "answer": rag_res.get("answer"),
-                "sql": None,
-                "table": [],
-                "chart": {},
-                "steps": steps_list
-            }
+#             for step in steps_list:
+#                 stream_manager.push_step(session_id, step, is_sql=False)
+#             stream_manager.push_step(session_id, "DONE", is_sql=False)    
+#             return {
+#                 "answer": rag_res.get("answer"),
+#                 "sql": None,
+#                 "table": [],
+#                 "chart": {},
+#                 "steps": steps_list
+#             }
         
-        except Exception as e:
-            import traceback
-            print("\n❌ [CRITICAL SQL PIPELINE FAILURE] The database agent crashed!")
-            traceback.print_exc()
-            stream_manager.push_step(
-                session_id, 
-                "❌ Pipeline Execution Failure detected in Router Layer.", 
-                is_sql=True
-            )
-            stream_manager.push_step(
-                session_id, 
-                f"⚠️ Diagnosed Error: {str(e)}", 
-                is_sql=True
-            )
-            stream_manager.push_step(session_id, "DONE", is_sql=True)
+#         except Exception as e:
+#             import traceback
+#             print("\n❌ [CRITICAL SQL PIPELINE FAILURE] The database agent crashed!")
+#             traceback.print_exc()
+#             stream_manager.push_step(
+#                 session_id, 
+#                 "❌ Pipeline Execution Failure detected in Router Layer.", 
+#                 is_sql=True
+#             )
+#             stream_manager.push_step(
+#                 session_id, 
+#                 f"⚠️ Diagnosed Error: {str(e)}", 
+#                 is_sql=True
+#             )
+#             stream_manager.push_step(session_id, "DONE", is_sql=True)
             
-            return {
-                "answer": f"SQL Execution Error: {str(e)}",
-                "sql": None,
-                "table": [],
-                "chart": {},
-                "steps": [f"Pipeline failed at router layer: {str(e)}"]
-            }
+#             return {
+#                 "answer": f"SQL Execution Error: {str(e)}",
+#                 "sql": None,
+#                 "table": [],
+#                 "chart": {},
+#                 "steps": [f"Pipeline failed at router layer: {str(e)}"]
+#             }
 
         
                   
