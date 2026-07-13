@@ -1,168 +1,34 @@
-# """
-# Authentication API Routes
-# Handles user login, logout, registration, and token management
-# """
-# from flask import Blueprint, request, jsonify
-# from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-
-# bp = Blueprint('auth', __name__, url_prefix='/api/auth')
-
-# @bp.route('/login', methods=['POST'])
-# def login():
-#     """
-#     User login endpoint
-#     Request: { "email": "user@example.com", "password": "password123" }
-#     Response: { "status": "success", "user_id": 42, "email": "..." }
-#     """
-#     data = request.get_json() or {}
-#     email = data.get("email")
-#     password = data.get("password")
-
-#     # Guard clause: ensure data was received
-#     if not email or not password:
-#         return jsonify({"status": "error", "message": "Missing email or password fields."}), 400
-
-#     # Simple local check for testing and demo phases
-#     if email == "sahith@example.com" and password == "password123":
-#         return jsonify({
-#             "status": "success",
-#             "message": "Authentication successful",
-#             "user_id": 42,  # This ID will become the conversation session_id
-#             "email": email
-#         }), 200
-    
-#     # Return an unauthorized error status if text doesn't match
-#     return jsonify({"status": "error", "message": "Invalid email or password combination."}), 401
-
-
-# """
-# Authentication API Routes
-# Handles user login, logout, registration, and token management
-# """
-# from flask import Blueprint, request, jsonify
-# from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-
-# bp = Blueprint('auth', __name__, url_prefix='/api/auth')
-
-# @bp.route('/login', methods=['POST'])
-# def login():
-#     """
-#     User login endpoint
-#     Validates default login credentials for the sign-in screen
-#     """
-#     # Robust data extraction: checks for JSON first, falls back to Form data
-#     data = request.get_json(silent=True) or {}
-    
-#     email = data.get("email") or request.form.get("email")
-#     password = data.get("password") or request.form.get("password")
-
-#     # Guard clause: ensure credentials were sent
-#     if not email or not password:
-#         return jsonify({
-#             "status": "error", 
-#             "message": "Missing email or password fields."
-#         }), 400
-
-#     # Default login credentials validation check
-#     if email == "sahith@example.com" and password == "password123":
-#         return jsonify({
-#             "status": "success",
-#             "message": "Authentication successful",
-#             "user_id": 42,  # Becomes the active conversation session_id
-#             "email": email
-#         }), 200
-    
-#     # Return unauthorized error if credentials do not match
-#     return jsonify({
-#         "status": "error", 
-#         "message": "Invalid email or password combination."
-#     }), 401
-
-
-# #@bp.route('/login', methods=['POST'])
-# #def login():
-# #    """
-# #    User login endpoint
-# #    Request: { "email": "user@example.com", "password": "password123" }
-# #    Response: { "access_token": "...", "user": {...} }
-# #    """
-#     # : Implement login logic
-# #    pass
-
-# @bp.route('/register', methods=['POST'])
-# def register():
-#     """
-#     User registration endpoint
-#     Request: { "email": "user@example.com", "password": "password123", "name": "John Doe" }
-#     Response: { "message": "User registered successfully", "user": {...} }
-#     """
-#     # TODO: Implement registration logic
-#     pass
-
-# @bp.route('/logout', methods=['POST'])
-# @jwt_required()
-# def logout():
-#     """
-#     User logout endpoint
-#     Response: { "message": "Logged out successfully" }
-#     """
-#     # TODO: Implement logout logic (blacklist token)
-#     pass
-
-# @bp.route('/refresh', methods=['POST'])
-# @jwt_required()
-# def refresh_token():
-#     """
-#     Refresh access token
-#     Response: { "access_token": "..." }
-#     """
-#     # TODO: Implement token refresh logic
-#     pass
-
-# @bp.route('/profile', methods=['GET'])
-# @jwt_required()
-# def get_profile():
-#     """
-#     Get current user profile
-#     Response: { "user": {...} }
-#     """
-#     # TODO: Implement get profile logic
-#     pass
-
-# @bp.route('/profile', methods=['PUT'])
-# @jwt_required()
-# def update_profile():
-#     """
-#     Update user profile
-#     Request: { "name": "John Doe", "preferences": {...} }
-#     Response: { "message": "Profile updated", "user": {...} }
-#     """
-#     # TODO: Implement update profile logic
-#     pass
-
-
-
 """
 Authentication API Routes
-Handles user login, logout, registration, and token management
+Handles user login, logout, registration, and token management.
+
+Tokens are issued as httpOnly, Secure cookies (see config/config.py:
+JWT_TOKEN_LOCATION = ['cookies']) rather than returned in the response body,
+so client-side JS never has direct access to the raw JWT.
 """
+import logging
 import os
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    set_access_cookies,
+    set_refresh_cookies,
+    unset_jwt_cookies,
+    jwt_required,
+    get_jwt_identity,
+)
 from werkzeug.security import generate_password_hash, check_password_hash
+
+from app import limiter
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
-# def get_auth_db_connection():
-#     """Establishes an isolated connection to the authentication database."""
-#     base_uri = os.environ.get('ENVIRONMENT_DATABASE_URL') or "postgresql://saarthi:password@db:5432/saarthi_db"
-#     if "saarthi_db" in base_uri:
-#         auth_db_uri = base_uri.replace("saarthi_db", "saarthi_chats_db")
-#     else:
-#         auth_db_uri = "postgresql://saarthi:password@db:5432/saarthi_chats_db"
-#     return psycopg2.connect(auth_db_uri)
 
 def get_auth_db_connection():
     base_uri = os.environ.get('ENVIRONMENT_DATABASE_URL') or "postgresql://saarthi:password@db:5432/saarthi_db"
@@ -174,13 +40,14 @@ def get_auth_db_connection():
 
 
 @bp.route('/register', methods=['POST'])
+@limiter.limit("10 per hour")
 def register():
     """
     User registration endpoint
     Extracts Name, Email, Password, and Confirm Password from JSON or Forms.
     """
     data = request.get_json(silent=True) or {}
-    
+
     name = data.get("name") or request.form.get("name")
     email = data.get("email") or request.form.get("email")
     password = data.get("password") or request.form.get("password")
@@ -220,23 +87,25 @@ def register():
         conn.close()
 
         return jsonify({
-            "status": "success", 
+            "status": "success",
             "message": "User registered successfully"
         }), 201
 
-    except Exception as e:
-        print(f"Registration DB Error: {e}")
+    except Exception:
+        logger.exception("Registration DB error")
         return jsonify({"status": "error", "message": "Internal server registration failure."}), 500
 
 
 @bp.route('/login', methods=['POST'])
+@limiter.limit("10 per minute")
 def login():
     """
     User login endpoint
-    Validates user credentials against Postgres and returns an enterprise JWT access token.
+    Validates user credentials against Postgres and sets a JWT access/refresh
+    cookie pair (plus a readable CSRF cookie) on success.
     """
     data = request.get_json(silent=True) or {}
-    
+
     email = data.get("email") or request.form.get("email")
     password = data.get("password") or request.form.get("password")
 
@@ -257,33 +126,47 @@ def login():
         if not user or not check_password_hash(user['password_hash'], password):
             return jsonify({"status": "error", "message": "Invalid email or password combination."}), 401
 
-        # Generate enterprise JWT secure access token string
-        access_token = create_access_token(identity=str(user['id']))
+        identity = str(user['id'])
+        access_token = create_access_token(identity=identity)
+        refresh_token = create_refresh_token(identity=identity)
 
-        return jsonify({
+        response = jsonify({
             "status": "success",
             "message": "Authentication successful",
-            "access_token": access_token,
             "user": {
                 "user_id": user['id'],
                 "name": user['name'],
                 "email": user['email']
             }
-        }), 200
+        })
+        set_access_cookies(response, access_token)
+        set_refresh_cookies(response, refresh_token)
+        return response, 200
 
-    except Exception as e:
-        print(f"Login DB Error: {e}")
+    except Exception:
+        logger.exception("Login DB error")
         return jsonify({"status": "error", "message": "Internal validation failure."}), 500
+
+
+@bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh_token():
+    """Reissue an access token cookie from a valid refresh token cookie."""
+    identity = get_jwt_identity()
+    access_token = create_access_token(identity=identity)
+
+    response = jsonify({"status": "success", "message": "Token refreshed"})
+    set_access_cookies(response, access_token)
+    return response, 200
 
 
 @bp.route('/logout', methods=['POST'])
 @jwt_required()
 def logout():
-    """
-    User logout endpoint
-    """
-    # Simply tell frontend to drop the token client-side
-    return jsonify({"status": "success", "message": "Logged out successfully"}), 200
+    """User logout endpoint - clears the JWT cookies server-side."""
+    response = jsonify({"status": "success", "message": "Logged out successfully"})
+    unset_jwt_cookies(response)
+    return response, 200
 
 
 @bp.route('/profile', methods=['GET'])
@@ -305,6 +188,6 @@ def get_profile():
             return jsonify({"status": "error", "message": "User profile not found."}), 404
 
         return jsonify({"status": "success", "user": user}), 200
-    except Exception as e:
-        print(f"Profile Fetch Error: {e}")
+    except Exception:
+        logger.exception("Profile fetch error")
         return jsonify({"status": "error", "message": "Failed to load user info."}), 500

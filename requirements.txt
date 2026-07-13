@@ -4,6 +4,7 @@ flask-cors>=4.0.0
 Flask-SQLAlchemy
 Flask-Migrate
 Flask-JWT-Extended
+Flask-Limiter
 python-dotenv==1.1.1
 gunicorn
 gevent==24.10.1

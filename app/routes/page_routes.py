@@ -2,24 +2,48 @@
 Main HTML Pages Routes
 Serves the frontend HTML pages with navigation
 """
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, redirect
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 
 bp = Blueprint('pages', __name__)
 
-print( "I am in the page_routes.py file" )
+
+def _current_user_id():
+    """
+    Returns the JWT identity from the request's cookies, or None if absent/invalid.
+    Any verification failure (missing, expired, malformed, revoked) is treated as
+    "not authenticated" rather than surfaced as an error - that's the correct fail-closed
+    behavior for a page gate.
+    """
+    try:
+        verify_jwt_in_request(optional=True)
+    except Exception:
+        return None
+    return get_jwt_identity()
+
+
 # Home/Dashboard
 
 @bp.route('/')
-def show_login_page():
-    """
-    When opening http://localhost:5000/, this forces the 
-    login page to be the very first gatekeeper screen.
-    """
-    return render_template('saarthi_login.html')
-@bp.route('/index')
 def index():
-    """Main dashboard page"""
+    """Main dashboard page - requires an active session cookie."""
+    if not _current_user_id():
+        return redirect('/login')
     return render_template('index.html')
+
+@bp.route('/index')
+def index_alias():
+    """Alias for the dashboard, kept for backward compatibility."""
+    if not _current_user_id():
+        return redirect('/login')
+    return render_template('index.html')
+
+@bp.route('/login')
+def show_login_page():
+    """Login / sign-up screen. Redirects to the dashboard if already authenticated."""
+    if _current_user_id():
+        return redirect('/')
+    return render_template('saarthi_login.html')
 
 # Data Sources - Unstructured Data
 @bp.route('/unstructured_data')

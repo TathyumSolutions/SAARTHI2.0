@@ -12,8 +12,17 @@ class Config:
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'jwt-secret-key')
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
-    
+
+    # Cookie-based JWT (no token in localStorage / JS-readable storage)
+    JWT_TOKEN_LOCATION = ['cookies']
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=30)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)
+    JWT_COOKIE_SECURE = os.getenv('FLASK_ENV') != 'development'
+    JWT_COOKIE_SAMESITE = 'Lax'
+    JWT_COOKIE_CSRF_PROTECT = True
+    JWT_ACCESS_COOKIE_PATH = '/'
+    JWT_REFRESH_COOKIE_PATH = '/api/auth/refresh'
+
     # CORS
     CORS_HEADERS = 'Content-Type'
     
@@ -50,6 +59,14 @@ class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
     TESTING = False
+
+    @staticmethod
+    def validate():
+        """Fail fast rather than silently running production on dev-grade secrets."""
+        if not os.getenv('SECRET_KEY') or not os.getenv('JWT_SECRET_KEY'):
+            raise RuntimeError(
+                'SECRET_KEY and JWT_SECRET_KEY must be set via environment variables in production'
+            )
 
 class TestingConfig(Config):
     """Testing configuration"""

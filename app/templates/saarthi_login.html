@@ -1283,9 +1283,8 @@
           const result = await response.json();
 
           if (response.ok && result.status === "success") {
-              // Store the secure JWT access token safely inside browser storage
-              localStorage.setItem('saarthi_token', result.access_token);
-              window.location.href = '/index'; 
+              // Server has set the JWT as an httpOnly cookie; nothing to store client-side.
+              window.location.href = '/';
           } else {
               alert(result.message || "Invalid credentials.");
           }
