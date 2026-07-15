@@ -1432,6 +1432,12 @@
             btn.addEventListener('click', function() {
                 document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
+                const label = this.textContent.trim();
+                if (label === 'API Mode') {
+                    window.location.href = '/apidocs';
+                } else if (label === 'Standalone' || label === 'Chat') {
+                    window.location.href = '/index';
+                }
             });
         });
 

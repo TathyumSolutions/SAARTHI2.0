@@ -21,6 +21,11 @@ def index():
     """Main dashboard page"""
     return render_template('index.html')
 
+@bp.route('/api_mode')
+def api_mode():
+    """API Mode page showing Swagger docs inside the app layout."""
+    return render_template('apidocs.html')
+
 # Data Sources - Unstructured Data
 @bp.route('/unstructured_data')
 def unstructured_data():

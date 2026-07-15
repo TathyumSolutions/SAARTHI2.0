@@ -26,8 +26,37 @@
         ],
         "vector_store_info": {
           "collection": "saarthi_unstructured",
-          "points_count": 1
+          "points_count": 9
         }
+      },
+      "API": {
+        "description": "Use when query needs real-time data, live statuses, or explicitly matches any available integration capabilities listed in registered_tools below.",
+        "trigger_keywords": [
+          "real-time",
+          "live",
+          "current status",
+          "api",
+          "endpoint",
+          "connection",
+          "integration",
+          "latest",
+          "lookup",
+          "fetch external"
+        ],
+        "example_queries": [
+          "What is the current stock price?",
+          "Check the API connection status",
+          "Get live data from the endpoint",
+          "What does the API return for this request?"
+        ],
+        "registered_tools": [
+          {
+            "name": "CP",
+            "description": "/v1/bpi/currentprice.json",
+            "method": "GET",
+            "endpoint": "/v1/bpi/currentprice.json"
+          }
+        ]
       }
     },
     "routing_rules": {
@@ -39,6 +68,6 @@
       "rule_6": "When in doubt between DB and FILES -> prefer FILES",
       "output_format": "Return ONLY a JSON array. Example: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"DB\", \"FILES\"]"
     },
-    "generated_at": "2026-07-05T05:56:51.330989Z"
+    "generated_at": "2026-07-09T12:27:44.075230Z"
   }
 }
