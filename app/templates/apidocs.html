@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}API Mode - Saarthi{% endblock %}
+
+{% block content %}
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+        <h2 style="color: #fff; margin-bottom: 16px;">API Mode</h2>
+        <div style="background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 16px; min-height: calc(100vh - 160px);">
+            <iframe src="/apidocs" title="Swagger API Docs" style="width: 100%; height: 100%; border: none; min-height: 800px; background: #111;"></iframe>
+        </div>
+    </div>
+{% endblock %}

@@ -250,8 +250,9 @@
         <div class="header-actions">
             <div class="mode-selector">
                 <button class="mode-btn active" onclick="window.location.href='/index'">Chat</button>
-                <button class="mode-btn">Analytics</button>
-                <button class="mode-btn">Reports</button>
+                <button class="mode-btn" onclick="window.location.href='/api_mode'">API</button>
+                <button class="mode-btn" onclick="window.location.href='/analytics'">Analytics</button>
+                <button class="mode-btn" onclick="window.location.href='/reports'">Reports</button>
             </div>
             <div class="user-profile">U</div>
         </div>
@@ -318,73 +319,17 @@
                 
                 <div class="section-item">
                     <div class="item-icon">👥</div>
-                    <span>Role Management</span>
+                    <span>Admin</span>
                     <span class="expand-icon">▼</span>
                 </div>
                 <div class="sub-items">
-                    <div class="sub-item">Users</div>
-                    <div class="sub-item">Groups</div>
-                    <div class="sub-item">Permissions</div>
-                    <div class="sub-item">Access Policies</div>
+                    <div class="sub-item">Resource Mapping</div>
                 </div>
 
-                <div class="section-item">
-                    <div class="item-icon">⚙️</div>
-                    <span>Configuration</span>
-                </div>
-
-                <div class="section-item">
-                    <div class="item-icon">📊</div>
-                    <span>Analytics Dashboard</span>
-                </div>
-
-                <div class="section-item">
-                    <div class="item-icon">🔒</div>
-                    <span>Security Center</span>
-                </div>
+               
             </div>
 
-            <!-- Automation Section -->
-            <div class="sidebar-section automation-section">
-                <div class="section-title">Automation & Integration</div>
-                
-                <div class="section-item">
-                    <div class="item-icon">🤖</div>
-                    <span>Agentic AI</span>
-                    <span class="badge">New</span>
-                </div>
-
-                <div class="section-item">
-                    <div class="item-icon">⚡</div>
-                    <span>Power Automate</span>
-                </div>
-
-                <div class="section-item">
-                    <div class="item-icon">🔄</div>
-                    <span>RPA Workflows</span>
-                </div>
-
-                <div class="section-item">
-                    <div class="item-icon">🔌</div>
-                    <span>API Connectors</span>
-                    <span class="expand-icon">▼</span>
-                </div>
-                <div class="sub-items">
-                    <div class="sub-item">REST APIs</div>
-                    <div class="sub-item">GraphQL</div>
-                    <div class="sub-item">Webhooks</div>
-                </div>
-
-                <div class="section-item">
-                    <div class="item-icon">📋</div>
-                    <span>Zapier Integration</span>
-                </div>
-
-                <div class="section-item">
-                    <div class="item-icon">🎯</div>
-                    <span>Custom Workflows</span>
-                </div>
-            </div>
+           
         </div>
 
         <!-- Center Panel -->
@@ -460,7 +405,21 @@
             });
         });
 
-        
+        document.addEventListener('DOMContentLoaded', function() {
+            const path = window.location.pathname;
+            const apiButton = document.querySelector('.mode-selector button:nth-child(2)');
+            const chatButton = document.querySelector('.mode-selector button:nth-child(1)');
+            const analyticsButton = document.querySelector('.mode-selector button:nth-child(3)');
+            const reportsButton = document.querySelector('.mode-selector button:nth-child(4)');
+
+            if (path === '/api_mode') {
+                apiButton?.classList.add('active');
+                chatButton?.classList.remove('active');
+            } else if (path === '/index' || path === '/') {
+                chatButton?.classList.add('active');
+                apiButton?.classList.remove('active');
+            }
+        });
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>

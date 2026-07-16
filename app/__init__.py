@@ -6,6 +6,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
+from flasgger import Swagger
 from config.config import config
 import os
 #from app.routes.auth_routes import bp as auth_blueprint
@@ -52,6 +53,7 @@ def create_app(config_name='development'):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
+    Swagger(app)
     print("Initialisation completed")
     
     # Register blueprints
@@ -60,6 +62,7 @@ def create_app(config_name='development'):
         auth_routes,
         workspace_routes,
         api_routes,
+        api_v1_routes,
         llm_routes,
         database_routes,
         query_routes,
@@ -84,6 +87,7 @@ def create_app(config_name='development'):
     app.register_blueprint(datasource_routes.bp)
     app.register_blueprint(analytics_routes.bp)
     app.register_blueprint(chat_routes.bp)
+    app.register_blueprint(api_v1_routes.bp)
     app.register_blueprint(history_routes.bp)
     app.register_blueprint(export_routes.bp)
     app.register_blueprint(model_config_routes.bp)
