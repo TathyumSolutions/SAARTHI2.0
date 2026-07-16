@@ -1,3 +1,6 @@
+
+
+Saarthi · HTML
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,7 +14,7 @@
             padding: 0;
             box-sizing: border-box;
         }
-
+ 
         :root {
             --primary-blue: #0078D4;
             --dark-bg: #1E1E1E;
@@ -25,7 +28,7 @@
             --accent-orange: #CE9178;
             --accent-purple: #C586C0;
         }
-
+ 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: var(--dark-bg);
@@ -33,7 +36,7 @@
             height: 100vh;
             overflow: hidden;
         }
-
+ 
         .header {
             background: var(--sidebar-bg);
             padding: 12px 24px;
@@ -43,13 +46,13 @@
             justify-content: space-between;
             height: 60px;
         }
-
+ 
         .logo-section {
             display: flex;
             align-items: center;
             gap: 12px;
         }
-
+ 
         .logo {
             width: 36px;
             height: 36px;
@@ -61,19 +64,19 @@
             font-weight: bold;
             font-size: 20px;
         }
-
+ 
         .app-name {
             font-size: 20px;
             font-weight: 600;
             letter-spacing: 0.5px;
         }
-
+ 
         .header-actions {
             display: flex;
             gap: 16px;
             align-items: center;
         }
-
+ 
         .mode-selector {
             display: flex;
             background: var(--panel-bg);
@@ -81,7 +84,7 @@
             overflow: hidden;
             border: 1px solid var(--border-color);
         }
-
+ 
         .mode-btn {
             padding: 8px 20px;
             background: transparent;
@@ -91,17 +94,17 @@
             font-size: 13px;
             transition: all 0.2s;
         }
-
+ 
         .mode-btn.active {
             background: var(--primary-blue);
             color: white;
         }
-
+ 
         .mode-btn:hover:not(.active) {
             background: var(--hover-bg);
             color: var(--text-primary);
         }
-
+ 
         .user-profile {
             width: 32px;
             height: 32px;
@@ -113,12 +116,12 @@
             cursor: pointer;
             font-size: 14px;
         }
-
+ 
         .main-container {
             display: flex;
             height: calc(100vh - 60px);
         }
-
+ 
         .left-sidebar {
             width: 280px;
             background: var(--sidebar-bg);
@@ -127,12 +130,12 @@
             flex-direction: column;
             overflow-y: auto;
         }
-
+ 
         .sidebar-section {
             padding: 16px;
             border-bottom: 1px solid var(--border-color);
         }
-
+ 
         .section-title {
             font-size: 11px;
             font-weight: 600;
@@ -141,7 +144,7 @@
             margin-bottom: 12px;
             letter-spacing: 0.5px;
         }
-
+ 
         .section-item {
             padding: 10px 12px;
             margin-bottom: 4px;
@@ -153,15 +156,15 @@
             transition: all 0.2s;
             font-size: 14px;
         }
-
+ 
         .section-item:hover {
             background: var(--hover-bg);
         }
-
+ 
         .section-item.active {
             background: var(--primary-blue);
         }
-
+ 
         .item-icon {
             width: 18px;
             height: 18px;
@@ -169,18 +172,18 @@
             align-items: center;
             justify-content: center;
         }
-
+ 
         .expand-icon {
             margin-left: auto;
             font-size: 12px;
             transition: transform 0.2s;
         }
-
+ 
         .sub-items {
             margin-left: 28px;
             margin-top: 4px;
         }
-
+ 
         .sub-item {
             padding: 8px 12px;
             font-size: 13px;
@@ -191,18 +194,18 @@
             display: flex;
             align-items: center;
         }
-
+ 
         .sub-item:hover {
             background: var(--hover-bg);
             color: var(--text-primary);
         }
-
+ 
         .sub-item .badge {
             margin-left: auto;
             font-size: 9px;
             padding: 2px 6px;
         }
-
+ 
         select {
             width: 100%;
             padding: 10px;
@@ -214,24 +217,24 @@
             cursor: pointer;
             margin-top: 8px;
         }
-
+ 
         select:focus {
             outline: none;
             border-color: var(--primary-blue);
         }
-
+ 
         option {
             background: var(--panel-bg);
             color: var(--text-primary);
         }
-
+ 
         .center-panel {
             flex: 1;
             display: flex;
             flex-direction: column;
             background: var(--dark-bg);
         }
-
+ 
         .llm-selector-bar {
             background: var(--sidebar-bg);
             padding: 12px 20px;
@@ -240,37 +243,37 @@
             gap: 20px;
             align-items: center;
         }
-
+ 
         .llm-group {
             display: flex;
             align-items: center;
             gap: 10px;
             flex: 1;
         }
-
+ 
         .llm-label {
             font-size: 12px;
             color: var(--text-secondary);
             min-width: 100px;
         }
-
+ 
         .llm-dropdown {
             flex: 1;
             max-width: 250px;
         }
-
+ 
         .chat-container {
             flex: 1;
             overflow-y: auto;
             padding: 20px;
         }
-
+ 
         .message {
             margin-bottom: 20px;
             display: flex;
             gap: 12px;
         }
-
+ 
         .message-avatar {
             width: 32px;
             height: 32px;
@@ -282,34 +285,34 @@
             font-size: 14px;
             flex-shrink: 0;
         }
-
+ 
         .message-content {
             flex: 1;
         }
-
+ 
         .message-header {
             display: flex;
             align-items: center;
             gap: 10px;
             margin-bottom: 8px;
         }
-
+ 
         .message-author {
             font-weight: 600;
             font-size: 14px;
         }
-
+ 
         .message-time {
             font-size: 12px;
             color: var(--text-secondary);
         }
-
+ 
         .message-text {
             color: var(--text-secondary);
             line-height: 1.6;
             font-size: 14px;
         }
-
+ 
         .visualization-panel {
             background: var(--panel-bg);
             border: 1px solid var(--border-color);
@@ -317,20 +320,20 @@
             padding: 16px;
             margin-top: 12px;
         }
-
+ 
         .viz-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 12px;
         }
-
+ 
         .viz-title {
             font-size: 13px;
             font-weight: 600;
             color: var(--accent-green);
         }
-
+ 
         .viz-type {
             font-size: 11px;
             color: var(--text-secondary);
@@ -338,7 +341,7 @@
             padding: 4px 10px;
             border-radius: 3px;
         }
-
+ 
         .chart-placeholder {
             background: var(--dark-bg);
             border: 1px solid var(--border-color);
@@ -346,18 +349,18 @@
             padding: 16px;
             height: 280px;
         }
-
+ 
         .chart-canvas {
             width: 100% !important;
             height: 100% !important;
         }
-
+ 
         .db-icon {
             width: 24px;
             height: 24px;
             object-fit: contain;
         }
-
+ 
         .llm-section-header {
             font-size: 11px;
             font-weight: 600;
@@ -366,7 +369,7 @@
             margin-bottom: 8px;
             letter-spacing: 0.5px;
         }
-
+ 
         .insight-box {
             background: var(--panel-bg);
             border-left: 3px solid var(--accent-green);
@@ -374,59 +377,59 @@
             border-radius: 4px;
             margin-top: 12px;
         }
-
+ 
         .insight-title {
             font-size: 12px;
             font-weight: 600;
             color: var(--accent-green);
             margin-bottom: 8px;
         }
-
+ 
         .insight-text {
             font-size: 13px;
             color: var(--text-secondary);
             line-height: 1.6;
         }
-
+ 
         .metric-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 12px;
             margin-top: 12px;
         }
-
+ 
         .metric-card {
             background: var(--dark-bg);
             padding: 12px;
             border-radius: 4px;
             border: 1px solid var(--border-color);
         }
-
+ 
         .metric-label {
             font-size: 11px;
             color: var(--text-secondary);
             margin-bottom: 4px;
         }
-
+ 
         .metric-value {
             font-size: 20px;
             font-weight: 600;
             color: var(--text-primary);
         }
-
+ 
         .metric-change {
             font-size: 11px;
             margin-top: 4px;
         }
-
+ 
         .metric-change.positive {
             color: var(--accent-green);
         }
-
+ 
         .metric-change.negative {
             color: #F48771;
         }
-
+ 
         /* Modal Styles */
         .modal-overlay {
             display: none;
@@ -440,11 +443,11 @@
             align-items: center;
             justify-content: center;
         }
-
+ 
         .modal-overlay.active {
             display: flex;
         }
-
+ 
         .modal-content {
             background: var(--sidebar-bg);
             border: 1px solid var(--border-color);
@@ -455,7 +458,7 @@
             overflow-y: auto;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
-
+ 
         .modal-header {
             padding: 20px 24px;
             border-bottom: 1px solid var(--border-color);
@@ -463,12 +466,12 @@
             align-items: center;
             justify-content: space-between;
         }
-
+ 
         .modal-title {
             font-size: 18px;
             font-weight: 600;
         }
-
+ 
         .modal-close {
             background: transparent;
             border: none;
@@ -484,20 +487,20 @@
             border-radius: 4px;
             transition: all 0.2s;
         }
-
+ 
         .modal-close:hover {
             background: var(--hover-bg);
             color: var(--text-primary);
         }
-
+ 
         .modal-body {
             padding: 24px;
         }
-
+ 
         .form-group {
             margin-bottom: 20px;
         }
-
+ 
         .form-label {
             display: block;
             font-size: 13px;
@@ -505,7 +508,7 @@
             color: var(--text-primary);
             margin-bottom: 8px;
         }
-
+ 
         .form-input {
             width: 100%;
             padding: 10px 12px;
@@ -516,18 +519,18 @@
             font-size: 14px;
             font-family: 'Segoe UI', sans-serif;
         }
-
+ 
         .form-input:focus {
             outline: none;
             border-color: var(--primary-blue);
         }
-
+ 
         .form-help {
             font-size: 12px;
             color: var(--text-secondary);
             margin-top: 6px;
         }
-
+ 
         .modal-footer {
             padding: 16px 24px;
             border-top: 1px solid var(--border-color);
@@ -535,7 +538,7 @@
             gap: 12px;
             justify-content: flex-end;
         }
-
+ 
         .btn {
             padding: 10px 20px;
             border-radius: 4px;
@@ -545,51 +548,51 @@
             border: none;
             transition: all 0.2s;
         }
-
+ 
         .btn-primary {
             background: var(--primary-blue);
             color: white;
         }
-
+ 
         .btn-primary:hover {
             background: #106EBE;
         }
-
+ 
         .btn-secondary {
             background: var(--panel-bg);
             color: var(--text-primary);
             border: 1px solid var(--border-color);
         }
-
+ 
         .btn-secondary:hover {
             background: var(--hover-bg);
         }
-
+ 
         .radio-group {
             display: flex;
             gap: 16px;
             margin-top: 8px;
         }
-
+ 
         .radio-option {
             display: flex;
             align-items: center;
             gap: 8px;
             cursor: pointer;
         }
-
+ 
         .radio-option input[type="radio"] {
             width: 16px;
             height: 16px;
             cursor: pointer;
         }
-
+ 
         .radio-option label {
             font-size: 14px;
             color: var(--text-secondary);
             cursor: pointer;
         }
-
+ 
         .input-container {
             padding: 16px 20px;
             background: var(--sidebar-bg);
@@ -598,7 +601,7 @@
             gap: 12px;
             align-items: center;
         }
-
+ 
         .chat-input {
             flex: 1;
             background: var(--panel-bg);
@@ -610,12 +613,12 @@
             resize: none;
             font-family: 'Segoe UI', sans-serif;
         }
-
+ 
         .chat-input:focus {
             outline: none;
             border-color: var(--primary-blue);
         }
-
+ 
         .send-btn {
             background: var(--primary-blue);
             color: white;
@@ -627,11 +630,11 @@
             font-weight: 600;
             transition: all 0.2s;
         }
-
+ 
         .send-btn:hover {
             background: #106EBE;
         }
-
+ 
         .right-sidebar {
             width: 320px;
             background: var(--sidebar-bg);
@@ -640,7 +643,7 @@
             flex-direction: column;
             overflow-y: auto;
         }
-
+ 
         .right-panel-header {
             padding: 16px;
             border-bottom: 1px solid var(--border-color);
@@ -648,12 +651,12 @@
             align-items: center;
             justify-content: space-between;
         }
-
+ 
         .panel-title {
             font-size: 14px;
             font-weight: 600;
         }
-
+ 
         .collapse-btn {
             background: transparent;
             border: none;
@@ -661,11 +664,11 @@
             cursor: pointer;
             padding: 4px;
         }
-
+ 
         .thought-chain {
             padding: 16px;
         }
-
+ 
         .thought-step {
             margin-bottom: 16px;
             padding: 12px;
@@ -673,26 +676,26 @@
             border-left: 3px solid var(--accent-purple);
             border-radius: 4px;
         }
-
+ 
         .thought-number {
             font-size: 11px;
             color: var(--accent-purple);
             font-weight: 600;
             margin-bottom: 6px;
         }
-
+ 
         .thought-title {
             font-size: 13px;
             font-weight: 600;
             margin-bottom: 6px;
         }
-
+ 
         .thought-description {
             font-size: 12px;
             color: var(--text-secondary);
             line-height: 1.5;
         }
-
+ 
         .thought-status {
             display: inline-block;
             font-size: 11px;
@@ -700,21 +703,21 @@
             border-radius: 3px;
             margin-top: 6px;
         }
-
+ 
         .status-completed {
             background: rgba(78, 201, 176, 0.2);
             color: var(--accent-green);
         }
-
+ 
         .status-processing {
             background: rgba(206, 145, 120, 0.2);
             color: var(--accent-orange);
         }
-
+ 
         .automation-section {
             margin-top: auto;
         }
-
+ 
         .badge {
             display: inline-block;
             font-size: 10px;
@@ -724,21 +727,21 @@
             background: var(--accent-orange);
             color: white;
         }
-
+ 
         ::-webkit-scrollbar {
             width: 10px;
             height: 10px;
         }
-
+ 
         ::-webkit-scrollbar-track {
             background: var(--dark-bg);
         }
-
+ 
         ::-webkit-scrollbar-thumb {
             background: var(--border-color);
             border-radius: 5px;
         }
-
+ 
         ::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
@@ -752,10 +755,10 @@
         </div>
         <div class="header-actions">
             <div class="mode-selector">
-                <button class="mode-btn active">Standalone</button>
-                <button class="mode-btn">API Mode</button>
+                <button class="mode-btn active" data-mode="standalone">Standalone</button>
+                <button class="mode-btn" data-mode="api">API Mode</button>
             </div>
-
+ 
             <div class="user-dropdown-container" style="position: relative; display: inline-block;">
                 <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)" style="cursor: pointer;">A</div>
                 
@@ -771,44 +774,7 @@
             </div>
         </div>
     </div>
-
-            <!-- <div class="user-dropdown-container" style="position: relative; display: inline-block;">
-                <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)" style="cursor: pointer;">A</div>
-                
-                <div class="user-dropdown-menu" id="userDropdownMenu" style="display: none; position: absolute; right: 0; top: 100%; background: #0F1230; border: 1px solid #1F2348; border-radius: 6px; padding: 8px; z-index: 1000; min-width: 140px;">
-                    <button type="button" onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
-                        📝 Instructions.md
-                    </button>
-                    <hr style="border: none; border-top: 1px solid #1F2348; margin: 4px 0;">
-                    <button type="button" onclick="handleLogout()" style="cursor: pointer; background: none; border: none; color: #FF5F57; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
-                        🚪 Log out
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div> -->
-
-            
-            
-            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 6px 14px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 14px; transition: background 0.2s ease;">📝 Instructions.md</button> -->
-            <!-- <div class="user-profile">A</div>
-            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 6px 14px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 14px; transition: background 0.2s ease;">📝 Instructions.md</button> -->
-            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor:pointer; padding: 4px 10px; border-radius: 6px; border: none; background: #2563eb; color: white; font-weight: 500; font-size: 11px; white-space: nowrap; transition: background 0.2s ease;">
-            📝 Instructions.md
-            </button> -->
-            <!-- <button onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer !important; padding: 6px 14px !important; border-radius: 6px !important; border: none !important; background-color: #0066cc !important; color: white !important; font-weight: 500 !important; font-size: 14px !important; white-space: nowrap !important; transition: background 0.2s ease !important;" onmouseover="this.style.backgroundColor='#0052a3'" onmouseout="this.style.backgroundColor='#0066cc'">
-        📝 Instructions.md -->
-            <!-- </button> 
-        </div>
-    </div> -->
-    <!-- <dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid #ddd; width: 400px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-        <h3 style="margin-top:0; font-family: sans-serif; color: #333;">System Instructions</h3>
-        <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-family: inherit;" placeholder="Type system rules here..."></textarea>
-        <div style="text-align: right;">
-            <button onclick="document.getElementById('inst-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer;">Cancel</button>
-            <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
-        </div>
-    </dialog> -->
+ 
     <dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid transparent; width: 400px; background: #292a33; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
         <h3 style="margin-top:0; font-family: sans-serif; color: white;">System Instructions</h3>
         <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; background: #07091e; border: 1px solid #1F2348; border-radius: 4px; font-family: inherit; color: white;" placeholder="Type system rules here..."></textarea>
@@ -817,8 +783,8 @@
             <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
         </div>
     </dialog>
-
-
+ 
+ 
     <div class="main-container">
         <!-- Left Sidebar -->
         <div class="left-sidebar">
@@ -830,19 +796,19 @@
                     <div class="item-icon">📁</div>
                     <span>Files</span>
                 </div>
-
+ 
                 <div class="section-item" id="databaseConnectionsIcon" onclick="window.location.href='/database_connections'">
                     <div class="item-icon">🔌</div>
                     <span>Database Connections</span>
                 </div>
-
+ 
                 <div class="section-item" id="apiintegrationIcon" onclick="window.location.href='/api_connectors/rest_apis'">
                     <div class="item-icon">🔌</div>
                     <span>API Integrations</span>
                 </div>
-
+ 
             </div>
-
+ 
             <!-- AI Models Section -->
             <div class="sidebar-section">
                 <div class="section-title">AI & Models</div>
@@ -876,7 +842,7 @@
                     </div>
                 </div>
             </div>
-
+ 
             <div class="sidebar-section">
                 <div class="section-title">Conversations</div>
                 
@@ -884,7 +850,7 @@
                     <div class="item-icon" style="color: #3b82f6;">➕</div>
                     <span style="color: #3b82f6; font-weight: 600;">New Chat</span>
                 </div>
-
+ 
                 <div class="section-item" style="pointer-events: none; opacity: 0.6; padding-bottom: 4px;">
                     <div class="item-icon">📜</div>
                     <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Recents</span>
@@ -896,7 +862,7 @@
                     </div>
                 </div>
             </div>
-
+ 
             <!-- Management Section -->
             <div class="sidebar-section">
                 <div class="section-title">Management</div>
@@ -912,23 +878,23 @@
                     <div class="sub-item">Permissions</div>
                     <div class="sub-item">Access Policies</div>
                 </div>
-
+ 
                 <div class="section-item">
                     <div class="item-icon">⚙️</div>
                     <span>Configuration</span>
                 </div>
-
+ 
                 <div class="section-item">
                     <div class="item-icon">📊</div>
                     <span>Analytics Dashboard</span>
                 </div>
-
+ 
                 <div class="section-item">
                     <div class="item-icon">🔒</div>
                     <span>Security Center</span>
                 </div>
             </div>
-
+ 
             <!-- Automation Section -->
             <div class="sidebar-section automation-section">
                 <div class="section-title">Automation & Integration</div>
@@ -938,17 +904,17 @@
                     <span>Agentic AI</span>
                     <span class="badge">New</span>
                 </div>
-
+ 
                 <div class="section-item">
                     <div class="item-icon">⚡</div>
                     <span>Power Automate</span>
                 </div>
-
+ 
                 <div class="section-item">
                     <div class="item-icon">🔄</div>
                     <span>RPA Workflows</span>
                 </div>
-
+ 
                 <div class="section-item">
                     <div class="item-icon">🔌</div>
                     <span>API Connectors</span>
@@ -959,19 +925,19 @@
                     <div class="sub-item">GraphQL</div>
                     <div class="sub-item">Webhooks</div>
                 </div>
-
+ 
                 <div class="section-item">
                     <div class="item-icon">📋</div>
                     <span>Zapier Integration</span>
                 </div>
-
+ 
                 <div class="section-item">
                     <div class="item-icon">🎯</div>
                     <span>Custom Workflows</span>
                 </div>
             </div>
         </div>
-
+ 
         <!-- Center Panel -->
         <div class="center-panel">
             <!-- LLM Selector Bar -->
@@ -1014,98 +980,25 @@
             
             <div class="chat-container">
                 </div>
-
+ 
             <!-- Input Container -->
             <div class="input-container">
                 <textarea class="chat-input" rows="2" placeholder="Ask Saarthi anything about your data..."></textarea>
                 <button class="send-btn">Send</button>
             </div>
         </div>
-
+ 
         <!-- Right Sidebar -->
         <div class="right-sidebar">
             <div class="right-panel-header">
                 <span class="panel-title">Chain of Thought</span>
                 <button class="collapse-btn">−</button>
             </div>
-
+ 
             <div class="thought-chain"></div>
         </div>    
-
-        <!-- Right Sidebar -->
-        <!-- <div class="right-sidebar">
-            <div class="right-panel-header">
-                <span class="panel-title">Chain of Thought</span>
-                <button class="collapse-btn">−</button>
-            </div> -->
-
-
-            <!-- <div class="thought-chain">
-                <div class="thought-step">
-                    <div class="thought-number">STEP 1</div>
-                    <div class="thought-title">Query Understanding</div>
-                    <div class="thought-description">
-                        Analyzing user input and identifying intent
-                    </div>
-                    <span class="thought-status status-completed">✓ Completed</span>
-                </div>
-
-                <div class="thought-step">
-                    <div class="thought-number">STEP 2</div>
-                    <div class="thought-title">Data Source Connection</div>
-                    <div class="thought-description">
-                        Mapping query to relevant database tables...
-                    </div>
-                    <span class="thought-status status-completed">✓ Completed</span>
-                </div>
-
-                <div class="thought-step">
-                    <div class="thought-number">STEP 3</div>
-                    <div class="thought-title">SQL Query Generation</div>
-                    <div class="thought-description">
-                        squery generated
-                    </div>
-                    <span class="thought-status status-completed">✓ Completed</span>
-                </div>
-
-                <div class="thought-step">
-                    <div class="thought-number">STEP 4</div>
-                    <div class="thought-title">Data Retrieval</div>
-                    <div class="thought-description">
-                        Executed query and retrieved 47 rows
-                    </div>
-                    <span class="thought-status status-completed">✓ Completed</span>
-                </div>
-
-                <div class="thought-step">
-                    <div class="thought-number">STEP 5</div>
-                    <div class="thought-title">Data Analysis</div>
-                    <div class="thought-description">
-                        Performed regional aggregation
-                    </div>
-                    <span class="thought-status status-completed">✓ Completed</span>
-                </div>
-
-                <div class="thought-step">
-                    <div class="thought-number">STEP 6</div>
-                    <div class="thought-title">Visualization Generation</div>
-                    <div class="thought-description">
-                        Created interactive charts 
-                    </div>
-                    <span class="thought-status status-processing">✓ Completed</span>
-                </div>
-
-                <div class="thought-step" style="border-left-color: var(--text-secondary); opacity: 0.5;">
-                    <div class="thought-number">STEP 7</div>
-                    <div class="thought-title">Insight Synthesis</div>
-                    <div class="thought-description">
-                        Generating natural language summary
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>*/ -->
-
+    </div>
+ 
     <!-- Configure New Model Modal -->
     <div class="modal-overlay" id="modelModal">
         <div class="modal-content">
@@ -1127,7 +1020,7 @@
                         </div>
                     </div>
                 </div>
-
+ 
                 <div class="form-group">
                     <label class="form-label">Model Provider</label>
                     <select class="form-input">
@@ -1141,36 +1034,36 @@
                         <option>Custom Provider</option>
                     </select>
                 </div>
-
+ 
                 <div class="form-group">
                     <label class="form-label">Model Name</label>
                     <input type="text" id="modalModelName" class="form-input" placeholder="e.g., Claude 4.5 Sonnet, GPT-4o, Llama 3.3">
                     <div class="form-help">Enter the exact model identifier</div>
                 </div>
-
+ 
                 <div class="form-group">
                     <label class="form-label">API Endpoint URL</label>
                     <input type="text" class="form-input" placeholder="https://api.example.com/v1/chat/completions">
                     <div class="form-help">Base URL for API requests</div>
                 </div>
-
+ 
                 <div class="form-group">
                     <label class="form-label">API Key</label>
                     <input type="password" id="modalApiKey" class="form-input" placeholder="sk-...">
                     <div class="form-help">Your authentication key (encrypted and stored securely)</div>
                 </div>
-
+ 
                 <div class="form-group">
                     <label class="form-label">Max Tokens</label>
                     <input type="number" class="form-input" placeholder="4096" value="4096">
                 </div>
-
+ 
                 <div class="form-group">
                     <label class="form-label">Temperature</label>
                     <input type="number" class="form-input" placeholder="0.7" value="0.7" step="0.1" min="0" max="2">
                     <div class="form-help">Controls randomness (0.0 - 2.0)</div>
                 </div>
-
+ 
                 <div class="form-group">
                     <label class="form-label">Description (Optional)</label>
                     <textarea class="form-input" rows="3" placeholder="Brief description of this model configuration..."></textarea>
@@ -1182,232 +1075,97 @@
             </div>
         </div>
     </div>
-
+ 
     <script>
-
-        // Initialize Charts
-       /* function initializeCharts() {
-            // Regional Sales Bar Chart
-            const regionalCtx = document.getElementById('regionalChart');
-            if (regionalCtx) {
-                new Chart(regionalCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: ['North America', 'Europe', 'Asia-Pacific', 'Latin America'],
-                        datasets: [{
-                            label: 'Q4 2024 Revenue ($M)',
-                            data: [45.2, 32.8, 28.1, 12.5],
-                            backgroundColor: [
-                                'rgba(0, 120, 212, 0.8)',
-                                'rgba(78, 201, 176, 0.8)',
-                                'rgba(197, 134, 192, 0.8)',
-                                'rgba(206, 145, 120, 0.8)'
-                            ],
-                            borderColor: [
-                                'rgba(0, 120, 212, 1)',
-                                'rgba(78, 201, 176, 1)',
-                                'rgba(197, 134, 192, 1)',
-                                'rgba(206, 145, 120, 1)'
-                            ],
-                            borderWidth: 2
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            },
-                            tooltip: {
-                                backgroundColor: 'rgba(37, 37, 38, 0.95)',
-                                titleColor: '#fff',
-                                bodyColor: '#ccc',
-                                borderColor: '#3E3E42',
-                                borderWidth: 1,
-                                padding: 12,
-                                displayColors: true,
-                                callbacks: {
-                                    label: function(context) {
-                                        return 'Revenue: $' + context.parsed.y + 'M';
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                grid: {
-                                    color: 'rgba(62, 62, 66, 0.5)',
-                                    drawBorder: false
-                                },
-                                ticks: {
-                                    color: '#CCCCCC',
-                                    callback: function(value) {
-                                        return '$' + value + 'M';
-                                    }
-                                }
-                            },
-                            x: {
-                                grid: {
-                                    display: false
-                                },
-                                ticks: {
-                                    color: '#CCCCCC'
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-
-            // Quarterly Trends Line Chart
-            const trendCtx = document.getElementById('trendChart');
-            if (trendCtx) {
-                new Chart(trendCtx, {
-                    type: 'line',
-                    data: {
-                        labels: ['Q1 2024', 'Q2 2024', 'Q3 2024', 'Q4 2024'],
-                        datasets: [
-                            {
-                                label: 'North America',
-                                data: [38.5, 41.2, 43.8, 45.2],
-                                borderColor: 'rgba(0, 120, 212, 1)',
-                                backgroundColor: 'rgba(0, 120, 212, 0.1)',
-                                tension: 0.4,
-                                borderWidth: 2,
-                                pointRadius: 4,
-                                pointBackgroundColor: 'rgba(0, 120, 212, 1)'
-                            },
-                            {
-                                label: 'Europe',
-                                data: [26.7, 28.4, 30.2, 32.8],
-                                borderColor: 'rgba(78, 201, 176, 1)',
-                                backgroundColor: 'rgba(78, 201, 176, 0.1)',
-                                tension: 0.4,
-                                borderWidth: 2,
-                                pointRadius: 4,
-                                pointBackgroundColor: 'rgba(78, 201, 176, 1)'
-                            },
-                            {
-                                label: 'Asia-Pacific',
-                                data: [21.5, 23.8, 25.7, 28.1],
-                                borderColor: 'rgba(197, 134, 192, 1)',
-                                backgroundColor: 'rgba(197, 134, 192, 0.1)',
-                                tension: 0.4,
-                                borderWidth: 2,
-                                pointRadius: 4,
-                                pointBackgroundColor: 'rgba(197, 134, 192, 1)'
-                            },
-                            {
-                                label: 'Latin America',
-                                data: [11.2, 11.8, 12.1, 12.5],
-                                borderColor: 'rgba(206, 145, 120, 1)',
-                                backgroundColor: 'rgba(206, 145, 120, 0.1)',
-                                tension: 0.4,
-                                borderWidth: 2,
-                                pointRadius: 4,
-                                pointBackgroundColor: 'rgba(206, 145, 120, 1)'
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: true,
-                                position: 'top',
-                                labels: {
-                                    color: '#CCCCCC',
-                                    padding: 15,
-                                    font: {
-                                        size: 11
-                                    }
-                                }
-                            },
-                            tooltip: {
-                                backgroundColor: 'rgba(37, 37, 38, 0.95)',
-                                titleColor: '#fff',
-                                bodyColor: '#ccc',
-                                borderColor: '#3E3E42',
-                                borderWidth: 1,
-                                padding: 12,
-                                displayColors: true,
-                                callbacks: {
-                                    label: function(context) {
-                                        return context.dataset.label + ': $' + context.parsed.y + 'M';
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: false,
-                                grid: {
-                                    color: 'rgba(62, 62, 66, 0.5)',
-                                    drawBorder: false
-                                },
-                                ticks: {
-                                    color: '#CCCCCC',
-                                    callback: function(value) {
-                                        return '$' + value + 'M';
-                                    }
-                                }
-                            },
-                            x: {
-                                grid: {
-                                    color: 'rgba(62, 62, 66, 0.3)',
-                                    drawBorder: false
-                                },
-                                ticks: {
-                                    color: '#CCCCCC'
-                                }
-                            }
-                        }
-                    }
-                });
+        // ==========================================
+        // MODE SELECTOR (Standalone / API Mode)
+        // This was previously trapped inside a dead
+        // comment block and never executed. Now live.
+        // ==========================================
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+ 
+                const mode = this.dataset.mode || this.textContent.trim().toLowerCase();
+ 
+                if (mode === 'api' || this.textContent.trim() === 'API Mode') {
+                    window.location.href = '/api_mode';
+                } else {
+                    window.location.href = '/index';
+                }
+            });
+        });
+ 
+        // ==========================================
+        // USER MENU
+        // ==========================================
+        function toggleUserMenu(event) {
+            event.stopPropagation();
+            const menu = document.getElementById('userDropdownMenu');
+            const avatar = document.getElementById('avatarMenuBtn');
+ 
+            if (menu.style.display === 'none' || menu.style.display === '') {
+                menu.style.display = 'block';
+                avatar.style.setProperty('background-color', 'transparent', 'important');
+                avatar.style.setProperty('border', '1px solid #22252a', 'important');
+            } else {
+                menu.style.display = 'none';
+                avatar.style.removeProperty('background-color');
+                avatar.style.removeProperty('border');
             }
         }
-
-        // Initialize charts when page loads
-        window.addEventListener('load', initializeCharts);
-
-        // Modal Functions
+ 
+        function handleLogout() {
+            localStorage.removeItem('saarthi_token');
+            window.location.href = '/';
+        }
+ 
+        window.addEventListener('click', function () {
+            const menu = document.getElementById('userDropdownMenu');
+            const avatar = document.getElementById('avatarMenuBtn');
+            if (menu) {
+                menu.style.display = 'none';
+                if (avatar) {
+                    avatar.style.removeProperty('background-color');
+                    avatar.style.removeProperty('border');
+                }
+            }
+        });
+ 
+        // ==========================================
+        // MODAL HELPERS
+        // ==========================================
         function openModal(modalId) {
             document.getElementById(modalId).classList.add('active');
         }
-
+ 
         function closeModal(modalId) {
-            document.getElementById(modalId).classList.remove('active');
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.remove('active');
+                modal.style.display = 'none';
+            }
         }
-
-        function saveModel() {
-            // Here you would implement the actual save logic
-            alert('Model configuration saved successfully!');
-            closeModal('modelModal');
-        }
-
-        // Close modal when clicking outside
+ 
         document.querySelectorAll('.modal-overlay').forEach(overlay => {
-            overlay.addEventListener('click', function(e) {
+            overlay.addEventListener('click', function (e) {
                 if (e.target === this) {
                     this.classList.remove('active');
                 }
             });
         });
-
-        // Toggle sidebar items
+ 
+        // ==========================================
+        // SIDEBAR EXPAND / COLLAPSE SUB-ITEMS
+        // ==========================================
         document.querySelectorAll('.section-item').forEach(item => {
-            item.addEventListener('click', function(e) {
-                // Check if item has sub-items
+            item.addEventListener('click', function () {
                 const subItems = this.nextElementSibling;
                 if (subItems && subItems.classList.contains('sub-items')) {
-                    // Toggle sub-items visibility
                     const isCurrentlyVisible = subItems.style.display !== 'none';
                     subItems.style.display = isCurrentlyVisible ? 'none' : 'block';
-                    
-                    // Toggle expand icon
+ 
                     const icon = this.querySelector('.expand-icon');
                     if (icon) {
                         icon.textContent = isCurrentlyVisible ? '▶' : '▼';
@@ -1415,9 +1173,8 @@
                 }
             });
         });
-
-        // Handle configure new model clicks
-        document.addEventListener('click', function(e) {
+ 
+        document.addEventListener('click', function (e) {
             const target = e.target.closest('.sub-item');
             if (target) {
                 const text = target.textContent.trim();
@@ -1426,188 +1183,176 @@
                 }
             }
         });
-
-        // Mode selector
-        document.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                const label = this.textContent.trim();
-                if (label === 'API Mode') {
-                    window.location.href = '/apidocs';
-                } else if (label === 'Standalone' || label === 'Chat') {
-                    window.location.href = '/index';
-                }
-            });
-        });
-
-        // Auto-resize textarea
+ 
+        // ==========================================
+        // CHAT INPUT AUTO-RESIZE
+        // ==========================================
         const textarea = document.querySelector('.chat-input');
-        textarea.addEventListener('input', function() {
+        textarea.addEventListener('input', function () {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 150) + 'px';
-        });*/
-        
-        // Send button
-       /* document.querySelector('.send-btn').addEventListener('click', function() {
-            const input = document.querySelector('.chat-input');
-            if (input.value.trim()) {
-                // Handle message send
-                console.log('Sending message:', input.value);
-                input.value = '';
-                input.style.height = 'auto';
+        });
+ 
+        // ==========================================
+        // DROPDOWN ROUTING LOGIC (LLM selection)
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', function () {
+            const standardDropdown = document.getElementById("standard-llm-dropdown");
+            const opensourceDropdown = document.getElementById("opensource-llm-dropdown");
+ 
+            window.activeBackendModelName = "";
+ 
+            if (standardDropdown && opensourceDropdown) {
+                standardDropdown.addEventListener("change", function () {
+                    opensourceDropdown.selectedIndex = 0;
+                    const selectedValue = this.value;
+                    if (selectedValue === "gpt-4o" || selectedValue === "gpt-4o-mini" || selectedValue.startsWith("api://")) {
+                        window.activeBackendModelName = selectedValue;
+                        console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
+                    } else {
+                        const modelText = this.options[this.selectedIndex].text;
+                        alert(`⚠️ "${modelText}" is Coming Soon! Please select GPT-4o or GPT-4o Mini.`);
+                        this.selectedIndex = 0;
+                        window.activeBackendModelName = "";
+                    }
+                });
+ 
+                opensourceDropdown.addEventListener("change", function () {
+                    standardDropdown.selectedIndex = 0;
+                    const selectedValue = this.value;
+                    if (selectedValue === "llama3" || selectedValue.startsWith("ollama://")) {
+                        window.activeBackendModelName = selectedValue;
+                        console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
+                    } else {
+                        const modelText = this.options[this.selectedIndex].text;
+                        alert(`⚠️ "${modelText}" is Coming Soon! Please select Llama 3.`);
+                        this.selectedIndex = 0;
+                        window.activeBackendModelName = "";
+                    }
+                });
+            }
+ 
+            const plusModelBtn = document.getElementById('plusModelBtn');
+            if (plusModelBtn) {
+                plusModelBtn.onclick = function () {
+                    const modal = document.getElementById('modelModal');
+                    if (modal) {
+                        modal.classList.add('active');
+                        modal.style.display = 'flex';
+                    }
+                };
+            }
+ 
+            if (typeof loadSavedDatabaseModels === "function") {
+                loadSavedDatabaseModels();
             }
         });
-
-        // Enter to send (Shift+Enter for new line)
-        textarea.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                document.querySelector('.send-btn').click();
-            }
-        });*/
-
-        // --- NEW CODE START ---
-       /* document.querySelector('.send-btn').addEventListener('click', async function() {
-            const input = document.querySelector('.chat-input');
-            const message = input.value.trim();
-            const chatContainer = document.querySelector('.chat-container');
-
-            if (message) {
-                input.value = '';
-                input.style.height = 'auto';
-
-                const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const userHtml = `
-                    <div class="message">
-                        <div class="message-avatar">👤</div>
-                        <div class="message-content">
-                            <div class="message-header">
-                                <span class="message-author">You</span>
-                                <span class="message-time">${time}</span>
-                            </div>
-                            <div class="message-text">${message}</div>
-                        </div>
-                    </div>`;
-                chatContainer.insertAdjacentHTML('beforeend', userHtml);
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-
-                try {
-                    const response = await fetch('/api/chat/message', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: message, session_id: 1, mode: 'chat' })
-                    });
-                    const data = await response.json();
-
-                    const aiHtml = `
-                        <div class="message">
-                            <div class="message-avatar" style="background: var(--accent-green);">S</div>
-                            <div class="message-content">
-                                <div class="message-header">
-                                    <span class="message-author">Saarthi AI</span>
-                                    <span class="message-time">${time}</span>
-                                </div>
-                                <div class="message-text">${data.response || 'No response.'}</div>
-                            </div>
-                        </div>`;
-                    chatContainer.insertAdjacentHTML('beforeend', aiHtml);
-                    chatContainer.scrollTop = chatContainer.scrollHeight;
-                } catch (error) {
-                    console.error('Error:', error);
-                }
-            }
-        });
-
-        // Enter to send logic for the new async function
-        textarea.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                document.querySelector('.send-btn').click();
-            }
-        });*/
-        /**
-    
-        
-     * This function handles the sequential reveal of the Chain of Thought
-     */
-    /*
-    document.addEventListener('DOMContentLoaded', function() {
-        const collapseBtn = document.querySelector('.collapse-btn');
-        const sidebar = document.querySelector('.right-sidebar');
-        const thoughtChain = document.querySelector('.thought-chain');
-        const panelTitle = document.querySelector('.panel-title');
-
+ 
         // ==========================================
-        // ADDED DROPDOWN ROUTING LOGIC HERE
+        // SAVE NEW MODEL CONFIGURATION
         // ==========================================
-        const standardDropdown = document.getElementById("standard-llm-dropdown");
-        const opensourceDropdown = document.getElementById("opensource-llm-dropdown");
-        
-        // Expose this globally (window object) so your chat submission function can read it
-        window.activeBackendModelName = ""; 
-
-        if (standardDropdown && opensourceDropdown) {
-            // Standard API Dropdown logic
-            standardDropdown.addEventListener("change", function () {
-                opensourceDropdown.selectedIndex = 0; // Clear the other dropdown
-                const selectedValue = this.value;
-                if (selectedValue === "gpt-4o" || selectedValue === "gpt-4o-mini"|| selectedValue.startsWith("api://")) {
-                    window.activeBackendModelName = selectedValue;
-                    console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
-                } else {
-                    const modelText = this.options[this.selectedIndex].text;
-                    alert(`⚠️ "${modelText}" is Coming Soon! Please select GPT-4o or GPT-4o Mini.`);
-                    this.selectedIndex = 0;
-                    window.activeBackendModelName = "";
-                }    
-            });
-
-            // Open Source Dropdown logic
-            opensourceDropdown.addEventListener("change", function () {
-                standardDropdown.selectedIndex = 0;
-                const selectedValue = this.value;
-                if (selectedValue === "llama3"|| selectedValue.startsWith("ollama://")) { 
-                    window.activeBackendModelName = selectedValue;
-                    console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
-                } else {
-                    const modelText = this.options[this.selectedIndex].text;
-                    alert(`⚠️ "${modelText}" is Coming Soon! Please select Llama 3.`);
-                    this.selectedIndex = 0;
-                    window.activeBackendModelName = "";
-                }  
-            });
-        }
-        loadSavedDatabaseModels();
-    });
-
-        const plusModelBtn = document.getElementById('plusModelBtn');
-        if (plusModelBtn) {
-            plusModelBtn.onclick = function() {
-                const modal = document.getElementById('modelModal');
-                if (modal) {
-                    modal.classList.add('active'); 
-                    modal.style.display = 'flex';
-                }
+        function saveModel() {
+            const modelName = document.getElementById('modalModelName').value.trim();
+            const apiKey = document.getElementById('modalApiKey').value.trim();
+ 
+            const isStandard = document.getElementById('standardApi').checked;
+            const modelType = isStandard ? 'api' : 'ollama';
+ 
+            const providerSelector = document.querySelector('#modelModal select.form-input');
+            const modelProvider = providerSelector ? providerSelector.value : "Unknown";
+ 
+            if (!modelName) {
+                alert("Please provide a Model Name!");
+                return;
+            }
+            if (modelType === 'api' && !apiKey) {
+                alert("Error: API Key is mandatory for Standard API models!");
+                return;
+            }
+ 
+            const prefixedModelString = `${modelType}://${modelName.toLowerCase().replace(/\s+/g, '-')}`;
+ 
+            const payload = {
+                name: modelName,
+                model: prefixedModelString,
+                provider: modelType === 'ollama' ? 'ollama' : modelProvider,
+                settings: {
+                    custom_key: apiKey ? apiKey : null
+                },
+                workspace_id: 1
             };
+ 
+            fetch('/api/model-config/configurations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Database registration rejected with status code: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (apiKey) {
+                    localStorage.setItem('presentation_api_key', apiKey);
+                }
+ 
+                let targetDropdown = (modelType === 'api') ? document.getElementById('standard-llm-dropdown') : document.getElementById('opensource-llm-dropdown');
+                if (targetDropdown) {
+                    const newOption = document.createElement('option');
+                    newOption.value = prefixedModelString;
+                    newOption.innerHTML = modelName;
+ 
+                    targetDropdown.appendChild(newOption);
+                    targetDropdown.value = newOption.value;
+ 
+                    window.activeBackendModelName = newOption.value;
+                    console.log(`🎯 Active Custom Model Activated: ${window.activeBackendModelName}`);
+                }
+ 
+                const plusBtnElement = document.getElementById('plusModelBtn');
+                if (plusBtnElement) {
+                    const sidebarWrapper = plusBtnElement.parentElement;
+                    const newSidebarItem = document.createElement('div');
+                    newSidebarItem.className = 'sub-item';
+                    newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${modelName}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
+                    sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
+                }
+ 
+                alert(`Model "${modelName}" configured and activated successfully!`);
+                closeModal('modelModal');
+ 
+                document.getElementById('modalModelName').value = '';
+                document.getElementById('modalApiKey').value = '';
+            })
+            .catch(error => {
+                console.error("Error saving model configuration:", error);
+                alert(`Failed to save model: ${error.message}`);
+            });
         }
-
-        if (typeof loadSavedDatabaseModels === "function") {
-            loadSavedDatabaseModels();
-        }
-
-
-
+ 
+        // ==========================================
+        // CHAT MESSAGE INJECTOR INTERCEPTOR
+        // ==========================================
         const originalFetch = window.fetch;
-        window.fetch = async function(...args) {
+        window.fetch = async function (...args) {
             let [url, config] = args;
             if (typeof url === 'string' && url.includes('/api/chat/message')) {
-                
-                // VALIDATION GUARD: Stop empty requests right here before they hit the network
+ 
+                if (!window.activeBackendModelName) {
+                    const savedModel = localStorage.getItem('saarthi_active_model');
+                    if (savedModel) {
+                        window.activeBackendModelName = savedModel;
+                        console.log(`⚡ Background state auto-recovered: ${window.activeBackendModelName}`);
+                    }
+                }
+                localStorage.setItem('saarthi_active_model', window.activeBackendModelName);
+ 
                 if (!window.activeBackendModelName) {
                     alert("Please select the model before proceeding.");
-                    
-                    // Instantly resolve with a safe warning text to break the frontend's loading loop
                     return new Response(JSON.stringify({
                         status: "success",
                         response: "⚠️ Request cancelled. Please select a model from the dropdown selection panel above to begin.",
@@ -1619,1596 +1364,633 @@
                         headers: { 'Content-Type': 'application/json' }
                     });
                 }
-                
+ 
                 if (config && config.body) {
                     try {
                         let body = JSON.parse(config.body);
                         body.model_name = window.activeBackendModelName;
                         if (window.activeBackendModelName.includes("://")) {
                             body.custom_key = localStorage.getItem('presentation_api_key') || "";
-                        }     
+                        }
                         config.body = JSON.stringify(body);
                     } catch (e) {
                         console.error("Payload injection error:", e);
                     }
                 }
             }
-            return originalFetch(...args);
+            const response = await originalFetch(...args);
+            if (typeof url === 'string' && url.includes('/api/chat/message')) {
+                const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+                if (chatContainer) {
+                    localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
+                }
+            }
+            return response;
         };
-    
-    
-    function closeModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.classList.remove('active');
-            modal.style.display = 'none';
-        }
-    }
-    
-    function saveModel() {
-        const modelName = document.getElementById('modalModelName').value.trim();
-        const apiKey = document.getElementById('modalApiKey').value.trim();
-        
-        const isStandard = document.getElementById('standardApi').checked;
-        const modelType = isStandard ? 'api' : 'ollama';
-        if (!modelName) {
-            alert("Please provide a Model Name!");
-            return;
-        }
-        if (modelType === 'api' && !apiKey) {
-            alert("Error: API Key is mandatory for Standard API models!");
-            return;
-        }
-        const prefixedModelString = `${modelType}://${modelName.toLowerCase().replace(/\s+/g, '-')}`;
-        const payload = {
-            name: modelName,
-            model: prefixedModelString,
-            provider: modelProvider,
-            settings: {
-                custom_key: apiKey ? apiKey : null
-            }
-        };
-        console.log("Pushing configuration payload to database matrix endpoint...", payload);
-        fetch('/api/model-config/configurations', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Database registration rejected with status code: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {        
-
-        
-        const plusBtnElement = document.getElementById('plusModelBtn');
-        if (plusBtnElement) {
-            const sidebarWrapper = plusBtnElement.parentElement;
-            const newSidebarItem = document.createElement('div');
-            newSidebarItem.className = 'sub-item';
-            newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${modelName}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
-            sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
-        }
-
-        let targetDropdown = (modelType === 'api') ? document.getElementById('standard-llm-dropdown') : document.getElementById('opensource-llm-dropdown');
-        if (targetDropdown) {
-            const newOption = document.createElement('option');
-            newOption.value = `${modelType}://${modelName}`; 
-            newOption.innerHTML = modelName;
-            
-            targetDropdown.appendChild(newOption);
-            targetDropdown.value = newOption.value; 
-            
-            window.activeBackendModelName = newOption.value;
-            console.log(`🎯 Active Custom Model Activated: ${window.activeBackendModelName}`);
-        }
-        alert(`Model "${modelName}" configured and activated successfully!`);
-        closeModal('modelModal');
-
-        document.getElementById('modalModelName').value = '';
-        document.getElementById('modalApiKey').value = '';
-    })
-    
-    function saveModel() {
-        const modelName = document.getElementById('modalModelName').value.trim();
-        const apiKey = document.getElementById('modalApiKey').value.trim();
-        
-        const isStandard = document.getElementById('standardApi').checked;
-        const modelType = isStandard ? 'api' : 'ollama';
-        
-        const providerSelector = document.querySelector('#modelModal select.form-input');
-        const modelProvider = providerSelector ? providerSelector.value : "Unknown";
-
-        if (!modelName) {
-            alert("Please provide a Model Name!");
-            return;
-        }
-        if (modelType === 'api' && !apiKey) {
-            alert("Error: API Key is mandatory for Standard API models!");
-            return;
-        }
-
-        const prefixedModelString = `${modelType}://${modelName.toLowerCase().replace(/\s+/g, '-')}`;
-
-        const payload = {
-            name: modelName,
-            model: prefixedModelString,
-            provider: modelProvider,
-            settings: {
-                custom_key: apiKey ? apiKey : null
-            }
-        };
-
-        fetch('/api/model-config/configurations', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Database registration rejected: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            let targetDropdown = (modelType === 'api') ? document.getElementById('standard-llm-dropdown') : document.getElementById('opensource-llm-dropdown');
-            if (targetDropdown) {
-                const newOption = document.createElement('option');
-                newOption.value = prefixedModelString;
-                newOption.innerHTML = modelName;
-                
-                targetDropdown.appendChild(newOption);
-                targetDropdown.value = newOption.value; 
-                
-                window.activeBackendModelName = newOption.value;
-                console.log(`🎯 Active Custom Model Activated: ${window.activeBackendModelName}`);
-            }
-
-            const plusBtnElement = document.getElementById('plusModelBtn');
-            if (plusBtnElement) {
-                const sidebarWrapper = plusBtnElement.parentElement;
-                const newSidebarItem = document.createElement('div');
-                newSidebarItem.className = 'sub-item';
-                newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${modelName}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
-                sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
-            }
-
-            alert(`Model "${modelName}" configured and activated successfully!`);
-            closeModal('modelModal');
-
-            document.getElementById('modalModelName').value = '';
-            document.getElementById('modalApiKey').value = '';
-        })
-        .catch(error => {
-            console.error("Error saving model configuration:", error);
-            alert(`Failed to save model: ${error.message}`);
-        });
-    }*/
-    //////////////////////////////////////////////////////////////////////////////
-    // 🚀 Function to reset the main conversation workspace
-//     function startNewChat() {
-//         // Target only the main center chat container
-//         const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-//         if (chatContainer) {
-//             chatContainer.innerHTML = '';
-//         }
-
-//         console.log("🆕 New Chat initiated: Chat container cleared.");
-//     }
-
-// // 🔌 Bind the click event listener
-//     document.addEventListener('DOMContentLoaded', () => {
-//         const newChatButton = document.getElementById('new-chat-btn');
-//         if (newChatButton) {
-//             newChatButton.addEventListener('click', startNewChat);
-//         }
-//     });
-    //////////////////////////////////////////////////////////////////////////////
-    // Global array to store our historical chat sessions in memory
-    function toggleUserMenu(event) {
-        event.stopPropagation(); // Prevents the window click listener from immediately closing it
-        const menu = document.getElementById('userDropdownMenu');
-    
-        if (menu.style.display === 'none' || menu.style.display === '') {
-            menu.style.display = 'block';
-            avatar.style.setProperty('background-color', 'transparent', 'important');
-            avatar.style.setProperty('border', '1px solid #22252a', 'important');
-        } else {
-            menu.style.display = 'none';
-            avatar.style.removeProperty('background-color');
-            avatar.style.removeProperty('border');
-        }
-    }
-
-    function handleLogout() {
-        // Clear your local authentication storage
-        localStorage.removeItem('saarthi_token');
-        
-        // Jump straight back to your login screen
-        window.location.href = '/'; 
-    }
-
-    // Automatically hides the dropdown if you click anywhere else on the screen
-    window.addEventListener('click', function() {
-        const menu = document.getElementById('userDropdownMenu');
-        if (menu) {
-            menu.style.display = 'none';
-            if (avatar) {
-                avatar.style.removeProperty('background-color');
-                avatar.style.removeProperty('border');
-            }
-        }
-    });
-
-
-
-
-
-    /////////////////////////////////////////////////////////////////////////
-    let chatSessions = [];
-    let currentSessionId = 'session_' + Date.now();
-
-    async function fetchSavedSessions() {
-        try {
-            const response = await fetch('/api/chat/sessions');
-            const data = await response.json();
-            if (data.sessions) {
-                // Map database columns to match your 'id', 'title', and 'html' keys
-                chatSessions = data.sessions.map(s => ({
-                    id: s.session_id,
-                    title: s.title,
-                    html: s.chat_history || ''
-                }));
-                renderAuditTrailList();
-            }
-        } catch (err) {
-            console.error("❌ Failed to pull audit trail records from server:", err);
-        }
-    }
-
-    async function saveActiveChatToHistory() {
-        const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-        if (!chatContainer || !chatContainer.innerHTML.trim()) return;
-
-        // Grab the first user message text to use as a clean sidebar title
-        const firstMsg = chatContainer.querySelector('.message-text');
-        let title = firstMsg ? firstMsg.textContent.substring(0, 20) + '...' : 'Conversation ' + (chatSessions.length + 1);
-
-        try {
-            // 🚀 BACKEND SYNC: Send the chat history payload to Flask
-            await fetch('/api/chat/sessions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    session_id: currentSessionId,
-                    title: title,
-                    chat_history: chatContainer.innerHTML
+ 
+        // ==========================================
+        // DATABASE SYNC: RESTORE MODELS ON REFRESH
+        // ==========================================
+        function loadSavedDatabaseModels() {
+            console.log("🔄 Fetching saved configurations from backend database...");
+ 
+            fetch('/api/model-config/configurations')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return response.json();
                 })
-            });
-            
-            // Refresh our local list state directly from the DB
-            await fetchSavedSessions();
-        } catch (err) {
-            console.error("❌ Error saving chat session to database:", err);
-        }
-    }
-
-    function renderAuditTrailList() {
-        const listContainer = document.getElementById('audit-trail-list');
-        if (!listContainer) return;
-
-        if (chatSessions.length === 0) {
-            listContainer.innerHTML = `<div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">No previous chats found</div>`;
-            return;
-        }
-
-        listContainer.innerHTML = ''; // Clear old layout links
-
-        chatSessions.forEach(session => {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'sub-item';
-            wrapper.style.cssText = "display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 4px 6px;";
-            
-            const textSpan = document.createElement('span');
-            textSpan.textContent = `💬 ${session.title}`;
-            textSpan.style.flexGrow = "1";
-            
-            if (session.id === currentSessionId) {
-                textSpan.style.color = 'var(--primary-blue, #3b82f6)';
-                textSpan.style.fontWeight = '600';
-            }
-
-            textSpan.addEventListener('click', async () => {
-                currentSessionId = session.id;
-                
-                try {
-                    const res = await fetch(`/api/chat/sessions/${session.id}`);
-                    const data = await res.json();
-                    if (data.session) {
-                        const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-                        if (chatContainer) {
-                            chatContainer.innerHTML = data.session.chat_history;
-                            chatContainer.scrollTop = chatContainer.scrollHeight;
-
-                            localStorage.setItem('saarthi_chat_history', data.session.chat_history);
-                        }
+                .then(data => {
+                    if (!data || !data.configurations) {
+                        console.warn("⚠️ No configurations returned from database matrix.");
+                        return;
                     }
-                } catch (err) {
-                    console.error("Error loading chat from database:", err);
-                }
-                renderAuditTrailList();
-            });
-
-            const deleteBtn = document.createElement('span');
-            deleteBtn.innerHTML = '🗑️';
-            deleteBtn.style.cssText = "opacity: 0.4; margin-left: 8px; transition: opacity 0.2s; cursor: pointer;";
-            deleteBtn.onmouseover = () => deleteBtn.style.opacity = "1";
-            deleteBtn.onmouseout = () => deleteBtn.style.opacity = "0.4";
-            
-            deleteBtn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                if (confirm("Are you sure you want to delete this chat session permanently?")) {
-                    try {
-                        await fetch(`/api/chat/sessions/${session.id}`, { method: 'DELETE' });
-                        
-                        if (currentSessionId === session.id) {
-                            const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-                            if (chatContainer) chatContainer.innerHTML = '';
-                            currentSessionId = 'session_' + Date.now();
+ 
+                    console.log(`📋 Found ${data.configurations.length} models in DB. Syncing to UI dropdowns...`);
+ 
+                    data.configurations.forEach(config => {
+                        const isOllama = config.provider === 'ollama' || config.model.startsWith('ollama://');
+                        let targetDropdown = isOllama ? document.getElementById('opensource-llm-dropdown') : document.getElementById('standard-llm-dropdown');
+ 
+                        if (targetDropdown) {
+                            if (!targetDropdown.querySelector(`option[value="${config.model}"]`)) {
+                                const newOption = document.createElement('option');
+                                newOption.value = config.model;
+                                newOption.innerHTML = config.name;
+                                targetDropdown.appendChild(newOption);
+                                console.log(`✅ Restored model option: ${config.name} -> ${targetDropdown.id}`);
+                            }
                         }
-                        await fetchSavedSessions();
-                    } catch (err) {
-                        console.error("Failed to delete session record:", err);
-                    }
-                }
-            });
-
-            wrapper.appendChild(textSpan);
-            wrapper.appendChild(deleteBtn);
-            listContainer.appendChild(wrapper);
-        });
-    }
-
-    async function startNewChat() {
-        await saveActiveChatToHistory();
-
-        const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-        if (chatContainer) {
-            chatContainer.innerHTML = '';
+ 
+                        const plusBtnElement = document.getElementById('plusModelBtn');
+                        if (plusBtnElement) {
+                            const sidebarWrapper = plusBtnElement.parentElement;
+ 
+                            const existingSidebarItems = Array.from(sidebarWrapper.querySelectorAll('.sub-item'));
+                            const matchesExisting = existingSidebarItems.some(item => item.textContent.includes(config.name));
+ 
+                            if (!matchesExisting) {
+                                const newSidebarItem = document.createElement('div');
+                                newSidebarItem.className = 'sub-item';
+                                newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${config.name}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
+ 
+                                sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
+                                console.log(`✅ Restored sidebar list item: ${config.name}`);
+                            }
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error("❌ Failed to parse data stream or populate dropdown elements:", error);
+                });
         }
-
-        const thoughtChain = document.querySelector('.thought-chain') || document.getElementById('thoughtChain');
-        if (thoughtChain) {
-            thoughtChain.innerHTML = '';
-        }
-
-        currentSessionId = 'session_' + Date.now();
-        renderAuditTrailList();
-        console.log("🆕 Switched to a brand new conversation channel.");
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        const newChatButton = document.getElementById('new-chat-btn');
-        if (newChatButton) {
-            newChatButton.addEventListener('click', startNewChat);
-        }
-
-        fetchSavedSessions();
-    });
-
-//     async function fetchSavedSessions() {
-//     try {
-//         const response = await fetch('/api/chat/sessions');
-//         const data = await response.json();
-//         if (data.sessions) {
-//             // Map database columns to match your 'id', 'title', and 'html' keys
-//             chatSessions = data.sessions.map(s => ({
-//                 id: s.session_id,
-//                 title: s.title,
-//                 html: s.chat_history || ''
-//             }));
-//             renderAuditTrailList();
-//         }
-//     } catch (err) {
-//         console.error("❌ Failed to pull audit trail records from server:", err);
-//     }
-// }
-
-//     // 📁 Function to save the active chat text into our history array
-//     function saveActiveChatToHistory() {
-//         const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-//         if (!chatContainer || !chatContainer.innerHTML.trim()) return;
-
-//         // Grab the first user message text to use as a clean sidebar title
-//         const firstMsg = chatContainer.querySelector('.message-text');
-//         let title = firstMsg ? firstMsg.textContent.substring(0, 20) + '...' : 'Conversation ' + (chatSessions.length + 1);
-
-//         // Check if we are updating an existing session or adding a brand new one
-//         const existingIndex = chatSessions.findIndex(s => s.id === currentSessionId);
-//         if (existingIndex !== -1) {
-//             chatSessions[existingIndex].html = chatContainer.innerHTML;
-//         } else {
-//             chatSessions.unshift({
-//                 id: currentSessionId,
-//                 title: title,
-//                 html: chatContainer.innerHTML
-//             });
-//         }
-
-//         renderAuditTrailList();
-//     }
-
-//     // 👁️ Function to dynamically build the clickable items in the sidebar
-//     function renderAuditTrailList() {
-//         const listContainer = document.getElementById('audit-trail-list');
-//         if (!listContainer) return;
-
-//         if (chatSessions.length === 0) {
-//             listContainer.innerHTML = `<div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">No previous chats found</div>`;
-//             return;
-//         }
-
-//         listContainer.innerHTML = ''; // Clear old layout links
-
-//         chatSessions.forEach(session => {
-//             const item = document.createElement('div');
-//             item.className = 'sub-item';
-//             item.style.cursor = 'pointer';
-//             item.textContent = `💬 ${session.title}`;
-            
-//             // Highlight active session
-//             if (session.id === currentSessionId) {
-//                 item.style.color = 'var(--primary-blue, #3b82f6)';
-//                 item.style.fontWeight = '600';
-//             }
-
-//             // 🔄 Click event to load the historic chat state back to screen
-//             item.addEventListener('click', () => {
-//                 currentSessionId = session.id;
-//                 const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-//                 if (chatContainer) {
-//                     chatContainer.innerHTML = session.html;
-//                     chatContainer.scrollTop = chatContainer.scrollHeight;
-//                 }
-//                 renderAuditTrailList(); // Redraw to update active text highlight
-//             });
-
-//             listContainer.appendChild(item);
-//         });
-//     }
-
-//     // 🔄 Modify your existing startNewChat function to handle the session save
-//     function startNewChat() {
-//         // 1. Save the old active chat history before erasing it
-//         saveActiveChatToHistory();
-
-//         const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-//         if (chatContainer) {
-//             chatContainer.innerHTML = '';
-//         }
-
-//         // 2. Generate a clean tracking ID for your fresh upcoming conversation session
-//         currentSessionId = 'session_' + Date.now();
-//         renderAuditTrailList();
-//         console.log("🆕 Switched to a brand new conversation channel.");
-//     }
-//     document.addEventListener('DOMContentLoaded', () => {
-//     const newChatButton = document.getElementById('new-chat-btn');
-//     if (newChatButton) {
-//         newChatButton.addEventListener('click', startNewChat);
-//     }
-// });
-
-
-        //////////////////////////////////////////////////////////////////////////////
+ 
+        // ==========================================
+        // SYSTEM INSTRUCTIONS MODAL
+        // ==========================================
         let currentSystemInstructions = "";
         function saveInstructions() {
-            const textarea = document.getElementById("instructions-text");
+            const textareaEl = document.getElementById("instructions-text");
             const submitBtn = document.getElementById("submit-btn");
             const dialogBox = document.getElementById("inst-box");
-            currentSystemInstructions = textarea.value.trim();
+            currentSystemInstructions = textareaEl.value.trim();
             console.log("Captured Data Payload saved globally:", currentSystemInstructions);
-        
-            // console.log("Captured Data Payload:", textarea.value.trim());
-
-        // UI Feedback: Change button state visually
+ 
             submitBtn.innerText = "Submitted! ✓";
             submitBtn.style.background = "#059669";
             submitBtn.disabled = true;
-
-        // Smooth Delay: Wait 800ms so user reads success message, then close cleanly
+ 
             setTimeout(() => {
                 dialogBox.close();
-            
-            // Reset button state for next time it opens
                 submitBtn.innerText = "Submit";
                 submitBtn.style.background = "#10b981";
                 submitBtn.disabled = false;
             }, 800);
         }
-
-
-
-    ///////////////////////////////////////////////////////////////////////////////
-    document.addEventListener('DOMContentLoaded', function() {
-        const collapseBtn = document.querySelector('.collapse-btn');
-        const sidebar = document.querySelector('.right-sidebar');
-        const thoughtChain = document.querySelector('.thought-chain');
-        const panelTitle = document.querySelector('.panel-title');
-
+ 
         // ==========================================
-        // DROPDOWN ROUTING LOGIC
+        // RIGHT SIDEBAR COLLAPSE (Chain of Thought)
         // ==========================================
-        const standardDropdown = document.getElementById("standard-llm-dropdown");
-        const opensourceDropdown = document.getElementById("opensource-llm-dropdown");
-        
-        window.activeBackendModelName = ""; 
-
-        if (standardDropdown && opensourceDropdown) {
-            standardDropdown.addEventListener("change", function () {
-                opensourceDropdown.selectedIndex = 0; 
-                const selectedValue = this.value;
-                if (selectedValue === "gpt-4o" || selectedValue === "gpt-4o-mini" || selectedValue.startsWith("api://")) {
-                    window.activeBackendModelName = selectedValue;
-                    console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
-                } else {
-                    const modelText = this.options[this.selectedIndex].text;
-                    alert(`⚠️ "${modelText}" is Coming Soon! Please select GPT-4o or GPT-4o Mini.`);
-                    this.selectedIndex = 0;
-                    window.activeBackendModelName = "";
-                }    
+        document.addEventListener('DOMContentLoaded', function () {
+            const collapseBtn = document.querySelector('.collapse-btn');
+            const sidebar = document.querySelector('.right-sidebar');
+            const thoughtChain = document.querySelector('.thought-chain');
+            const panelTitle = document.querySelector('.panel-title');
+ 
+            if (collapseBtn) {
+                collapseBtn.addEventListener('click', function () {
+                    const isVisible = thoughtChain.style.display !== 'none';
+ 
+                    if (isVisible) {
+                        thoughtChain.style.display = 'none';
+                        panelTitle.style.display = 'none';
+                        sidebar.style.width = '60px';
+                        collapseBtn.textContent = '+';
+ 
+                        const header = document.querySelector('.right-panel-header');
+                        if (header) {
+                            header.style.justifyContent = 'center';
+                        }
+                    } else {
+                        thoughtChain.style.display = 'block';
+                        panelTitle.style.display = 'block';
+                        sidebar.style.width = '350px';
+                        collapseBtn.textContent = '−';
+ 
+                        const header = document.querySelector('.right-panel-header');
+                        if (header) {
+                            header.style.justifyContent = 'space-between';
+                        }
+                    }
+                });
+            }
+        });
+ 
+        // ==========================================
+        // LIVE CHAIN-OF-THOUGHT STEP STREAM (SSE)
+        // ==========================================
+        let stepEventSource = null;
+ 
+        function initializeLiveStepStream(sessionId, onConnectionOpen) {
+            const thoughtChainContainer = document.querySelector('.thought-chain');
+            const panelTitle = document.querySelector('.panel-title');
+ 
+            if (!thoughtChainContainer) return;
+ 
+            thoughtChainContainer.innerHTML = '';
+            if (panelTitle) panelTitle.innerText = "Analyzing Query Intent...";
+ 
+            if (stepEventSource) {
+                stepEventSource.close();
+            }
+ 
+            let liveStepIndex = 0;
+ 
+            stepEventSource = new EventSource(`/api/chat/stream_steps?session_id=${sessionId}`);
+            stepEventSource.onopen = function () {
+                console.log("⚡ SSE Connection opened successfully!");
+                if (onConnectionOpen) {
+                    onConnectionOpen();
+                }
+            };
+ 
+            stepEventSource.addEventListener('message', function (event) {
+                console.log("STEP EVENT:", event.data);
+ 
+                const payload = JSON.parse(event.data);
+ 
+                if (payload.heartbeat) return;
+ 
+                if (payload.step === "DONE") {
+                    finalizeLiveSteps(payload.is_sql);
+                    if (stepEventSource) {
+                        stepEventSource.close();
+                    }
+                    return;
+                }
+ 
+                const data = payload.step;
+                if (!data) return;
+ 
+                if (typeof data === "string") {
+                    const rawStep = data;
+                    let title = rawStep.includes(' - ')
+                        ? rawStep.split(' - ')[0]
+                        : `Step ${liveStepIndex + 1}`;
+ 
+                    let description = rawStep.includes(' - ')
+                        ? rawStep.split(' - ')[1]
+                        : rawStep;
+ 
+                    const stepHtml = `
+                        <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
+                            <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
+                                STEP ${liveStepIndex + 1}
+                            </div>
+                            <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
+                                ${title}
+                            </div>
+                            <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                                ${description}
+                            </div>
+                            <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
+                                ✓ Completed
+                            </span>
+                        </div>
+                    `;
+ 
+                    thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+                    liveStepIndex++;
+                    return;
+                }
+ 
+                const {
+                    event: eventType,
+                    title,
+                    description,
+                    is_sql
+                } = data;
+ 
+                if (panelTitle) {
+                    if (is_sql) {
+                        panelTitle.innerText = "SQL Agent Analysis";
+                    }
+                    else if (title && (title.includes("Request Received") || title.includes("Knowledge Alignment") || title.includes("Model Execution"))) {
+                        panelTitle.innerText = "General Knowledge Assistant";
+                    }
+                    else if (title && (title.includes("Automation") || title.includes("Context") || title.includes("Schema") || title.includes("Response"))) {
+                        panelTitle.innerText = "API Workflow Execution";
+                    }
+                    else {
+                        panelTitle.innerText = "RAG Document Analysis";
+                    }
+                }
+ 
+                if (eventType === "start") {
+                    const stepHtml = `
+                        <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
+                            <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
+                                STEP ${liveStepIndex + 1}
+                            </div>
+                            <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
+                                ${title}
+                            </div>
+                            <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                                ${description}
+                            </div>
+                            <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">
+                                ⏳ Processing...
+                            </span>
+                        </div>
+                    `;
+ 
+                    thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+ 
+                    const element = document.getElementById(`live-step-${liveStepIndex}`);
+                    if (element) {
+                        setTimeout(() => {
+                            element.style.opacity = "1";
+                            element.style.transform = "translateY(0)";
+                        }, 50);
+                    }
+ 
+                    liveStepIndex++;
+                }
+                else if (eventType === "complete") {
+                    const currentStep = document.querySelector(`#live-step-${liveStepIndex - 1}`);
+                    if (currentStep) {
+                        const descEl = currentStep.querySelector('.thought-description');
+                        const statusEl = currentStep.querySelector('.status-indicator');
+ 
+                        if (descEl) {
+                            descEl.innerHTML = description;
+                        }
+                        if (statusEl) {
+                            statusEl.innerHTML = "✓ Completed";
+                            statusEl.style.color = "#10B981";
+                        }
+                    }
+                }
             });
-
-            opensourceDropdown.addEventListener("change", function () {
-                standardDropdown.selectedIndex = 0;
-                const selectedValue = this.value;
-                if (selectedValue === "llama3" || selectedValue.startsWith("ollama://")) { 
-                    window.activeBackendModelName = selectedValue;
-                    console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
-                } else {
-                    const modelText = this.options[this.selectedIndex].text;
-                    alert(`⚠️ "${modelText}" is Coming Soon! Please select Llama 3.`);
-                    this.selectedIndex = 0;
-                    window.activeBackendModelName = "";
-                }  
-            });
-        }
-
-        const plusModelBtn = document.getElementById('plusModelBtn');
-        if (plusModelBtn) {
-            plusModelBtn.onclick = function() {
-                const modal = document.getElementById('modelModal');
-                if (modal) {
-                    modal.classList.add('active'); 
-                    modal.style.display = 'flex';
+ 
+            stepEventSource.onerror = function () {
+                if (stepEventSource) {
+                    stepEventSource.close();
                 }
             };
         }
-
-        if (typeof loadSavedDatabaseModels === "function") {
-            loadSavedDatabaseModels();
-        }
-    });
-
-    // ==========================================
-    // UTILITY UTILS (GLOBAL SCOPE)
-    // ==========================================
-    function closeModal(modalId) {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.classList.remove('active');
-            modal.style.display = 'none';
-        }
-    }
-
-    // MATCHED LAYOUT: Starts exactly at line 1536 from your screenshot structure
-    function saveModel() {
-        const modelName = document.getElementById('modalModelName').value.trim();
-        const apiKey = document.getElementById('modalApiKey').value.trim();
-        
-        const isStandard = document.getElementById('standardApi').checked;
-        const modelType = isStandard ? 'api' : 'ollama';
-        
-        const providerSelector = document.querySelector('#modelModal select.form-input');
-        const modelProvider = providerSelector ? providerSelector.value : "Unknown";
-
-        if (!modelName) {
-            alert("Please provide a Model Name!");
-            return;
-        }
-        if (modelType === 'api' && !apiKey) {
-            alert("Error: API Key is mandatory for Standard API models!");
-            return;
-        }
-
-        const prefixedModelString = `${modelType}://${modelName.toLowerCase().replace(/\s+/g, '-')}`;
-
-        const payload = {
-            name: modelName,
-            model: prefixedModelString,
-            //provider: prefixedModelString.startsWith("ollama://") ? "ollama" : modelProvider,
-            provider: modelType === 'ollama' ? 'ollama' : modelProvider,       
-            settings: {
-                custom_key: apiKey ? apiKey : null
-            },
-            workspace_id: 1
-        };
-
-        console.log("Pushing configuration payload to database matrix endpoint...", payload);
-        const authToken = localStorage.getItem('jwt_token') || localStorage.getItem('token') || localStorage.getItem('access_token');
-        //console.log("🔑 Sent Authorization Token Value:", authToken);
-        console.log("TOKEN =", authToken);
-
-        //if (!authToken || authToken === 'null' || authToken === 'undefined') {
-        //    alert("⚠️ Security Guard Blocked Request: Your login token was not found in browser storage. Please open your developer tools console (F12) to inspect keys.");
-        //    return;
-        //}
-
-        fetch('/api/model-config/configurations', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-               // 'Authorization': 'Bearer ' + localStorage.getItem('jwt_token'),
-                //'Authorization': 'Bearer ' + authToken
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Database registration rejected with status code: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (apiKey) {
-                localStorage.setItem('presentation_api_key', apiKey);
-            }
-
-            let targetDropdown = (modelType === 'api') ? document.getElementById('standard-llm-dropdown') : document.getElementById('opensource-llm-dropdown');
-            if (targetDropdown) {
-                const newOption = document.createElement('option');
-                newOption.value = prefixedModelString; 
-                newOption.innerHTML = modelName;
-                
-                targetDropdown.appendChild(newOption);
-                targetDropdown.value = newOption.value; 
-                
-                window.activeBackendModelName = newOption.value;
-                console.log(`🎯 Active Custom Model Activated: ${window.activeBackendModelName}`);
-            }
-
-            const plusBtnElement = document.getElementById('plusModelBtn');
-            if (plusBtnElement) {
-                const sidebarWrapper = plusBtnElement.parentElement;
-                const newSidebarItem = document.createElement('div');
-                newSidebarItem.className = 'sub-item';
-                newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${modelName}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
-                sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
-            }
-
-            alert(`Model "${modelName}" configured and activated successfully!`);
-            closeModal('modelModal');
-
-            document.getElementById('modalModelName').value = '';
-            document.getElementById('modalApiKey').value = '';
-        })
-        .catch(error => {
-            console.error("Error saving model configuration:", error);
-            alert(`Failed to save model: ${error.message}`);
-        });
-    }
-
-    // ==========================================
-    // CHAT MESSAGE INJECTOR INTERCEPTOR
-    // ==========================================
-    const originalFetch = window.fetch;
-    window.fetch = async function(...args) {
-        let [url, config] = args;
-        if (typeof url === 'string' && url.includes('/api/chat/message')) {
-
-            if (!window.activeBackendModelName) {
-                const savedModel = localStorage.getItem('saarthi_active_model');
-                if (savedModel) {
-                    window.activeBackendModelName = savedModel;
-                    console.log(`⚡ Background state auto-recovered: ${window.activeBackendModelName}`);
-                }
-            }
-            localStorage.setItem('saarthi_active_model', window.activeBackendModelName);
-            
-            if (!window.activeBackendModelName) {
-                alert("Please select the model before proceeding.");
-                return new Response(JSON.stringify({
-                    status: "success",
-                    response: "⚠️ Request cancelled. Please select a model from the dropdown selection panel above to begin.",
-                    session_id: 1,
-                    query_result: {},
-                    suggestions: []
-                }), {
-                    status: 200,
-                    headers: { 'Content-Type': 'application/json' }
-                });
-            }
-            
-            if (config && config.body) {
-                try {
-                    let body = JSON.parse(config.body);
-                    body.model_name = window.activeBackendModelName;
-                    if (window.activeBackendModelName.includes("://")) {
-                        body.custom_key = localStorage.getItem('presentation_api_key') || "";
-                    }     
-                    config.body = JSON.stringify(body);
-                } catch (e) {
-                    console.error("Payload injection error:", e);
-                }
-            }
-        }
-        const response = await originalFetch(...args);
-        // return originalFetch(...args);
-        if (typeof url === 'string' && url.includes('/api/chat/message')) {
-            const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-            if (chatContainer) {
-                localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
-            }
-            // const thoughtChain = document.querySelector('.thought-chain');
-            // if (thoughtChain) {
-            //     localStorage.setItem('saarthi_thought_chain', thoughtChain.innerHTML);
-            // }
-        }
-        return response;
-    };
-
-    // ==========================================
-    // DATABASE SYNC: RESTORE MODELS ON REFRESH
-    // ==========================================
-    function loadSavedDatabaseModels() {
-        console.log("🔄 Fetching saved configurations from backend database...");
-        
-        fetch('/api/model-config/configurations')
-            .then(response => {
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                return response.json();
-            })
-            .then(data => {
-                if (!data || !data.configurations) {
-                    console.warn("⚠️ No configurations returned from database matrix.");
-                    return;
-                }
-
-                console.log(`📋 Found ${data.configurations.length} models in DB. Syncing to UI dropdowns...`);
-
-                data.configurations.forEach(config => {
-                    // Check if the configuration belongs to open-source or standard dropdown
-                    const isOllama = config.provider === 'ollama' || config.model.startsWith('ollama://');
-                    let targetDropdown = isOllama ? document.getElementById('opensource-llm-dropdown') : document.getElementById('standard-llm-dropdown');
-                    
-                    if (targetDropdown) {
-                        // 1. Prevent duplicate options from getting appended to the dropdown menu
-                        if (!targetDropdown.querySelector(`option[value="${config.model}"]`)) {
-                            const newOption = document.createElement('option');
-                            newOption.value = config.model;
-                            newOption.innerHTML = config.name;
-                            targetDropdown.appendChild(newOption);
-                            console.log(`✅ Restored model option: ${config.name} -> ${targetDropdown.id}`);
-                        }
-                    }
-
-                    // 2. SIDEBAR INJECTION FIX: Restore the model to the left sidebar "AI & MODELS" menu
-                    const plusBtnElement = document.getElementById('plusModelBtn');
-                    if (plusBtnElement) {
-                        const sidebarWrapper = plusBtnElement.parentElement;
-                        
-                        // Check if this specific model text already exists in the sidebar to avoid duplicates
-                        const existingSidebarItems = Array.from(sidebarWrapper.querySelectorAll('.sub-item'));
-                        const matchesExisting = existingSidebarItems.some(item => item.textContent.includes(config.name));
-
-                        if (!matchesExisting) {
-                            const newSidebarItem = document.createElement('div');
-                            newSidebarItem.className = 'sub-item';
-                            newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${config.name}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
-                            
-                            // Inserts the new item neatly right above the "+ Configure New Model" button
-                            sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
-                            console.log(`✅ Restored sidebar list item: ${config.name}`);
-                        }
-                    }
-                });
-            })
-            .catch(error => {
-                console.error("❌ Failed to parse data stream or populate dropdown elements:", error);
-            });
-    }
-    
-    /////////////////////////////////////////////////////////////////////////////
-    document.addEventListener('DOMContentLoaded', function() {
-    const collapseBtn = document.querySelector('.collapse-btn');
-    const sidebar = document.querySelector('.right-sidebar');
-    const thoughtChain = document.querySelector('.thought-chain');
-    const panelTitle = document.querySelector('.panel-title');
-
-    if (collapseBtn) {
-        collapseBtn.addEventListener('click', function() {
-            // Check if the thought chain is currently visible
-            const isVisible = thoughtChain.style.display !== 'none';
-
-            if (isVisible) {
-                // HIDE logic
-                thoughtChain.style.display = 'none';
-                panelTitle.style.display = 'none';
-                sidebar.style.width = '60px';
-                collapseBtn.textContent = '+';
-                
-                // Adjust header for collapsed state
-                const header = document.querySelector('.right-panel-header');
-                if (header) {
-                    header.style.justifyContent = 'center';
-                }
-            } else {
-                // SHOW logic
-                thoughtChain.style.display = 'block';
-                panelTitle.style.display = 'block';
-                sidebar.style.width = '350px'; 
-                collapseBtn.textContent = '−';
-                
-                // Restore header layout
-                const header = document.querySelector('.right-panel-header');
-                if (header) {
-                    header.style.justifyContent = 'space-between';
-                }
-            }
-        });
-    }
-});
-
-
-    /*async function revealStepsOneByOne(uiData) {
-        const thoughtChainContainer = document.querySelector('.thought-chain');
-        const panelTitle = document.querySelector('.panel-title');
-        
-        if (!thoughtChainContainer) return;*/
-
-        /*const steps = uiData.steps || uiData.rag_chain_of_thought || [];
-        const isSql = !!uiData.steps;*/
-
-        /*const hasSqlSteps = Array.isArray(uiData.steps) && uiData.steps.length > 0;
-        const hasRagSteps = Array.isArray(uiData.rag_chain_of_thought) && uiData.rag_chain_of_thought.length > 0;
-        
-        // Priority: Use SQL steps if available, otherwise fallback to RAG
-        const steps = hasSqlSteps ? uiData.steps : (hasRagSteps ? uiData.rag_chain_of_thought : []);
-        const isSql = hasSqlSteps;
-
-        thoughtChainContainer.innerHTML = '';
-        if (panelTitle) {
-            panelTitle.innerText = isSql ? "SQL Agent Analysis" : "RAG Document Analysis";}
-
-        // Reset the sidebar
-
-        for (let i = 0; i < steps.length; i++) {
-            const rawStep = steps[i];
-            let title = isSql ? "Agent Activity" : (rawStep.split(' - ')[0] || `Step ${i + 1}`);
-            let description = isSql ? rawStep : (rawStep.split(' - ')[1] || "Processing...");
-
-            const stepHtml = `
-                <div id="step-row-${i}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-                    <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px;">STEP ${i + 1}</div>
-                    <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">${title}</div>
-                    <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">${description}</div>
-                    <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">⏳ Processing...</span>
-                </div>
-            `;
-
-            thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
-
-            // Trigger Animation
-            const element = document.getElementById(`step-row-${i}`);
-            setTimeout(() => {
-                element.style.opacity = "1";
-                element.style.transform = "translateY(0)";
-            }, 50);
-
-            // Wait 1 second before showing next step
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Mark as done
-            const status = element.querySelector('.status-indicator');
-            if (status) {
-                status.innerHTML = "✓ Completed";
-                status.style.color = "#10B981";
-            }
-        }
-
-        if (panelTitle) panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
-    }*/
-   
-    let stepEventSource = null;
-
-    function initializeLiveStepStream(sessionId, onConnectionOpen) {
-        const thoughtChainContainer = document.querySelector('.thought-chain');
-        const panelTitle = document.querySelector('.panel-title');
-        
-        if (!thoughtChainContainer) return;
-
-        thoughtChainContainer.innerHTML = '';
-        if (panelTitle) panelTitle.innerText = "Analyzing Query Intent...";
-
-        if (stepEventSource) {
-            stepEventSource.close();
-        }
-
-        let liveStepIndex = 0;
-
-        stepEventSource = new EventSource(`/api/chat/stream_steps?session_id=${sessionId}`);
-        stepEventSource.onopen = function() {
-            console.log("⚡ SSE Connection opened successfully!");
-            if (onConnectionOpen) {
-                onConnectionOpen(); 
-            }
-        };
-        
-        stepEventSource.addEventListener('message', function(event) {
-            console.log("STEP EVENT:", event.data);
-
-            const payload = JSON.parse(event.data);
-
-            // Ignore heartbeat
-            if (payload.heartbeat) return;
-
-            // Handle DONE event
-            if (payload.step === "DONE") {
-                finalizeLiveSteps(payload.is_sql);
-                if (stepEventSource) {
-                    stepEventSource.close();
-                }
-                return;
-            }
-
-            const data = payload.step;
-            if (!data) return;
-
-            // =========================================
-            // BACKWARD COMPATIBILITY FOR RAG STRING STEPS
-            // =========================================
-            if (typeof data === "string") {
-                const rawStep = data;
-                let title = rawStep.includes(' - ')
-                    ? rawStep.split(' - ')[0]
-                    : `Step ${liveStepIndex + 1}`;
-
-                let description = rawStep.includes(' - ')
-                    ? rawStep.split(' - ')[1]
-                    : rawStep;
-
-                const stepHtml = `
-                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
-                            STEP ${liveStepIndex + 1}
-                        </div>
-                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
-                            ${title}
-                        </div>
-                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
-                            ${description}
-                        </div>
-                        <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
-                            ✓ Completed
-                        </span>
-                    </div>
-                `;
-
-                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
-                liveStepIndex++;
-                return;
-            }
-
-            const {
-                event: eventType,
-                title,
-                description,
-                is_sql
-            } = data;
-
-            // =========================================
-            // DYNAMIC PANEL TITLE ROUTER
-            // =========================================
+ 
+        function finalizeLiveSteps(isSql) {
+            const panelTitle = document.querySelector('.panel-title');
             if (panelTitle) {
-                if (is_sql) {
-                    panelTitle.innerText = "SQL Agent Analysis";
-                } 
-                else if (title && (title.includes("Request Received") || title.includes("Knowledge Alignment") || title.includes("Model Execution"))) {
-                    panelTitle.innerText = "General Knowledge Assistant";
-                }    
-                else if (title && (title.includes("Automation") || title.includes("Context") || title.includes("Schema") || title.includes("Response"))) {
-                    panelTitle.innerText = "API Workflow Execution";
-                } 
-                else {
-                    panelTitle.innerText = "RAG Document Analysis";
+                const currentTitle = panelTitle.innerText;
+                if (currentTitle.includes("General")) {
+                    panelTitle.innerText = "General Knowledge Complete";
+                } else if (currentTitle.includes("API")) {
+                    panelTitle.innerText = "API Execution Complete";
+                } else {
+                    panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
                 }
             }
-
-            // =========================================
-            // START EVENT
-            // =========================================
-            if (eventType === "start") {
-                const stepHtml = `
-                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
-                            STEP ${liveStepIndex + 1}
-                        </div>
-                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
-                            ${title}
-                        </div>
-                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
-                            ${description}
-                        </div>
-                        <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">
-                            ⏳ Processing...
-                        </span>
-                    </div>
-                `;
-
-                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
-
-                const element = document.getElementById(`live-step-${liveStepIndex}`);
-                if (element) {
-                    setTimeout(() => {
-                        element.style.opacity = "1";
-                        element.style.transform = "translateY(0)";
-                    }, 50);
-                }
-
-                liveStepIndex++;
-            }
-
-            // =========================================
-            // COMPLETE EVENT
-            // =========================================
-            else if (eventType === "complete") {
-                const currentStep = document.querySelector(`#live-step-${liveStepIndex - 1}`);
-                if (currentStep) {
-                    const descEl = currentStep.querySelector('.thought-description');
-                    const statusEl = currentStep.querySelector('.status-indicator');
-
-                    if (descEl) {
-                        descEl.innerHTML = description;
-                    }
-                    if (statusEl) {
-                        statusEl.innerHTML = "✓ Completed";
-                        statusEl.style.color = "#10B981";
-                    }
-                }
-            }
-        });
-
-        stepEventSource.onerror = function() {
-            if (stepEventSource) {
-                stepEventSource.close();
-            }
-        };
-    }
-
-    function finalizeLiveSteps(isSql) {
-        const panelTitle = document.querySelector('.panel-title');
-        if (panelTitle) {
-            const currentTitle = panelTitle.innerText;
-            if (currentTitle.includes("General")) {
-                panelTitle.innerText = "General Knowledge Complete";
-            } else if (currentTitle.includes("API")) {
-                panelTitle.innerText = "API Execution Complete";
-            } else {
-                panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
+ 
+            const statusIndicators = document.querySelectorAll('.status-indicator');
+            if (statusIndicators.length > 0) {
+                const finalStatus = statusIndicators[statusIndicators.length - 1];
+                finalStatus.innerHTML = "✓ Completed";
+                finalStatus.style.color = "#10B981";
             }
         }
-        // if (panelTitle) {
-        //     if (panelTitle.innerText.includes("API")) {
-        //         panelTitle.innerText = "API Execution Complete";
-        //     } else {
-        //         panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
-        //     }
-        // }
-
-        const statusIndicators = document.querySelectorAll('.status-indicator');
-        if (statusIndicators.length > 0) {
-            const finalStatus = statusIndicators[statusIndicators.length - 1];
-            finalStatus.innerHTML = "✓ Completed";
-            finalStatus.style.color = "#10B981";
-        }
-    }
-    
-
-   //////////////////////////////////////////////////////////////////////////////////////// 
-   /* let stepEventSource = null;
-
-    function initializeLiveStepStream(sessionId,onConnectionOpen) {
-        const thoughtChainContainer = document.querySelector('.thought-chain');
-        const panelTitle = document.querySelector('.panel-title');
-        
-        if (!thoughtChainContainer) return;
-
-        thoughtChainContainer.innerHTML = '';
-        if (panelTitle) panelTitle.innerText = "Analyzing Query Intent...";
-
-        if (stepEventSource) {
-            stepEventSource.close();
-        }
-
-        let liveStepIndex = 0;
-
-        stepEventSource = new EventSource(`/api/chat/stream_steps?session_id=${sessionId}`);
-        stepEventSource.onopen = function() {
-            console.log("⚡ SSE Connection opened successfully!");
-            if (onConnectionOpen) {
-                onConnectionOpen(); }};
-/////////////////////////////////////////////////////////////////////////////////////////////
-
-        /*stepEventSource.addEventListener('message', function(event) {
-          console.log("STEP EVENT:", event.data);  
-          const data = JSON.parse(event.data);
-
-          if (data.step === "DONE") {
-            finalizeLiveSteps(data.is_sql);
-            stepEventSource.close();
-            return;
-        }
-
-          if (data.heartbeat) return;
-
-            if (panelTitle) {
-                panelTitle.innerText = data.is_sql ? "SQL Agent Analysis" : "RAG Document Analysis";
-            }
-            
-            const rawStep = data.step || "";
-// Extract agent names dynamically for both RAG and SQL modes
-            let title = rawStep.includes(' - ') ? rawStep.split(' - ')[0] : "Agent Activity";
-            let description = rawStep.includes(' - ') ? rawStep.split(' - ')[1] : rawStep;
-            /*const rawStep = data.step;
-            let title = data.is_sql ? "Agent Activity" : (rawStep.split(' - ')[0] || `Step ${liveStepIndex + 1}`);
-            let description = data.is_sql ? rawStep : (rawStep.split(' - ')[1] || "Processing parameters...");*/
-
-            /*const stepHtml = `
-                <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-                    <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">STEP ${liveStepIndex + 1}</div>
-                    <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">${title}</div>
-                    <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">${description}</div>
-                    <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">⏳ Processing...</span>
-                </div>
-            `;
-
-            if (liveStepIndex > 0) {
-                const priorStatus = document.querySelector(`#live-step-${liveStepIndex - 1} .status-indicator`);
-                if (priorStatus) {
-                    priorStatus.innerHTML = "✓ Completed";
-                    priorStatus.style.color = "#10B981";
-                }
-            }
-
-            thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
-
-            const element = document.getElementById(`live-step-${liveStepIndex}`);
-            if (element) {
-                setTimeout(() => {
-                    element.style.opacity = "1";
-                    element.style.transform = "translateY(0)";
-                }, 50);
-            }
-
-            liveStepIndex++;
-        });*/
- //////////////////////////////////////////////////////////////////////////////////////////       
-       /* stepEventSource.addEventListener('message', function(event) {
-
-            console.log("STEP EVENT:", event.data);
-
-            const payload = JSON.parse(event.data);
-
-            // Ignore heartbeat
-            if (payload.heartbeat) return;
-
-            // Handle DONE event
-            if (payload.step === "DONE") {
-
-                finalizeLiveSteps(payload.is_sql);
-
-                if (stepEventSource) {
-                    stepEventSource.close();
-                }
-
-                return;
-            }
-
-            const data = payload.step;
-
-            if (!data) return;
-
-            // =========================================
-            // BACKWARD COMPATIBILITY FOR RAG STRING STEPS
-            // =========================================
-            if (typeof data === "string") {
-
-                const rawStep = data;
-
-                let title = rawStep.includes(' - ')
-                    ? rawStep.split(' - ')[0]
-                    : `Step ${liveStepIndex + 1}`;
-
-                let description = rawStep.includes(' - ')
-                    ? rawStep.split(' - ')[1]
-                    : rawStep;
-
-                const stepHtml = `
-                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-
-                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
-                            STEP ${liveStepIndex + 1}
-                        </div>
-
-                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
-                            ${title}
-                        </div>
-
-                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
-                            ${description}
-                        </div>
-
-                        <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
-                            ✓ Completed
-                        </span>
-
-                    </div>
-                `;
-
-                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
-
-                liveStepIndex++;
-
-                return;
-            }
-
-            const {
-                event: eventType,
-                title,
-                description,
-                is_sql
-            } = data;
-
-            // Update panel title
-            if (panelTitle) {
-                panelTitle.innerText = is_sql
-                    ? "SQL Agent Analysis"
-                    : "RAG Document Analysis";
-            }
-
-            // =========================================
-            // START EVENT
-            // =========================================
-            if (eventType === "start") {
-
-                const stepHtml = `
-                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-
-                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
-                            STEP ${liveStepIndex + 1}
-                        </div>
-
-                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
-                            ${title}
-                        </div>
-
-                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
-                            ${description}
-                        </div>
-
-                        <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">
-                            ⏳ Processing...
-                        </span>
-
-                    </div>
-                `;
-
-                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
-
-                const element = document.getElementById(`live-step-${liveStepIndex}`);
-
-                if (element) {
-                    setTimeout(() => {
-                        element.style.opacity = "1";
-                        element.style.transform = "translateY(0)";
-                    }, 50);
-                }
-
-                liveStepIndex++;
-            }
-
-            // =========================================
-            // COMPLETE EVENT
-            // =========================================
-            else if (eventType === "complete") {
-
-                const currentStep = document.querySelector(`#live-step-${liveStepIndex - 1}`);
-
-                if (currentStep) {
-
-                    const descEl = currentStep.querySelector('.thought-description');
-                    const statusEl = currentStep.querySelector('.status-indicator');
-
-                    if (descEl) {
-                        descEl.innerHTML = description;
-                    }
-
-                    if (statusEl) {
-                        statusEl.innerHTML = "✓ Completed";
-                        statusEl.style.color = "#10B981";
-                    }
-                }
-            }
-        });
-
-        stepEventSource.onerror = function() {
-            if (stepEventSource) {
-                stepEventSource.close();
-            }
-        };
-    }
-
-    function finalizeLiveSteps(isSql) {
-        /*if (stepEventSource) {
-            stepEventSource.close();
-        }*/
-        
-       /* const panelTitle = document.querySelector('.panel-title');
-        if (panelTitle) {
-            panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
-        }
-
-        const statusIndicators = document.querySelectorAll('.status-indicator');
-        if (statusIndicators.length > 0) {
-            const finalStatus = statusIndicators[statusIndicators.length - 1];
-            finalStatus.innerHTML = "✓ Completed";
-            finalStatus.style.color = "#10B981";
-        }
-    }*/
-/////////////////////////////////////////////////////////////////////////////////////////////
+ 
+        // ==========================================
+        // CHAT SEND / RENDER
+        // ==========================================
         const chatInput = document.querySelector('.chat-input');
         const sendBtn = document.querySelector('.send-btn');
         const chatContainer = document.querySelector('.chat-container');
-
-      
-      async function handleChat() {
-        const message = chatInput.value.trim();
-        if (!message) return;
-
-        if (!window.activeBackendModelName) {
-            alert("Please select the model before proceeding.");
-            return; 
-        }
-
-        const currentSessionId = 1;
-
-        // 1. Render User Message
-        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        renderMessage('You', `<span style="color: #E2E8F0;">${message}</span>`, '👤', time, false);
-        chatInput.value = '';
-
-        initializeLiveStepStream(currentSessionId,async function() {
-
-        try {
-            // 2. Fetch from your Flask Route
-            const response = await fetch('/api/chat/message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message: message,
-                    session_id: 1,
-                    mode: 'chat',
-                    system_instructions: currentSystemInstructions
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.status === "success") {
-                const ui = data.response;
-                
-                const isSqlResult = ui.sql !== undefined && ui.sql !== null && ui.sql !== "-- No SQL Generated --" && ui.sql !== "null";
-                /*finalizeLiveSteps(isSqlResult);*/
-                setTimeout(() => {
-                    finalizeLiveSteps(isSqlResult);
-                    // const thoughtChain = document.querySelector('.thought-chain') || document.getElementById('thoughtChain');
-                    // if (thoughtChain) {
-                    //     localStorage.setItem('saarthi_thought_chain', thoughtChain.innerHTML);
-                    //     console.log("🧠 Saved completed thought chain snapshot!");
-                    // }
-                }, 1500);
-                
-
-                let finalOutput = `<div style="font-family: 'Inter', sans-serif; display: flex; flex-direction: column; gap: 15px;">`;
-
-                // A. The Answer
-                finalOutput += `<div style="color: #E2E8F0; font-size: 15px;">${ui.answer}</div>`;
-
-                // B. The Chart
-               /* if (ui.chart && Object.keys(ui.chart).length > 0) {
-                    const chartId = 'chart-' + Date.now();
-                    finalOutput += `
-                        <div style="padding:15px; border-radius:14px; background:#fff; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
-                            <canvas id="${chartId}" style="max-height:240px;"></canvas>
-                        </div>`;
-                    setTimeout(() => toggleSaarthiChart(chartId, ui.chart.recommended || 'bar'), 150);
-                }*/
-
-                if (ui.chart && ui.chart.recommended && ui.chart[ui.chart.recommended]) {
-                    const chartId = 'chart-' + Date.now();
-                    finalOutput += `
-                        <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
-                            <canvas id="${chartId}" style="max-height:240px; width:100%;"></canvas>
-                        </div>`;
-
-                    setTimeout(() => {
-                        const canvasEl = document.getElementById(chartId);
-                        if (canvasEl) {
-                            new Chart(canvasEl.getContext('2d'), ui.chart[ui.chart.recommended]);
-                        }
-                    }, 350); 
-                }
-                
-                else if (ui.table && ui.table.length > 0) {
-                    const headers = Object.keys(ui.table[0]);
-                    const headerHtml = headers.map(key => `<th style="padding:10px; text-align:left; background:transparent; border-bottom:2px solid #e2e8f0; color:#666;">${key}</th>`).join('');
-                    const rowsHtml = ui.table.map(row => `<tr>${headers.map(h => `<td style="padding:10px; border-bottom:1px solid #eee; color:#333;">${row[h]}</td>`).join('')}</tr>`).join('');
-
-                    finalOutput += `
-                        <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05); overflow-x:auto;">
-                            <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                                <thead><tr>${headerHtml}</tr></thead>
-                                <tbody>${rowsHtml}</tbody>
-                            </table>
-                        </div>`;
-                }
-                
-                if (ui.format === "kpi" || (ui.table && ui.table.length === 1)) {
-                    const primaryRecord = ui.table[0];
-                    if (primaryRecord) {
-                        const keys = Object.keys(primaryRecord);
-                        const kpiLabel = keys[1] || keys[0]; 
-                        const kpiValue = primaryRecord[kpiLabel];
-
-                        finalOutput += `
-                            <div style="padding: 20px; border-radius: 14px; background: rgba(255,255,255,0.05); border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: inline-block; min-width: 220px; margin-top: 15px;">
-                                <div style="font-size: 11px; color: #a0aec0; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${kpiLabel.replace(/_/g, ' ')}</div>
-                                <div style="font-size: 32px; font-weight: 700; color: #ffffff; margin-top: 5px;">${kpiValue}</div>
-                                <div style="font-size: 12px; color: #48bb78; margin-top: 5px;">✅ Single summary entry</div>
-                            </div>`;
-                    }    
-                }
-                                // =====================================================
-                
-
-
-                const finalInsights = ui.insights || (window.currentUIStructure && window.currentUIStructure.insights) || [];
-                if (ui.insights && Array.isArray(ui.insights) && ui.insights.length > 0) {
-                    const insightsHtml = ui.insights.map(insight => {
-                        let textValue = (insight && typeof insight === 'object') 
-                            ? (insight.insight || insight.text || Object.values(insight)[0] || "") 
-                            : insight;
-                        return`
-                        <li style="margin-bottom: 8px; display: flex; gap: 8px; align-items: flex-start;">
-                            <span style="color: #4a90e2; font-weight: bold;">•</span>
-                            <span style="color: #E2E8F0; font-size: 14px;">${textValue}</span>
-                        </li>
-                        `;
-                    }).join('');
-
-                    finalOutput += `
-                        <div style="padding: 15px 0px; background: transparent; margin-top: 10px;">
-                            <div style="font-size: 12px; font-weight: 700; color: #FFFFFF; margin-bottom: 10px; letter-spacing: 0.5px;">Data Insights</div>
-                            <ul style="list-style: none; padding: 0; margin: 0; line-height: 1.6;">
-                                ${insightsHtml}
-                            </ul>
-                        </div>`;
-                }
-
-
-
-                // C. Generated SQL
-                /*finalOutput += `
-                    <div>
-                        <div style="font-size:12px; font-weight:700; color:#666; margin-bottom:5px; text-transform:uppercase;">Generated SQL</div>
-                        <pre style="background:#f8fafc; padding:12px; border-radius:10px; border:1px solid #e2e8f0; font-size:13px; white-space:pre-wrap; color:#333; margin:0;">${ui.sql}</pre>
-                    </div>`;*/
-                
-                /*const cleanSql = (ui.sql || "-- No SQL Generated --").replace(/```sql|```/g, "").trim();
-                finalOutput += `
-                    <div>
-                        <div style="font-size:12px; font-weight:700; color:#666; margin-bottom:5px; text-transform:uppercase;">Generated SQL</div>
-                         <pre style="background:#f8fafc; padding:12px; border-radius:10px; border:1px solid #e2e8f0; font-size:13px; white-space:pre-wrap; color:#333; margin:0;">${cleanSql}</pre>
-                    </div>`;*/
-                
-                /*if (ui.sql && ui.sql !== "-- No SQL Generated --" && ui.sql !== "null") {
-                    const cleanSql = ui.sql.replace(/```sql|```/g, "").trim();
-                    finalOutput += `
-                        <div>
-                            <div style="font-size:12px; font-weight:700; color:#666; margin-bottom:5px; text-transform:uppercase;">Generated SQL</div>
-                            <pre style="background:#f8fafc; padding:12px; border-radius:10px; border:1px solid #e2e8f0; font-size:13px; white-space:pre-wrap; color:#333; margin:0;">${cleanSql}</pre>
-                        </div>`;
-                    }
-
-                // D. Data Result (JSON)
-                if (ui.table && ui.table.length > 0) {
-                    finalOutput += `
-                        <div>
-                            <div style="font-size:12px; font-weight:700; color:#666; margin-bottom:5px; text-transform:uppercase;">Data Result</div>
-                            <pre class="scroll-box" style="background:#f8fafc; padding:12px; border-radius:10px; border:1px solid #e2e8f0; font-size:13px; max-height:200px; overflow-y:auto; color:#333; margin:0;">${JSON.stringify(ui.table, null, 2)}</pre>
-                        </div>`;
-                }*/
-
-                finalOutput += `</div>`;
-                renderMessage('Saarthi AI', finalOutput, 'S', time, true);
+ 
+        async function handleChat() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+ 
+            if (!window.activeBackendModelName) {
+                alert("Please select the model before proceeding.");
+                return;
             }
-        } catch (error) {
-            console.error("Fetch Error:", error);
-            renderMessage('Saarthi AI', "❌ Connection Error.", 'S', time, true);
+ 
+            const currentSessionId = 1;
+ 
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            renderMessage('You', `<span style="color: #E2E8F0;">${message}</span>`, '👤', time, false);
+            chatInput.value = '';
+ 
+            initializeLiveStepStream(currentSessionId, async function () {
+ 
+                try {
+                    const response = await fetch('/api/chat/message', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message: message,
+                            session_id: 1,
+                            mode: 'chat',
+                            system_instructions: currentSystemInstructions
+                        })
+                    });
+ 
+                    const data = await response.json();
+ 
+                    if (data.status === "success") {
+                        const ui = data.response;
+ 
+                        const isSqlResult = ui.sql !== undefined && ui.sql !== null && ui.sql !== "-- No SQL Generated --" && ui.sql !== "null";
+                        setTimeout(() => {
+                            finalizeLiveSteps(isSqlResult);
+                        }, 1500);
+ 
+                        let finalOutput = `<div style="font-family: 'Inter', sans-serif; display: flex; flex-direction: column; gap: 15px;">`;
+ 
+                        finalOutput += `<div style="color: #E2E8F0; font-size: 15px;">${ui.answer}</div>`;
+ 
+                        if (ui.chart && ui.chart.recommended && ui.chart[ui.chart.recommended]) {
+                            const chartId = 'chart-' + Date.now();
+                            finalOutput += `
+                                <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
+                                    <canvas id="${chartId}" style="max-height:240px; width:100%;"></canvas>
+                                </div>`;
+ 
+                            setTimeout(() => {
+                                const canvasEl = document.getElementById(chartId);
+                                if (canvasEl) {
+                                    new Chart(canvasEl.getContext('2d'), ui.chart[ui.chart.recommended]);
+                                }
+                            }, 350);
+                        }
+                        else if (ui.table && ui.table.length > 0) {
+                            const headers = Object.keys(ui.table[0]);
+                            const headerHtml = headers.map(key => `<th style="padding:10px; text-align:left; background:transparent; border-bottom:2px solid #e2e8f0; color:#666;">${key}</th>`).join('');
+                            const rowsHtml = ui.table.map(row => `<tr>${headers.map(h => `<td style="padding:10px; border-bottom:1px solid #eee; color:#333;">${row[h]}</td>`).join('')}</tr>`).join('');
+ 
+                            finalOutput += `
+                                <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05); overflow-x:auto;">
+                                    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                                        <thead><tr>${headerHtml}</tr></thead>
+                                        <tbody>${rowsHtml}</tbody>
+                                    </table>
+                                </div>`;
+                        }
+ 
+                        if (ui.format === "kpi" || (ui.table && ui.table.length === 1)) {
+                            const primaryRecord = ui.table[0];
+                            if (primaryRecord) {
+                                const keys = Object.keys(primaryRecord);
+                                const kpiLabel = keys[1] || keys[0];
+                                const kpiValue = primaryRecord[kpiLabel];
+ 
+                                finalOutput += `
+                                    <div style="padding: 20px; border-radius: 14px; background: rgba(255,255,255,0.05); border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: inline-block; min-width: 220px; margin-top: 15px;">
+                                        <div style="font-size: 11px; color: #a0aec0; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${kpiLabel.replace(/_/g, ' ')}</div>
+                                        <div style="font-size: 32px; font-weight: 700; color: #ffffff; margin-top: 5px;">${kpiValue}</div>
+                                        <div style="font-size: 12px; color: #48bb78; margin-top: 5px;">✅ Single summary entry</div>
+                                    </div>`;
+                            }
+                        }
+ 
+                        if (ui.insights && Array.isArray(ui.insights) && ui.insights.length > 0) {
+                            const insightsHtml = ui.insights.map(insight => {
+                                let textValue = (insight && typeof insight === 'object')
+                                    ? (insight.insight || insight.text || Object.values(insight)[0] || "")
+                                    : insight;
+                                return `
+                                <li style="margin-bottom: 8px; display: flex; gap: 8px; align-items: flex-start;">
+                                    <span style="color: #4a90e2; font-weight: bold;">•</span>
+                                    <span style="color: #E2E8F0; font-size: 14px;">${textValue}</span>
+                                </li>
+                                `;
+                            }).join('');
+ 
+                            finalOutput += `
+                                <div style="padding: 15px 0px; background: transparent; margin-top: 10px;">
+                                    <div style="font-size: 12px; font-weight: 700; color: #FFFFFF; margin-bottom: 10px; letter-spacing: 0.5px;">Data Insights</div>
+                                    <ul style="list-style: none; padding: 0; margin: 0; line-height: 1.6;">
+                                        ${insightsHtml}
+                                    </ul>
+                                </div>`;
+                        }
+ 
+                        finalOutput += `</div>`;
+                        renderMessage('Saarthi AI', finalOutput, 'S', time, true);
+                    }
+                } catch (error) {
+                    console.error("Fetch Error:", error);
+                    renderMessage('Saarthi AI', "❌ Connection Error.", 'S', time, true);
+                }
+            });
         }
-    });
-      }       
-
-
-
-    /**
-     * Standard function to render chat bubbles
-     */
-    function renderMessage(author, text, avatar, time, isAI) {
-        const aiStyle = isAI ? 'style="background: #4a90e2;"' : ''; 
-        const html = `
-            <div class="message" style="margin-bottom: 20px; display: flex; gap: 12px;">
-                <div class="message-avatar" ${aiStyle} style="width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; flex-shrink: 0;">${avatar}</div>
-                <div class="message-content" style="flex-grow: 1;">
-                    <div class="message-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                        <span class="message-author" style="font-weight: 600; font-size: 14px;">${author}</span>
-                        <span class="message-time" style="font-size: 11px; color: #888;">${time}</span>
+ 
+        function renderMessage(author, text, avatar, time, isAI) {
+            const aiStyle = isAI ? 'style="background: #4a90e2;"' : '';
+            const html = `
+                <div class="message" style="margin-bottom: 20px; display: flex; gap: 12px;">
+                    <div class="message-avatar" ${aiStyle} style="width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; flex-shrink: 0;">${avatar}</div>
+                    <div class="message-content" style="flex-grow: 1;">
+                        <div class="message-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                            <span class="message-author" style="font-weight: 600; font-size: 14px;">${author}</span>
+                            <span class="message-time" style="font-size: 11px; color: #888;">${time}</span>
+                        </div>
+                        <div class="message-text" style="font-size: 15px; line-height: 1.5; color: #444;">${text}</div>
                     </div>
-                    <div class="message-text" style="font-size: 15px; line-height: 1.5; color: #444;">${text}</div>
-                </div>
-            </div>`;
-        chatContainer.insertAdjacentHTML('beforeend', html);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-        localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
-            
-    //     const thoughtChain = document.querySelector('.thought-chain');
-    //     if (thoughtChain) {
-    //         localStorage.setItem('saarthi_thought_chain', thoughtChain.innerHTML);
-    //     }
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        // const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-        const savedHistory = localStorage.getItem('saarthi_chat_history');
-        if (savedHistory && chatContainer) {
-            chatContainer.innerHTML = savedHistory;
+                </div>`;
+            chatContainer.insertAdjacentHTML('beforeend', html);
             chatContainer.scrollTop = chatContainer.scrollHeight;
-            console.log("💾 Previous chat conversation successfully restored from storage!");
+            localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
         }
-        // const thoughtChain = document.querySelector('.thought-chain');
-        // const savedTimeline = localStorage.getItem('saarthi_thought_chain');
-        // if (savedTimeline && thoughtChain) {
-        //     thoughtChain.innerHTML = savedTimeline;
-        //     console.log("🧠 Chain of thought timeline panel successfully restored!");
-        // }
-    });
-
-    // Event Listeners
-    sendBtn.addEventListener('click', handleChat);
-    chatInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleChat();
+ 
+        document.addEventListener('DOMContentLoaded', function () {
+            const savedHistory = localStorage.getItem('saarthi_chat_history');
+            if (savedHistory && chatContainer) {
+                chatContainer.innerHTML = savedHistory;
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+                console.log("💾 Previous chat conversation successfully restored from storage!");
+            }
+        });
+ 
+        sendBtn.addEventListener('click', handleChat);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleChat();
+            }
+        });
+ 
+        // ==========================================
+        // CHAT SESSION HISTORY (sidebar "Recents")
+        // ==========================================
+        let chatSessions = [];
+        let currentSessionId = 'session_' + Date.now();
+ 
+        async function fetchSavedSessions() {
+            try {
+                const response = await fetch('/api/chat/sessions');
+                const data = await response.json();
+                if (data.sessions) {
+                    chatSessions = data.sessions.map(s => ({
+                        id: s.session_id,
+                        title: s.title,
+                        html: s.chat_history || ''
+                    }));
+                    renderAuditTrailList();
+                }
+            } catch (err) {
+                console.error("❌ Failed to pull audit trail records from server:", err);
+            }
         }
-    });
+ 
+        async function saveActiveChatToHistory() {
+            const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+            if (!chatContainerEl || !chatContainerEl.innerHTML.trim()) return;
+ 
+            const firstMsg = chatContainerEl.querySelector('.message-text');
+            let title = firstMsg ? firstMsg.textContent.substring(0, 20) + '...' : 'Conversation ' + (chatSessions.length + 1);
+ 
+            try {
+                await fetch('/api/chat/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: currentSessionId,
+                        title: title,
+                        chat_history: chatContainerEl.innerHTML
+                    })
+                });
+ 
+                await fetchSavedSessions();
+            } catch (err) {
+                console.error("❌ Error saving chat session to database:", err);
+            }
+        }
+ 
+        function renderAuditTrailList() {
+            const listContainer = document.getElementById('audit-trail-list');
+            if (!listContainer) return;
+ 
+            if (chatSessions.length === 0) {
+                listContainer.innerHTML = `<div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">No previous chats found</div>`;
+                return;
+            }
+ 
+            listContainer.innerHTML = '';
+ 
+            chatSessions.forEach(session => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'sub-item';
+                wrapper.style.cssText = "display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 4px 6px;";
+ 
+                const textSpan = document.createElement('span');
+                textSpan.textContent = `💬 ${session.title}`;
+                textSpan.style.flexGrow = "1";
+ 
+                if (session.id === currentSessionId) {
+                    textSpan.style.color = 'var(--primary-blue, #3b82f6)';
+                    textSpan.style.fontWeight = '600';
+                }
+ 
+                textSpan.addEventListener('click', async () => {
+                    currentSessionId = session.id;
+ 
+                    try {
+                        const res = await fetch(`/api/chat/sessions/${session.id}`);
+                        const data = await res.json();
+                        if (data.session) {
+                            const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+                            if (chatContainerEl) {
+                                chatContainerEl.innerHTML = data.session.chat_history;
+                                chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
+ 
+                                localStorage.setItem('saarthi_chat_history', data.session.chat_history);
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Error loading chat from database:", err);
+                    }
+                    renderAuditTrailList();
+                });
+ 
+                const deleteBtn = document.createElement('span');
+                deleteBtn.innerHTML = '🗑️';
+                deleteBtn.style.cssText = "opacity: 0.4; margin-left: 8px; transition: opacity 0.2s; cursor: pointer;";
+                deleteBtn.onmouseover = () => deleteBtn.style.opacity = "1";
+                deleteBtn.onmouseout = () => deleteBtn.style.opacity = "0.4";
+ 
+                deleteBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (confirm("Are you sure you want to delete this chat session permanently?")) {
+                        try {
+                            await fetch(`/api/chat/sessions/${session.id}`, { method: 'DELETE' });
+ 
+                            if (currentSessionId === session.id) {
+                                const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+                                if (chatContainerEl) chatContainerEl.innerHTML = '';
+                                currentSessionId = 'session_' + Date.now();
+                            }
+                            await fetchSavedSessions();
+                        } catch (err) {
+                            console.error("Failed to delete session record:", err);
+                        }
+                    }
+                });
+ 
+                wrapper.appendChild(textSpan);
+                wrapper.appendChild(deleteBtn);
+                listContainer.appendChild(wrapper);
+            });
+        }
+ 
+        async function startNewChat() {
+            await saveActiveChatToHistory();
+ 
+            const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+            if (chatContainerEl) {
+                chatContainerEl.innerHTML = '';
+            }
+ 
+            const thoughtChainEl = document.querySelector('.thought-chain') || document.getElementById('thoughtChain');
+            if (thoughtChainEl) {
+                thoughtChainEl.innerHTML = '';
+            }
+ 
+            currentSessionId = 'session_' + Date.now();
+            renderAuditTrailList();
+            console.log("🆕 Switched to a brand new conversation channel.");
+        }
+ 
+        document.addEventListener('DOMContentLoaded', () => {
+            const newChatButton = document.getElementById('new-chat-btn');
+            if (newChatButton) {
+                newChatButton.addEventListener('click', startNewChat);
+            }
+ 
+            fetchSavedSessions();
+        });
     </script>
 </body>
 </html>
+ 
