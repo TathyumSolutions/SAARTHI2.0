@@ -15,8 +15,12 @@ RUN apt-get update && apt-get install -y \
     pandoc \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip, setuptools, and wheel before installing requirements
-RUN pip install --upgrade pip setuptools wheel
+# Upgrade pip and wheel; pin setuptools below the release that dropped the
+# pkg_resources shim, since cx_Oracle's legacy setup.py still imports it
+# (this constraint also applies inside pip's build-isolation subprocess).
+COPY build-constraints.txt .
+ENV PIP_CONSTRAINT=/app/build-constraints.txt
+RUN pip install --upgrade pip wheel "setuptools<81"
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
