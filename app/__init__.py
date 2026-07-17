@@ -53,7 +53,15 @@ def create_app(config_name='development'):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    Swagger(app)
+    swagger_template = {
+        "swagger": "2.0",
+        "info": {
+            "title": "Saarthi API",
+            "description": "Saarthi Chat API reference",
+            "version": "1.0.0"
+        }
+    }
+    Swagger(app, template=swagger_template)
     print("Initialisation completed")
     
     # Register blueprints

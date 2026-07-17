@@ -10,6 +10,8 @@ def chat():
     ---
     summary: Chat query endpoint
     description: Handle a chat query and return LLM results, optional SQL, table data, chart metadata, insights, and reasoning steps.
+    tags:
+      - Chat
     consumes:
       - application/json
     produces:
@@ -31,9 +33,9 @@ def chat():
               description: Optional model alias to use for the response.
               example: gpt-4o-mini
             session_id:
-              type: integer
+              type: string
               description: Optional session ID for conversation context.
-              example: 1
+              example: external-123
             chat_history:
               type: array
               description: Optional prior chat messages for context.
@@ -43,10 +45,10 @@ def chat():
           application/json:
             query: "Show revenue by region for last quarter."
             model: "gpt-4o-mini"
-            session_id: 123
+            session_id: "external-123"
             chat_history:
-              - user: "What's revenue?"
-                assistant: "Revenue is..."
+              - role: "user"
+                content: "What's revenue?"
     responses:
       200:
         description: Successful chat response

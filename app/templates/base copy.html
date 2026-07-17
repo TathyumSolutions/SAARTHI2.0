@@ -76,17 +76,6 @@
             align-items: center;
         }
 
-        /* ============================================================
-           MODE SELECTOR
-           Only two states exist in this product: Standalone (/index)
-           and API Mode (/api_mode). Do NOT add Chat / Analytics / Reports
-           buttons here again - that was the bug. Those used to link to
-           '/analytics' and '/reports', which are not registered page
-           routes (only JSON endpoints under /api/analytics/* exist), so
-           the buttons were dead links and the header looked like it was
-           "changing" on every page. Analytics/Reports belong in the left
-           sidebar, not in this switcher.
-           ============================================================ */
         .mode-selector {
             display: flex;
             background: var(--panel-bg);
@@ -234,10 +223,6 @@
             color: white;
         }
 
-        .automation-section {
-            margin-top: auto;
-        }
-
         .center-panel {
             flex: 1;
             display: flex;
@@ -250,79 +235,56 @@
             flex: 1;
             padding: 24px;
         }
-
-        ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--dark-bg);
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--border-color);
-            border-radius: 5px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
     </style>
-    {% block extra_styles %}{% endblock %}
+         {% block extra_styles %}{% endblock %}
+    </style>
+    {% block extra_styles_tag %}<style>{% block extra_styles_inline %}{% endblock %}</style>{% endblock %}
 </head>
 <body>
-    <!-- Header (shared by every page) -->
+    <!-- Header -->
     <div class="header">
-        <div class="logo-section" onclick="window.location.href='/index'" style="cursor: pointer !important;">
+        <div class="logo-section" onclick="window.location.href='/index'"style="cursor: pointer !important;">
             <div class="logo">S</div>
             <div class="app-name">Saarthi</div>
         </div>
         <div class="header-actions">
             <div class="mode-selector">
-                <button class="mode-btn" data-mode="standalone" onclick="window.location.href='/index'">Standalone</button>
-                <button class="mode-btn" data-mode="api" onclick="window.location.href='/api_mode'">API Mode</button>
+                <button class="mode-btn active" onclick="window.location.href='/index'">Chat</button>
+                <button class="mode-btn" onclick="window.location.href='/api_mode'">API</button>
+                <button class="mode-btn" onclick="window.location.href='/analytics'">Analytics</button>
+                <button class="mode-btn" onclick="window.location.href='/reports'">Reports</button>
             </div>
-            {% block user_menu %}
             <div class="user-profile">U</div>
-            {% endblock %}
         </div>
     </div>
 
     <div class="main-container">
-        <!-- ============================================================
-             LEFT SIDEBAR
-             This is now the ONLY place the LHS menu is defined. Every
-             page that extends base.html (Standalone/index, API Mode,
-             and any future page) automatically renders this exact same
-             sidebar - so "LHS at login" and "LHS in API mode" can never
-             drift apart again.
-             ============================================================ -->
+        <!-- Left Sidebar -->
         <div class="left-sidebar">
-            <!-- Data Sources -->
-            <div class="sidebar-section">
-                <div class="section-title">Data Sources</div>
+            <!-- Data Sources Section -->
+           <div class="sidebar-section">
+    <div class="section-title">Data Sources</div>
+    
+    <div class="section-item" id="unstructuredDataIcon" onclick="window.location.href='/unstructured_data'">
+        <div class="item-icon">📁</div>
+        <span>Files</span>
+    </div>
 
-                <div class="section-item" id="unstructuredDataIcon" onclick="window.location.href='/unstructured_data'">
-                    <div class="item-icon">📁</div>
-                    <span>Files</span>
-                </div>
+    <div class="section-item" id="databaseConnectionsIcon" onclick="window.location.href='/database_connections'">
+        <div class="item-icon">🔌</div>
+        <span>Database Connections</span>
+    </div>
 
-                <div class="section-item" id="databaseConnectionsIcon" onclick="window.location.href='/database_connections'">
-                    <div class="item-icon">🔌</div>
-                    <span>Database Connections</span>
-                </div>
+    <div class="section-item" id="apiintegrationsIcon" onclick="window.location.href='/api_connectors/rest_apis'">
+        <div class="item-icon">🔌</div>
+        <span>API Integrations</span>
+    </div>
+</div>
 
-                <div class="section-item" id="apiIntegrationsIcon" onclick="window.location.href='/api_connectors/rest_apis'">
-                    <div class="item-icon">🔌</div>
-                    <span>API Integrations</span>
-                </div>
-            </div>
-
-            <!-- AI & Models -->
+            <!-- AI Models Section -->
             <div class="sidebar-section">
                 <div class="section-title">AI & Models</div>
-
+                
                 <div class="section-item">
                     <div class="item-icon">🤖</div>
                     <span>Configured Models</span>
@@ -345,16 +307,16 @@
                     <div class="sub-item">
                         <span style="margin-right: 8px;">✓</span>Mixtral 8x7B
                     </div>
-                    <div id="plusModelBtn" class="sub-item" style="color: var(--primary-blue); font-weight: 500; cursor: pointer;">
+                    <div class="sub-item" style="color: var(--primary-blue); font-weight: 500;">
                         <span style="margin-right: 8px;">➕</span>Configure New Model
                     </div>
                 </div>
             </div>
 
-            <!-- Management -->
+            <!-- Management Section -->
             <div class="sidebar-section">
                 <div class="section-title">Management</div>
-
+                
                 <div class="section-item">
                     <div class="item-icon">👥</div>
                     <span>Admin</span>
@@ -363,7 +325,11 @@
                 <div class="sub-items">
                     <div class="sub-item">Resource Mapping</div>
                 </div>
+
+               
             </div>
+
+           
         </div>
 
         <!-- Center Panel -->
@@ -374,43 +340,80 @@
                 {% endblock %}
             </div>
         </div>
-
-        {% block right_panel %}{% endblock %}
     </div>
 
     <script>
-        // ==========================================
-        // SIDEBAR EXPAND / COLLAPSE SUB-ITEMS
-        // ==========================================
-        document.querySelectorAll('.left-sidebar .section-item').forEach(function (item) {
-            item.addEventListener('click', function () {
-                const subItems = this.nextElementSibling;
-                if (subItems && subItems.classList.contains('sub-items')) {
-                    const isCurrentlyVisible = subItems.style.display !== 'none';
-                    subItems.style.display = isCurrentlyVisible ? 'none' : 'block';
+        function toggleSubMenu(element) {
+            const subItems = element.nextElementSibling;
+            if (subItems && subItems.classList.contains('sub-items')) {
+                subItems.classList.toggle('show');
+                const icon = element.querySelector('.expand-icon');
+                icon.textContent = subItems.classList.contains('show') ? '▼' : '▶';
+            }
+        }
 
-                    const icon = this.querySelector('.expand-icon');
-                    if (icon) {
-                        icon.textContent = isCurrentlyVisible ? '▶' : '▼';
+        // Highlight active menu item based on current URL
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentPath = window.location.pathname;
+            const menuLinks = document.querySelectorAll('.sub-item, .section-item');
+            
+            menuLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPath) {
+                    link.classList.add('active');
+                    // Expand parent menu if it's a sub-item
+                    const parentSubItems = link.closest('.sub-items');
+                    if (parentSubItems) {
+                        parentSubItems.classList.add('show');
+                        const parentItem = parentSubItems.previousElementSibling;
+                        const icon = parentItem.querySelector('.expand-icon');
+                        if (icon) icon.textContent = '▼';
                     }
                 }
             });
         });
 
-        // ==========================================
-        // MODE SELECTOR ACTIVE-STATE
-        // Driven purely by window.location.pathname, on every page that
-        // extends base.html. This is the fix for "API mode top menu keeps
-        // changing" - there is nothing left to change, there are only
-        // two buttons and their active state is derived from the URL.
-        // ==========================================
-        document.addEventListener('DOMContentLoaded', function () {
-            const path = window.location.pathname;
-            document.querySelectorAll('.mode-btn').forEach(function (btn) {
-                const isApiButton = btn.dataset.mode === 'api';
-                const shouldBeActive = isApiButton ? (path === '/api_mode') : (path !== '/api_mode');
-                btn.classList.toggle('active', shouldBeActive);
+        // Toggle sidebar items - ONLY sidebar items, not content
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.left-sidebar .section-item').forEach(item => {
+                item.addEventListener('click', function(e) {
+                    // Check if item has sub-items (expandable menus)
+                    const subItems = this.nextElementSibling;
+                    if (subItems && subItems.classList.contains('sub-items')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        // Toggle sub-items visibility
+                        const isCurrentlyVisible = subItems.style.display !== 'none';
+                        subItems.style.display = isCurrentlyVisible ? 'none' : 'block';
+                        
+                        // Toggle expand icon
+                        const icon = this.querySelector('.expand-icon');
+                        if (icon) {
+                            icon.textContent = isCurrentlyVisible ? '▶' : '▼';
+                        }
+                    }
+                    // If no sub-items, let the onclick handler work (for Files and Database Connections)
+                });
             });
+        });
+
+        // Single source of truth for which mode tab is active — driven only by the URL,
+        // not by click state, so API mode stays correctly highlighted and standalone.
+        document.addEventListener('DOMContentLoaded', function() {
+            const path = window.location.pathname;
+            const modeMap = {
+                '/index': 0,
+                '/': 0,
+                '/api_mode': 1,
+                '/analytics': 2,
+                '/reports': 3
+            };
+            const buttons = document.querySelectorAll('.mode-btn');
+            buttons.forEach(b => b.classList.remove('active'));
+            const activeIndex = modeMap[path];
+            if (activeIndex !== undefined && buttons[activeIndex]) {
+                buttons[activeIndex].classList.add('active');
+            }
         });
     </script>
     {% block extra_scripts %}{% endblock %}

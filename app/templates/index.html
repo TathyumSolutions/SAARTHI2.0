@@ -1,1996 +1,1564 @@
+{% extends "base.html" %}
+{% block title %}Saarthi - Chat{% endblock %}
 
+{% block extra_styles %}
+<style>
+    /* Everything below is specific to the Chat / Standalone screen only.
+       Shared chrome (header, mode-selector, left sidebar) lives in
+       base.html and must NOT be redefined here - that duplication is
+       exactly what caused this page's LHS menu to drift out of sync
+       with API Mode's. */
 
-Saarthi · HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Saarthi - Enterprise Data Intelligence Platform</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
- 
-        :root {
-            --primary-blue: #0078D4;
-            --dark-bg: #1E1E1E;
-            --sidebar-bg: #252526;
-            --panel-bg: #2D2D30;
-            --border-color: #3E3E42;
-            --text-primary: #FFFFFF;
-            --text-secondary: #CCCCCC;
-            --hover-bg: #37373D;
-            --accent-green: #4EC9B0;
-            --accent-orange: #CE9178;
-            --accent-purple: #C586C0;
-        }
- 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: var(--dark-bg);
-            color: var(--text-primary);
-            height: 100vh;
-            overflow: hidden;
-        }
- 
-        .header {
-            background: var(--sidebar-bg);
-            padding: 12px 24px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            height: 60px;
-        }
- 
-        .logo-section {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
- 
-        .logo {
-            width: 36px;
-            height: 36px;
-            background: linear-gradient(135deg, var(--primary-blue), var(--accent-green));
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 20px;
-        }
- 
-        .app-name {
-            font-size: 20px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
- 
-        .header-actions {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-        }
- 
-        .mode-selector {
-            display: flex;
-            background: var(--panel-bg);
-            border-radius: 4px;
-            overflow: hidden;
-            border: 1px solid var(--border-color);
-        }
- 
-        .mode-btn {
-            padding: 8px 20px;
-            background: transparent;
-            color: var(--text-secondary);
-            border: none;
-            cursor: pointer;
-            font-size: 13px;
-            transition: all 0.2s;
-        }
- 
-        .mode-btn.active {
-            background: var(--primary-blue);
-            color: white;
-        }
- 
-        .mode-btn:hover:not(.active) {
-            background: var(--hover-bg);
-            color: var(--text-primary);
-        }
- 
-        .user-profile {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: var(--primary-blue);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 14px;
-        }
- 
-        .main-container {
-            display: flex;
-            height: calc(100vh - 60px);
-        }
- 
-        .left-sidebar {
-            width: 280px;
-            background: var(--sidebar-bg);
-            border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-        }
- 
-        .sidebar-section {
-            padding: 16px;
-            border-bottom: 1px solid var(--border-color);
-        }
- 
-        .section-title {
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            color: var(--text-secondary);
-            margin-bottom: 12px;
-            letter-spacing: 0.5px;
-        }
- 
-        .section-item {
-            padding: 10px 12px;
-            margin-bottom: 4px;
-            border-radius: 4px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            transition: all 0.2s;
-            font-size: 14px;
-        }
- 
-        .section-item:hover {
-            background: var(--hover-bg);
-        }
- 
-        .section-item.active {
-            background: var(--primary-blue);
-        }
- 
-        .item-icon {
-            width: 18px;
-            height: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
- 
-        .expand-icon {
-            margin-left: auto;
-            font-size: 12px;
-            transition: transform 0.2s;
-        }
- 
-        .sub-items {
-            margin-left: 28px;
-            margin-top: 4px;
-        }
- 
-        .sub-item {
-            padding: 8px 12px;
-            font-size: 13px;
-            color: var(--text-secondary);
-            cursor: pointer;
-            border-radius: 4px;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-        }
- 
-        .sub-item:hover {
-            background: var(--hover-bg);
-            color: var(--text-primary);
-        }
- 
-        .sub-item .badge {
-            margin-left: auto;
-            font-size: 9px;
-            padding: 2px 6px;
-        }
- 
-        select {
-            width: 100%;
-            padding: 10px;
-            background: var(--panel-bg);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
-            margin-top: 8px;
-        }
- 
-        select:focus {
-            outline: none;
-            border-color: var(--primary-blue);
-        }
- 
-        option {
-            background: var(--panel-bg);
-            color: var(--text-primary);
-        }
- 
-        .center-panel {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: var(--dark-bg);
-        }
- 
-        .llm-selector-bar {
-            background: var(--sidebar-bg);
-            padding: 12px 20px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            gap: 20px;
-            align-items: center;
-        }
- 
-        .llm-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex: 1;
-        }
- 
-        .llm-label {
-            font-size: 12px;
-            color: var(--text-secondary);
-            min-width: 100px;
-        }
- 
-        .llm-dropdown {
-            flex: 1;
-            max-width: 250px;
-        }
- 
-        .chat-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-        }
- 
-        .message {
-            margin-bottom: 20px;
-            display: flex;
-            gap: 12px;
-        }
- 
-        .message-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: var(--primary-blue);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            flex-shrink: 0;
-        }
- 
-        .message-content {
-            flex: 1;
-        }
- 
-        .message-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 8px;
-        }
- 
-        .message-author {
-            font-weight: 600;
-            font-size: 14px;
-        }
- 
-        .message-time {
-            font-size: 12px;
-            color: var(--text-secondary);
-        }
- 
-        .message-text {
-            color: var(--text-secondary);
-            line-height: 1.6;
-            font-size: 14px;
-        }
- 
-        .visualization-panel {
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 16px;
-            margin-top: 12px;
-        }
- 
-        .viz-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-        }
- 
-        .viz-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--accent-green);
-        }
- 
-        .viz-type {
-            font-size: 11px;
-            color: var(--text-secondary);
-            background: var(--hover-bg);
-            padding: 4px 10px;
-            border-radius: 3px;
-        }
- 
-        .chart-placeholder {
-            background: var(--dark-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 16px;
-            height: 280px;
-        }
- 
-        .chart-canvas {
-            width: 100% !important;
-            height: 100% !important;
-        }
- 
-        .db-icon {
-            width: 24px;
-            height: 24px;
-            object-fit: contain;
-        }
- 
-        .llm-section-header {
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-            letter-spacing: 0.5px;
-        }
- 
-        .insight-box {
-            background: var(--panel-bg);
-            border-left: 3px solid var(--accent-green);
-            padding: 12px 16px;
-            border-radius: 4px;
-            margin-top: 12px;
-        }
- 
-        .insight-title {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--accent-green);
-            margin-bottom: 8px;
-        }
- 
-        .insight-text {
-            font-size: 13px;
-            color: var(--text-secondary);
-            line-height: 1.6;
-        }
- 
-        .metric-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-            margin-top: 12px;
-        }
- 
-        .metric-card {
-            background: var(--dark-bg);
-            padding: 12px;
-            border-radius: 4px;
-            border: 1px solid var(--border-color);
-        }
- 
-        .metric-label {
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-bottom: 4px;
-        }
- 
-        .metric-value {
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
- 
-        .metric-change {
-            font-size: 11px;
-            margin-top: 4px;
-        }
- 
-        .metric-change.positive {
-            color: var(--accent-green);
-        }
- 
-        .metric-change.negative {
-            color: #F48771;
-        }
- 
-        /* Modal Styles */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
- 
-        .modal-overlay.active {
-            display: flex;
-        }
- 
-        .modal-content {
-            background: var(--sidebar-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            width: 90%;
-            max-width: 600px;
-            max-height: 80vh;
-            overflow-y: auto;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-        }
- 
-        .modal-header {
-            padding: 20px 24px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
- 
-        .modal-title {
-            font-size: 18px;
-            font-weight: 600;
-        }
- 
-        .modal-close {
-            background: transparent;
-            border: none;
-            color: var(--text-secondary);
-            font-size: 24px;
-            cursor: pointer;
-            padding: 0;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
- 
-        .modal-close:hover {
-            background: var(--hover-bg);
-            color: var(--text-primary);
-        }
- 
-        .modal-body {
-            padding: 24px;
-        }
- 
-        .form-group {
-            margin-bottom: 20px;
-        }
- 
-        .form-label {
-            display: block;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 8px;
-        }
- 
-        .form-input {
-            width: 100%;
-            padding: 10px 12px;
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            color: var(--text-primary);
-            font-size: 14px;
-            font-family: 'Segoe UI', sans-serif;
-        }
- 
-        .form-input:focus {
-            outline: none;
-            border-color: var(--primary-blue);
-        }
- 
-        .form-help {
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-top: 6px;
-        }
- 
-        .modal-footer {
-            padding: 16px 24px;
-            border-top: 1px solid var(--border-color);
-            display: flex;
-            gap: 12px;
-            justify-content: flex-end;
-        }
- 
-        .btn {
-            padding: 10px 20px;
-            border-radius: 4px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            border: none;
-            transition: all 0.2s;
-        }
- 
-        .btn-primary {
-            background: var(--primary-blue);
-            color: white;
-        }
- 
-        .btn-primary:hover {
-            background: #106EBE;
-        }
- 
-        .btn-secondary {
-            background: var(--panel-bg);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-        }
- 
-        .btn-secondary:hover {
-            background: var(--hover-bg);
-        }
- 
-        .radio-group {
-            display: flex;
-            gap: 16px;
-            margin-top: 8px;
-        }
- 
-        .radio-option {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-        }
- 
-        .radio-option input[type="radio"] {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-        }
- 
-        .radio-option label {
-            font-size: 14px;
-            color: var(--text-secondary);
-            cursor: pointer;
-        }
- 
-        .input-container {
-            padding: 16px 20px;
-            background: var(--sidebar-bg);
-            border-top: 1px solid var(--border-color);
-            display: flex;
-            gap: 12px;
-            align-items: center;
-        }
- 
-        .chat-input {
-            flex: 1;
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 12px 16px;
-            color: var(--text-primary);
-            font-size: 14px;
-            resize: none;
-            font-family: 'Segoe UI', sans-serif;
-        }
- 
-        .chat-input:focus {
-            outline: none;
-            border-color: var(--primary-blue);
-        }
- 
-        .send-btn {
-            background: var(--primary-blue);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: all 0.2s;
-        }
- 
-        .send-btn:hover {
-            background: #106EBE;
-        }
- 
-        .right-sidebar {
-            width: 320px;
-            background: var(--sidebar-bg);
-            border-left: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-        }
- 
-        .right-panel-header {
-            padding: 16px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
- 
-        .panel-title {
-            font-size: 14px;
-            font-weight: 600;
-        }
- 
-        .collapse-btn {
-            background: transparent;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            padding: 4px;
-        }
- 
-        .thought-chain {
-            padding: 16px;
-        }
- 
-        .thought-step {
-            margin-bottom: 16px;
-            padding: 12px;
-            background: var(--panel-bg);
-            border-left: 3px solid var(--accent-purple);
-            border-radius: 4px;
-        }
- 
-        .thought-number {
-            font-size: 11px;
-            color: var(--accent-purple);
-            font-weight: 600;
-            margin-bottom: 6px;
-        }
- 
-        .thought-title {
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 6px;
-        }
- 
-        .thought-description {
-            font-size: 12px;
-            color: var(--text-secondary);
-            line-height: 1.5;
-        }
- 
-        .thought-status {
-            display: inline-block;
-            font-size: 11px;
-            padding: 3px 8px;
-            border-radius: 3px;
-            margin-top: 6px;
-        }
- 
-        .status-completed {
-            background: rgba(78, 201, 176, 0.2);
-            color: var(--accent-green);
-        }
- 
-        .status-processing {
-            background: rgba(206, 145, 120, 0.2);
-            color: var(--accent-orange);
-        }
- 
-        .automation-section {
-            margin-top: auto;
-        }
- 
-        .badge {
-            display: inline-block;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 3px;
-            margin-left: 8px;
-            background: var(--accent-orange);
-            color: white;
-        }
- 
-        ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
-        }
- 
-        ::-webkit-scrollbar-track {
-            background: var(--dark-bg);
-        }
- 
-        ::-webkit-scrollbar-thumb {
-            background: var(--border-color);
-            border-radius: 5px;
-        }
- 
-        ::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="logo-section" onclick="window.location.href='/index'"style="cursor: pointer !important;">
-            <div class="logo">S</div>
-            <div class="app-name">Saarthi</div>
-        </div>
-        <div class="header-actions">
-            <div class="mode-selector">
-                <button class="mode-btn active" data-mode="standalone">Standalone</button>
-                <button class="mode-btn" data-mode="api">API Mode</button>
-            </div>
- 
-            <div class="user-dropdown-container" style="position: relative; display: inline-block;">
-                <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)" style="cursor: pointer;">A</div>
-                
-                <div class="user-dropdown-menu" id="userDropdownMenu" style="display: none; position: absolute; right: 0; top: 100%; background: transparent; border: 1px solid #22252a; border-radius: 6px; padding: 8px; z-index: 1000; min-width: 140px;">
-                    <button type="button" onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
-                        📝 Instructions.md
-                    </button>
-                    <hr style="border: none; border-top: 1px solid #1F2348; margin: 4px 0;">
-                    <button type="button" onclick="handleLogout()" style="cursor: pointer; background: none; border: none; color: #FF5F57; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
-                        🚪 Log out
-                    </button>
-                </div>
-            </div>
+    select {
+        width: 100%;
+        padding: 10px;
+        background: var(--panel-bg);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        font-size: 13px;
+        cursor: pointer;
+        margin-top: 8px;
+    }
+
+    select:focus {
+        outline: none;
+        border-color: var(--primary-blue);
+    }
+
+    option {
+        background: var(--panel-bg);
+        color: var(--text-primary);
+    }
+
+    /* Chat page doesn't want the outer center-panel to scroll - the
+       chat-container handles its own internal scrolling. */
+    .center-panel {
+        overflow-y: hidden;
+    }
+
+    .llm-selector-bar {
+        background: var(--sidebar-bg);
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        gap: 20px;
+        align-items: center;
+    }
+
+    .llm-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+    }
+
+    .llm-label {
+        font-size: 12px;
+        color: var(--text-secondary);
+        min-width: 100px;
+    }
+
+    .llm-dropdown {
+        flex: 1;
+        max-width: 250px;
+    }
+
+    .llm-section-header {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+        letter-spacing: 0.5px;
+    }
+
+    .chat-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+    }
+
+    .message {
+        margin-bottom: 20px;
+        display: flex;
+        gap: 12px;
+    }
+
+    .message-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--primary-blue);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+
+    .message-content {
+        flex: 1;
+    }
+
+    .message-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+
+    .message-author {
+        font-weight: 600;
+        font-size: 14px;
+    }
+
+    .message-time {
+        font-size: 12px;
+        color: var(--text-secondary);
+    }
+
+    .message-text {
+        color: var(--text-secondary);
+        line-height: 1.6;
+        font-size: 14px;
+    }
+
+    .visualization-panel {
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 16px;
+        margin-top: 12px;
+    }
+
+    .viz-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .viz-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--accent-green);
+    }
+
+    .viz-type {
+        font-size: 11px;
+        color: var(--text-secondary);
+        background: var(--hover-bg);
+        padding: 4px 10px;
+        border-radius: 3px;
+    }
+
+    .chart-placeholder {
+        background: var(--dark-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 16px;
+        height: 280px;
+    }
+
+    .chart-canvas {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    .db-icon {
+        width: 24px;
+        height: 24px;
+        object-fit: contain;
+    }
+
+    .insight-box {
+        background: var(--panel-bg);
+        border-left: 3px solid var(--accent-green);
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin-top: 12px;
+    }
+
+    .insight-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--accent-green);
+        margin-bottom: 8px;
+    }
+
+    .insight-text {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+    }
+
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        margin-top: 12px;
+    }
+
+    .metric-card {
+        background: var(--dark-bg);
+        padding: 12px;
+        border-radius: 4px;
+        border: 1px solid var(--border-color);
+    }
+
+    .metric-label {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 4px;
+    }
+
+    .metric-value {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .metric-change {
+        font-size: 11px;
+        margin-top: 4px;
+    }
+
+    .metric-change.positive {
+        color: var(--accent-green);
+    }
+
+    .metric-change.negative {
+        color: #F48771;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-overlay.active {
+        display: flex;
+    }
+
+    .modal-content {
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .modal-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .modal-title {
+        font-size: 18px;
+        font-weight: 600;
+    }
+
+    .modal-close {
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        transition: all 0.2s;
+    }
+
+    .modal-close:hover {
+        background: var(--hover-bg);
+        color: var(--text-primary);
+    }
+
+    .modal-body {
+        padding: 24px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-primary);
+        font-size: 14px;
+        font-family: 'Segoe UI', sans-serif;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--primary-blue);
+    }
+
+    .form-help {
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin-top: 6px;
+    }
+
+    .modal-footer {
+        padding: 16px 24px;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+    }
+
+    .btn {
+        padding: 10px 20px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+    }
+
+    .btn-primary {
+        background: var(--primary-blue);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #106EBE;
+    }
+
+    .btn-secondary {
+        background: var(--panel-bg);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover {
+        background: var(--hover-bg);
+    }
+
+    .radio-group {
+        display: flex;
+        gap: 16px;
+        margin-top: 8px;
+    }
+
+    .radio-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+    }
+
+    .radio-option input[type="radio"] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+    }
+
+    .radio-option label {
+        font-size: 14px;
+        color: var(--text-secondary);
+        cursor: pointer;
+    }
+
+    .input-container {
+        padding: 16px 20px;
+        background: var(--sidebar-bg);
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .chat-input {
+        flex: 1;
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 12px 16px;
+        color: var(--text-primary);
+        font-size: 14px;
+        resize: none;
+        font-family: 'Segoe UI', sans-serif;
+    }
+
+    .chat-input:focus {
+        outline: none;
+        border-color: var(--primary-blue);
+    }
+
+    .send-btn {
+        background: var(--primary-blue);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+    .send-btn:hover {
+        background: #106EBE;
+    }
+
+    .right-sidebar {
+        width: 320px;
+        background: var(--sidebar-bg);
+        border-left: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .right-panel-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .panel-title {
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .collapse-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        padding: 4px;
+    }
+
+    .thought-chain {
+        padding: 16px;
+    }
+
+    .thought-step {
+        margin-bottom: 16px;
+        padding: 12px;
+        background: var(--panel-bg);
+        border-left: 3px solid var(--accent-purple);
+        border-radius: 4px;
+    }
+
+    .thought-number {
+        font-size: 11px;
+        color: var(--accent-purple);
+        font-weight: 600;
+        margin-bottom: 6px;
+    }
+
+    .thought-title {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 6px;
+    }
+
+    .thought-description {
+        font-size: 12px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+    }
+
+    .thought-status {
+        display: inline-block;
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 3px;
+        margin-top: 6px;
+    }
+
+    .status-completed {
+        background: rgba(78, 201, 176, 0.2);
+        color: var(--accent-green);
+    }
+
+    .status-processing {
+        background: rgba(206, 145, 120, 0.2);
+        color: var(--accent-orange);
+    }
+</style>
+{% endblock %}
+
+{% block user_menu %}
+<div class="user-dropdown-container" style="position: relative; display: inline-block;">
+    <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)" style="cursor: pointer;">A</div>
+
+    <div class="user-dropdown-menu" id="userDropdownMenu" style="display: none; position: absolute; right: 0; top: 100%; background: transparent; border: 1px solid #22252a; border-radius: 6px; padding: 8px; z-index: 1000; min-width: 140px;">
+        <button type="button" onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
+            📝 Instructions.md
+        </button>
+        <hr style="border: none; border-top: 1px solid #1F2348; margin: 4px 0;">
+        <button type="button" onclick="handleLogout()" style="cursor: pointer; background: none; border: none; color: #FF5F57; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
+            🚪 Log out
+        </button>
+    </div>
+</div>
+
+<dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid transparent; width: 400px; background: #292a33; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+    <h3 style="margin-top:0; font-family: sans-serif; color: white;">System Instructions</h3>
+    <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; background: #07091e; border: 1px solid #1F2348; border-radius: 4px; font-family: inherit; color: white;" placeholder="Type system rules here..."></textarea>
+    <div style="text-align: right;">
+        <button onclick="document.getElementById('inst-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer; background: none; border: 1px solid #1F2348; color: #8D90B5; border-radius: 4px;">Cancel</button>
+        <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
+    </div>
+</dialog>
+{% endblock %}
+
+{% block content %}
+<!-- LLM Selector Bar -->
+<div class="llm-selector-bar">
+    <div class="llm-group">
+        <div style="min-width: 140px;">
+            <div class="llm-section-header">LLM - Standard API</div>
+            <select id="standard-llm-dropdown" class="llm-dropdown" style="width: 220px;">
+                <option value="" disabled selected>Select Cloud Model...</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                <option value="claude-4.5-sonnet">Claude 4.5 Sonnet</option>
+                <option value="claude-4.5-opus">Claude 4.5 Opus</option>
+                <option value="claude-3.5-haiku">Claude 3.5 Haiku</option>
+                <option value="gemini-pro">Gemini Pro</option>
+                <option value="gemini-ultra">Gemini Ultra</option>
+            </select>
         </div>
     </div>
- 
-    <dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid transparent; width: 400px; background: #292a33; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-        <h3 style="margin-top:0; font-family: sans-serif; color: white;">System Instructions</h3>
-        <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; background: #07091e; border: 1px solid #1F2348; border-radius: 4px; font-family: inherit; color: white;" placeholder="Type system rules here..."></textarea>
-        <div style="text-align: right;">
-            <button onclick="document.getElementById('inst-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer; background: none; border: 1px solid #1F2348; color: #8D90B5; border-radius: 4px;">Cancel</button>
-            <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
-        </div>
-    </dialog>
- 
- 
-    <div class="main-container">
-        <!-- Left Sidebar -->
-        <div class="left-sidebar">
-            <!-- Data Sources Section -->
-            <div class="sidebar-section">
-                <div class="section-title">Data Sources</div>
-                
-                <div class="section-item" id="unstructuredDataIcon" onclick="window.location.href='/unstructured_data'">
-                    <div class="item-icon">📁</div>
-                    <span>Files</span>
-                </div>
- 
-                <div class="section-item" id="databaseConnectionsIcon" onclick="window.location.href='/database_connections'">
-                    <div class="item-icon">🔌</div>
-                    <span>Database Connections</span>
-                </div>
- 
-                <div class="section-item" id="apiintegrationIcon" onclick="window.location.href='/api_connectors/rest_apis'">
-                    <div class="item-icon">🔌</div>
-                    <span>API Integrations</span>
-                </div>
- 
-            </div>
- 
-            <!-- AI Models Section -->
-            <div class="sidebar-section">
-                <div class="section-title">AI & Models</div>
-                
-                <div class="section-item">
-                    <div class="item-icon">🤖</div>
-                    <span>Configured Models</span>
-                    <span class="expand-icon">▼</span>
-                </div>
-                <div class="sub-items">
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>GPT-4o
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>GPT-4o-Mini
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Llama 3
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Gemini Pro
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Mixtral 8x7B
-                    </div>
-                    <div id="plusModelBtn" class="sub-item" style="color: var(--primary-blue); font-weight: 500; cursor: pointer;">
-                        <span style="margin-right: 8px;">➕</span>Configure New Model
-                    </div>
-                </div>
-            </div>
- 
-            <div class="sidebar-section">
-                <div class="section-title">Conversations</div>
-                
-                <div id="new-chat-btn" class="section-item" style="cursor: pointer; background: rgba(37, 99, 235, 0.15); border: 1px dashed rgba(37, 99, 235, 0.4); margin-bottom: 8px; border-radius: 6px; transition: all 0.2s ease;">
-                    <div class="item-icon" style="color: #3b82f6;">➕</div>
-                    <span style="color: #3b82f6; font-weight: 600;">New Chat</span>
-                </div>
- 
-                <div class="section-item" style="pointer-events: none; opacity: 0.6; padding-bottom: 4px;">
-                    <div class="item-icon">📜</div>
-                    <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Recents</span>
-                </div>
-                
-                <div id="audit-trail-list" class="sub-items" style="display: block; max-height: 180px; overflow-y: auto;">
-                    <div class="sub-item" style="color: var(--text-muted, #64748b); font-style: italic; pointer-events: none;">
-                        No previous chats found
-                    </div>
-                </div>
-            </div>
- 
-            <!-- Management Section -->
-            <div class="sidebar-section">
-                <div class="section-title">Management</div>
-                
-                <div class="section-item">
-                    <div class="item-icon">👥</div>
-                    <span>Role Management</span>
-                    <span class="expand-icon">▼</span>
-                </div>
-                <div class="sub-items">
-                    <div class="sub-item">Users</div>
-                    <div class="sub-item">Groups</div>
-                    <div class="sub-item">Permissions</div>
-                    <div class="sub-item">Access Policies</div>
-                </div>
- 
-                <div class="section-item">
-                    <div class="item-icon">⚙️</div>
-                    <span>Configuration</span>
-                </div>
- 
-                <div class="section-item">
-                    <div class="item-icon">📊</div>
-                    <span>Analytics Dashboard</span>
-                </div>
- 
-                <div class="section-item">
-                    <div class="item-icon">🔒</div>
-                    <span>Security Center</span>
-                </div>
-            </div>
- 
-            <!-- Automation Section -->
-            <div class="sidebar-section automation-section">
-                <div class="section-title">Automation & Integration</div>
-                
-                <div class="section-item">
-                    <div class="item-icon">🤖</div>
-                    <span>Agentic AI</span>
-                    <span class="badge">New</span>
-                </div>
- 
-                <div class="section-item">
-                    <div class="item-icon">⚡</div>
-                    <span>Power Automate</span>
-                </div>
- 
-                <div class="section-item">
-                    <div class="item-icon">🔄</div>
-                    <span>RPA Workflows</span>
-                </div>
- 
-                <div class="section-item">
-                    <div class="item-icon">🔌</div>
-                    <span>API Connectors</span>
-                    <span class="expand-icon">▼</span>
-                </div>
-                <div class="sub-items">
-                    <div class="sub-item">REST APIs</div>
-                    <div class="sub-item">GraphQL</div>
-                    <div class="sub-item">Webhooks</div>
-                </div>
- 
-                <div class="section-item">
-                    <div class="item-icon">📋</div>
-                    <span>Zapier Integration</span>
-                </div>
- 
-                <div class="section-item">
-                    <div class="item-icon">🎯</div>
-                    <span>Custom Workflows</span>
-                </div>
-            </div>
-        </div>
- 
-        <!-- Center Panel -->
-        <div class="center-panel">
-            <!-- LLM Selector Bar -->
-            <div class="llm-selector-bar">
-                <div class="llm-group">
-                    <div style="min-width: 140px;">
-                        <div class="llm-section-header">LLM - Standard API</div>
-                        <select id="standard-llm-dropdown" class="llm-dropdown" style="width: 220px;">
-                            <option value="" disabled selected>Select Cloud Model...</option>
-                            <option value="gpt-4o">GPT-4o</option>
-                            <option value="gpt-4o-mini">GPT-4o Mini</option>
-                            <option value="gpt-4-turbo">GPT-4 Turbo</option>
-                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                            <option value="claude-4.5-sonnet">Claude 4.5 Sonnet</option>
-                            <option value="claude-4.5-opus">Claude 4.5 Opus</option>
-                            <option value="claude-3.5-haiku">Claude 3.5 Haiku</option>
-                            <option value="gemini-pro">Gemini Pro</option>
-                            <option value="gemini-ultra">Gemini Ultra</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="llm-group">
-                    <div style="min-width: 140px;">
-                        <div class="llm-section-header">LLM - Open Source</div>
-                        <select id="opensource-llm-dropdown" class="llm-dropdown" style="width: 220px;">
-                            <option value="" disabled selected>Select Local Model...</option>
-                            <option value="llama3">Llama 3</option>
-                            <option value="llama3.1-405b">Llama 3.1 405B</option>
-                            <option value="llama3.1-70b">Llama 3.1 70B</option>
-                            <option value="mixtral-8x7b">Mixtral 8x7B</option>
-                            <option value="mistral-large">Mistral Large</option>
-                            <option value="qwen-2.5">Qwen 2.5 72B</option>
-                            <option value="deepseek-v3">DeepSeek V3</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        
-            <!-- Chat Container -->
-            
-            <div class="chat-container">
-                </div>
- 
-            <!-- Input Container -->
-            <div class="input-container">
-                <textarea class="chat-input" rows="2" placeholder="Ask Saarthi anything about your data..."></textarea>
-                <button class="send-btn">Send</button>
-            </div>
-        </div>
- 
-        <!-- Right Sidebar -->
-        <div class="right-sidebar">
-            <div class="right-panel-header">
-                <span class="panel-title">Chain of Thought</span>
-                <button class="collapse-btn">−</button>
-            </div>
- 
-            <div class="thought-chain"></div>
-        </div>    
-    </div>
- 
-    <!-- Configure New Model Modal -->
-    <div class="modal-overlay" id="modelModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <span class="modal-title">Configure New AI Model</span>
-                <button class="modal-close" onclick="closeModal('modelModal')">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">Model Type</label>
-                    <div class="radio-group">
-                        <div class="radio-option">
-                            <input type="radio" name="modelType" id="standardApi" value="standard" checked>
-                            <label for="standardApi">Standard API</label>
-                        </div>
-                        <div class="radio-option">
-                            <input type="radio" name="modelType" id="openSource" value="opensource">
-                            <label for="openSource">Open Source</label>
-                        </div>
-                    </div>
-                </div>
- 
-                <div class="form-group">
-                    <label class="form-label">Model Provider</label>
-                    <select class="form-input">
-                        <option>Anthropic</option>
-                        <option>OpenAI</option>
-                        <option>Google</option>
-                        <option>Meta</option>
-                        <option>Mistral AI</option>
-                        <option>Cohere</option>
-                        <option>Hugging Face</option>
-                        <option>Custom Provider</option>
-                    </select>
-                </div>
- 
-                <div class="form-group">
-                    <label class="form-label">Model Name</label>
-                    <input type="text" id="modalModelName" class="form-input" placeholder="e.g., Claude 4.5 Sonnet, GPT-4o, Llama 3.3">
-                    <div class="form-help">Enter the exact model identifier</div>
-                </div>
- 
-                <div class="form-group">
-                    <label class="form-label">API Endpoint URL</label>
-                    <input type="text" class="form-input" placeholder="https://api.example.com/v1/chat/completions">
-                    <div class="form-help">Base URL for API requests</div>
-                </div>
- 
-                <div class="form-group">
-                    <label class="form-label">API Key</label>
-                    <input type="password" id="modalApiKey" class="form-input" placeholder="sk-...">
-                    <div class="form-help">Your authentication key (encrypted and stored securely)</div>
-                </div>
- 
-                <div class="form-group">
-                    <label class="form-label">Max Tokens</label>
-                    <input type="number" class="form-input" placeholder="4096" value="4096">
-                </div>
- 
-                <div class="form-group">
-                    <label class="form-label">Temperature</label>
-                    <input type="number" class="form-input" placeholder="0.7" value="0.7" step="0.1" min="0" max="2">
-                    <div class="form-help">Controls randomness (0.0 - 2.0)</div>
-                </div>
- 
-                <div class="form-group">
-                    <label class="form-label">Description (Optional)</label>
-                    <textarea class="form-input" rows="3" placeholder="Brief description of this model configuration..."></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('modelModal')">Cancel</button>
-                <button class="btn btn-primary" onclick="saveModel()">Save Configuration</button>
-            </div>
+    <div class="llm-group">
+        <div style="min-width: 140px;">
+            <div class="llm-section-header">LLM - Open Source</div>
+            <select id="opensource-llm-dropdown" class="llm-dropdown" style="width: 220px;">
+                <option value="" disabled selected>Select Local Model...</option>
+                <option value="llama3">Llama 3</option>
+                <option value="llama3.1-405b">Llama 3.1 405B</option>
+                <option value="llama3.1-70b">Llama 3.1 70B</option>
+                <option value="mixtral-8x7b">Mixtral 8x7B</option>
+                <option value="mistral-large">Mistral Large</option>
+                <option value="qwen-2.5">Qwen 2.5 72B</option>
+                <option value="deepseek-v3">DeepSeek V3</option>
+            </select>
         </div>
     </div>
- 
-    <script>
-        // ==========================================
-        // MODE SELECTOR (Standalone / API Mode)
-        // This was previously trapped inside a dead
-        // comment block and never executed. Now live.
-        // ==========================================
-        document.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.addEventListener('click', function () {
-                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
- 
-                const mode = this.dataset.mode || this.textContent.trim().toLowerCase();
- 
-                if (mode === 'api' || this.textContent.trim() === 'API Mode') {
-                    window.location.href = '/api_mode';
-                } else {
-                    window.location.href = '/index';
-                }
-            });
-        });
- 
-        // ==========================================
-        // USER MENU
-        // ==========================================
-        function toggleUserMenu(event) {
-            event.stopPropagation();
-            const menu = document.getElementById('userDropdownMenu');
-            const avatar = document.getElementById('avatarMenuBtn');
- 
-            if (menu.style.display === 'none' || menu.style.display === '') {
-                menu.style.display = 'block';
-                avatar.style.setProperty('background-color', 'transparent', 'important');
-                avatar.style.setProperty('border', '1px solid #22252a', 'important');
-            } else {
-                menu.style.display = 'none';
+</div>
+
+<!-- Chat Container -->
+<div class="chat-container"></div>
+
+<!-- Input Container -->
+<div class="input-container">
+    <textarea class="chat-input" rows="2" placeholder="Ask Saarthi anything about your data..."></textarea>
+    <button class="send-btn">Send</button>
+</div>
+
+<!-- Configure New Model Modal -->
+<div class="modal-overlay" id="modelModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <span class="modal-title">Configure New AI Model</span>
+            <button class="modal-close" onclick="closeModal('modelModal')">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Model Type</label>
+                <div class="radio-group">
+                    <div class="radio-option">
+                        <input type="radio" name="modelType" id="standardApi" value="standard" checked>
+                        <label for="standardApi">Standard API</label>
+                    </div>
+                    <div class="radio-option">
+                        <input type="radio" name="modelType" id="openSource" value="opensource">
+                        <label for="openSource">Open Source</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Model Provider</label>
+                <select class="form-input">
+                    <option>Anthropic</option>
+                    <option>OpenAI</option>
+                    <option>Google</option>
+                    <option>Meta</option>
+                    <option>Mistral AI</option>
+                    <option>Cohere</option>
+                    <option>Hugging Face</option>
+                    <option>Custom Provider</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Model Name</label>
+                <input type="text" id="modalModelName" class="form-input" placeholder="e.g., Claude 4.5 Sonnet, GPT-4o, Llama 3.3">
+                <div class="form-help">Enter the exact model identifier</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">API Endpoint URL</label>
+                <input type="text" class="form-input" placeholder="https://api.example.com/v1/chat/completions">
+                <div class="form-help">Base URL for API requests</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">API Key</label>
+                <input type="password" id="modalApiKey" class="form-input" placeholder="sk-...">
+                <div class="form-help">Your authentication key (encrypted and stored securely)</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Max Tokens</label>
+                <input type="number" class="form-input" placeholder="4096" value="4096">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Temperature</label>
+                <input type="number" class="form-input" placeholder="0.7" value="0.7" step="0.1" min="0" max="2">
+                <div class="form-help">Controls randomness (0.0 - 2.0)</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Description (Optional)</label>
+                <textarea class="form-input" rows="3" placeholder="Brief description of this model configuration..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('modelModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="saveModel()">Save Configuration</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block right_panel %}
+<!-- Right Sidebar -->
+<div class="right-sidebar">
+    <div class="right-panel-header">
+        <span class="panel-title">Chain of Thought</span>
+        <button class="collapse-btn">−</button>
+    </div>
+
+    <div class="thought-chain"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // ==========================================
+    // USER MENU
+    // ==========================================
+    function toggleUserMenu(event) {
+        event.stopPropagation();
+        const menu = document.getElementById('userDropdownMenu');
+        const avatar = document.getElementById('avatarMenuBtn');
+
+        if (menu.style.display === 'none' || menu.style.display === '') {
+            menu.style.display = 'block';
+            avatar.style.setProperty('background-color', 'transparent', 'important');
+            avatar.style.setProperty('border', '1px solid #22252a', 'important');
+        } else {
+            menu.style.display = 'none';
+            avatar.style.removeProperty('background-color');
+            avatar.style.removeProperty('border');
+        }
+    }
+
+    function handleLogout() {
+        localStorage.removeItem('saarthi_token');
+        window.location.href = '/';
+    }
+
+    window.addEventListener('click', function () {
+        const menu = document.getElementById('userDropdownMenu');
+        const avatar = document.getElementById('avatarMenuBtn');
+        if (menu) {
+            menu.style.display = 'none';
+            if (avatar) {
                 avatar.style.removeProperty('background-color');
                 avatar.style.removeProperty('border');
             }
         }
- 
-        function handleLogout() {
-            localStorage.removeItem('saarthi_token');
-            window.location.href = '/';
+    });
+
+    // ==========================================
+    // MODAL HELPERS
+    // ==========================================
+    function openModal(modalId) {
+        document.getElementById(modalId).classList.add('active');
+    }
+
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.remove('active');
+            modal.style.display = 'none';
         }
- 
-        window.addEventListener('click', function () {
-            const menu = document.getElementById('userDropdownMenu');
-            const avatar = document.getElementById('avatarMenuBtn');
-            if (menu) {
-                menu.style.display = 'none';
-                if (avatar) {
-                    avatar.style.removeProperty('background-color');
-                    avatar.style.removeProperty('border');
-                }
+    }
+
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', function (e) {
+            if (e.target === this) {
+                this.classList.remove('active');
             }
         });
- 
-        // ==========================================
-        // MODAL HELPERS
-        // ==========================================
-        function openModal(modalId) {
-            document.getElementById(modalId).classList.add('active');
-        }
- 
-        function closeModal(modalId) {
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.classList.remove('active');
-                modal.style.display = 'none';
+    });
+
+    // ==========================================
+    // "Configure New Model" click, opened from the LHS sidebar
+    // (#plusModelBtn lives in base.html now, so we still find it by id)
+    // ==========================================
+    document.addEventListener('click', function (e) {
+        const target = e.target.closest('.sub-item');
+        if (target) {
+            const text = target.textContent.trim();
+            if (text.includes('Configure New Model')) {
+                openModal('modelModal');
             }
         }
- 
-        document.querySelectorAll('.modal-overlay').forEach(overlay => {
-            overlay.addEventListener('click', function (e) {
-                if (e.target === this) {
-                    this.classList.remove('active');
+    });
+
+    // ==========================================
+    // CHAT INPUT AUTO-RESIZE
+    // ==========================================
+    const textarea = document.querySelector('.chat-input');
+    textarea.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+    });
+
+    // ==========================================
+    // DROPDOWN ROUTING LOGIC (LLM selection)
+    // ==========================================
+    document.addEventListener('DOMContentLoaded', function () {
+        const standardDropdown = document.getElementById("standard-llm-dropdown");
+        const opensourceDropdown = document.getElementById("opensource-llm-dropdown");
+
+        window.activeBackendModelName = "";
+
+        if (standardDropdown && opensourceDropdown) {
+            standardDropdown.addEventListener("change", function () {
+                opensourceDropdown.selectedIndex = 0;
+                const selectedValue = this.value;
+                if (selectedValue === "gpt-4o" || selectedValue === "gpt-4o-mini" || selectedValue.startsWith("api://")) {
+                    window.activeBackendModelName = selectedValue;
+                    console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
+                } else {
+                    const modelText = this.options[this.selectedIndex].text;
+                    alert(`⚠️ "${modelText}" is Coming Soon! Please select GPT-4o or GPT-4o Mini.`);
+                    this.selectedIndex = 0;
+                    window.activeBackendModelName = "";
                 }
             });
-        });
- 
-        // ==========================================
-        // SIDEBAR EXPAND / COLLAPSE SUB-ITEMS
-        // ==========================================
-        document.querySelectorAll('.section-item').forEach(item => {
-            item.addEventListener('click', function () {
-                const subItems = this.nextElementSibling;
-                if (subItems && subItems.classList.contains('sub-items')) {
-                    const isCurrentlyVisible = subItems.style.display !== 'none';
-                    subItems.style.display = isCurrentlyVisible ? 'none' : 'block';
- 
-                    const icon = this.querySelector('.expand-icon');
-                    if (icon) {
-                        icon.textContent = isCurrentlyVisible ? '▶' : '▼';
-                    }
+
+            opensourceDropdown.addEventListener("change", function () {
+                standardDropdown.selectedIndex = 0;
+                const selectedValue = this.value;
+                if (selectedValue === "llama3" || selectedValue.startsWith("ollama://")) {
+                    window.activeBackendModelName = selectedValue;
+                    console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
+                } else {
+                    const modelText = this.options[this.selectedIndex].text;
+                    alert(`⚠️ "${modelText}" is Coming Soon! Please select Llama 3.`);
+                    this.selectedIndex = 0;
+                    window.activeBackendModelName = "";
                 }
             });
-        });
- 
-        document.addEventListener('click', function (e) {
-            const target = e.target.closest('.sub-item');
-            if (target) {
-                const text = target.textContent.trim();
-                if (text.includes('Configure New Model')) {
-                    openModal('modelModal');
+        }
+
+        const plusModelBtn = document.getElementById('plusModelBtn');
+        if (plusModelBtn) {
+            plusModelBtn.onclick = function () {
+                const modal = document.getElementById('modelModal');
+                if (modal) {
+                    modal.classList.add('active');
+                    modal.style.display = 'flex';
                 }
-            }
-        });
- 
-        // ==========================================
-        // CHAT INPUT AUTO-RESIZE
-        // ==========================================
-        const textarea = document.querySelector('.chat-input');
-        textarea.addEventListener('input', function () {
-            this.style.height = 'auto';
-            this.style.height = Math.min(this.scrollHeight, 150) + 'px';
-        });
- 
-        // ==========================================
-        // DROPDOWN ROUTING LOGIC (LLM selection)
-        // ==========================================
-        document.addEventListener('DOMContentLoaded', function () {
-            const standardDropdown = document.getElementById("standard-llm-dropdown");
-            const opensourceDropdown = document.getElementById("opensource-llm-dropdown");
- 
-            window.activeBackendModelName = "";
- 
-            if (standardDropdown && opensourceDropdown) {
-                standardDropdown.addEventListener("change", function () {
-                    opensourceDropdown.selectedIndex = 0;
-                    const selectedValue = this.value;
-                    if (selectedValue === "gpt-4o" || selectedValue === "gpt-4o-mini" || selectedValue.startsWith("api://")) {
-                        window.activeBackendModelName = selectedValue;
-                        console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
-                    } else {
-                        const modelText = this.options[this.selectedIndex].text;
-                        alert(`⚠️ "${modelText}" is Coming Soon! Please select GPT-4o or GPT-4o Mini.`);
-                        this.selectedIndex = 0;
-                        window.activeBackendModelName = "";
-                    }
-                });
- 
-                opensourceDropdown.addEventListener("change", function () {
-                    standardDropdown.selectedIndex = 0;
-                    const selectedValue = this.value;
-                    if (selectedValue === "llama3" || selectedValue.startsWith("ollama://")) {
-                        window.activeBackendModelName = selectedValue;
-                        console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
-                    } else {
-                        const modelText = this.options[this.selectedIndex].text;
-                        alert(`⚠️ "${modelText}" is Coming Soon! Please select Llama 3.`);
-                        this.selectedIndex = 0;
-                        window.activeBackendModelName = "";
-                    }
-                });
-            }
- 
-            const plusModelBtn = document.getElementById('plusModelBtn');
-            if (plusModelBtn) {
-                plusModelBtn.onclick = function () {
-                    const modal = document.getElementById('modelModal');
-                    if (modal) {
-                        modal.classList.add('active');
-                        modal.style.display = 'flex';
-                    }
-                };
-            }
- 
-            if (typeof loadSavedDatabaseModels === "function") {
-                loadSavedDatabaseModels();
-            }
-        });
- 
-        // ==========================================
-        // SAVE NEW MODEL CONFIGURATION
-        // ==========================================
-        function saveModel() {
-            const modelName = document.getElementById('modalModelName').value.trim();
-            const apiKey = document.getElementById('modalApiKey').value.trim();
- 
-            const isStandard = document.getElementById('standardApi').checked;
-            const modelType = isStandard ? 'api' : 'ollama';
- 
-            const providerSelector = document.querySelector('#modelModal select.form-input');
-            const modelProvider = providerSelector ? providerSelector.value : "Unknown";
- 
-            if (!modelName) {
-                alert("Please provide a Model Name!");
-                return;
-            }
-            if (modelType === 'api' && !apiKey) {
-                alert("Error: API Key is mandatory for Standard API models!");
-                return;
-            }
- 
-            const prefixedModelString = `${modelType}://${modelName.toLowerCase().replace(/\s+/g, '-')}`;
- 
-            const payload = {
-                name: modelName,
-                model: prefixedModelString,
-                provider: modelType === 'ollama' ? 'ollama' : modelProvider,
-                settings: {
-                    custom_key: apiKey ? apiKey : null
-                },
-                workspace_id: 1
             };
- 
-            fetch('/api/model-config/configurations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Database registration rejected with status code: ${response.status}`);
+        }
+
+        if (typeof loadSavedDatabaseModels === "function") {
+            loadSavedDatabaseModels();
+        }
+    });
+
+    // ==========================================
+    // SAVE NEW MODEL CONFIGURATION
+    // ==========================================
+    function saveModel() {
+        const modelName = document.getElementById('modalModelName').value.trim();
+        const apiKey = document.getElementById('modalApiKey').value.trim();
+
+        const isStandard = document.getElementById('standardApi').checked;
+        const modelType = isStandard ? 'api' : 'ollama';
+
+        const providerSelector = document.querySelector('#modelModal select.form-input');
+        const modelProvider = providerSelector ? providerSelector.value : "Unknown";
+
+        if (!modelName) {
+            alert("Please provide a Model Name!");
+            return;
+        }
+        if (modelType === 'api' && !apiKey) {
+            alert("Error: API Key is mandatory for Standard API models!");
+            return;
+        }
+
+        const prefixedModelString = `${modelType}://${modelName.toLowerCase().replace(/\s+/g, '-')}`;
+
+        const payload = {
+            name: modelName,
+            model: prefixedModelString,
+            provider: modelType === 'ollama' ? 'ollama' : modelProvider,
+            settings: {
+                custom_key: apiKey ? apiKey : null
+            },
+            workspace_id: 1
+        };
+
+        fetch('/api/model-config/configurations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Database registration rejected with status code: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (apiKey) {
+                localStorage.setItem('presentation_api_key', apiKey);
+            }
+
+            let targetDropdown = (modelType === 'api') ? document.getElementById('standard-llm-dropdown') : document.getElementById('opensource-llm-dropdown');
+            if (targetDropdown) {
+                const newOption = document.createElement('option');
+                newOption.value = prefixedModelString;
+                newOption.innerHTML = modelName;
+
+                targetDropdown.appendChild(newOption);
+                targetDropdown.value = newOption.value;
+
+                window.activeBackendModelName = newOption.value;
+                console.log(`🎯 Active Custom Model Activated: ${window.activeBackendModelName}`);
+            }
+
+            const plusBtnElement = document.getElementById('plusModelBtn');
+            if (plusBtnElement) {
+                const sidebarWrapper = plusBtnElement.parentElement;
+                const newSidebarItem = document.createElement('div');
+                newSidebarItem.className = 'sub-item';
+                newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${modelName}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
+                sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
+            }
+
+            alert(`Model "${modelName}" configured and activated successfully!`);
+            closeModal('modelModal');
+
+            document.getElementById('modalModelName').value = '';
+            document.getElementById('modalApiKey').value = '';
+        })
+        .catch(error => {
+            console.error("Error saving model configuration:", error);
+            alert(`Failed to save model: ${error.message}`);
+        });
+    }
+
+    // ==========================================
+    // CHAT MESSAGE INJECTOR INTERCEPTOR
+    // ==========================================
+    const originalFetch = window.fetch;
+    window.fetch = async function (...args) {
+        let [url, config] = args;
+        if (typeof url === 'string' && url.includes('/api/chat/message')) {
+
+            if (!window.activeBackendModelName) {
+                const savedModel = localStorage.getItem('saarthi_active_model');
+                if (savedModel) {
+                    window.activeBackendModelName = savedModel;
+                    console.log(`⚡ Background state auto-recovered: ${window.activeBackendModelName}`);
                 }
+            }
+            localStorage.setItem('saarthi_active_model', window.activeBackendModelName);
+
+            if (!window.activeBackendModelName) {
+                alert("Please select the model before proceeding.");
+                return new Response(JSON.stringify({
+                    status: "success",
+                    response: "⚠️ Request cancelled. Please select a model from the dropdown selection panel above to begin.",
+                    session_id: 1,
+                    query_result: {},
+                    suggestions: []
+                }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            }
+
+            if (config && config.body) {
+                try {
+                    let body = JSON.parse(config.body);
+                    body.model_name = window.activeBackendModelName;
+                    if (window.activeBackendModelName.includes("://")) {
+                        body.custom_key = localStorage.getItem('presentation_api_key') || "";
+                    }
+                    config.body = JSON.stringify(body);
+                } catch (e) {
+                    console.error("Payload injection error:", e);
+                }
+            }
+        }
+        const response = await originalFetch(...args);
+        if (typeof url === 'string' && url.includes('/api/chat/message')) {
+            const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+            if (chatContainer) {
+                localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
+            }
+        }
+        return response;
+    };
+
+    // ==========================================
+    // DATABASE SYNC: RESTORE MODELS ON REFRESH
+    // ==========================================
+    function loadSavedDatabaseModels() {
+        console.log("🔄 Fetching saved configurations from backend database...");
+
+        fetch('/api/model-config/configurations')
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 return response.json();
             })
             .then(data => {
-                if (apiKey) {
-                    localStorage.setItem('presentation_api_key', apiKey);
+                if (!data || !data.configurations) {
+                    console.warn("⚠️ No configurations returned from database matrix.");
+                    return;
                 }
- 
-                let targetDropdown = (modelType === 'api') ? document.getElementById('standard-llm-dropdown') : document.getElementById('opensource-llm-dropdown');
-                if (targetDropdown) {
-                    const newOption = document.createElement('option');
-                    newOption.value = prefixedModelString;
-                    newOption.innerHTML = modelName;
- 
-                    targetDropdown.appendChild(newOption);
-                    targetDropdown.value = newOption.value;
- 
-                    window.activeBackendModelName = newOption.value;
-                    console.log(`🎯 Active Custom Model Activated: ${window.activeBackendModelName}`);
-                }
- 
-                const plusBtnElement = document.getElementById('plusModelBtn');
-                if (plusBtnElement) {
-                    const sidebarWrapper = plusBtnElement.parentElement;
-                    const newSidebarItem = document.createElement('div');
-                    newSidebarItem.className = 'sub-item';
-                    newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${modelName}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
-                    sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
-                }
- 
-                alert(`Model "${modelName}" configured and activated successfully!`);
-                closeModal('modelModal');
- 
-                document.getElementById('modalModelName').value = '';
-                document.getElementById('modalApiKey').value = '';
+
+                console.log(`📋 Found ${data.configurations.length} models in DB. Syncing to UI dropdowns...`);
+
+                data.configurations.forEach(config => {
+                    const isOllama = config.provider === 'ollama' || config.model.startsWith('ollama://');
+                    let targetDropdown = isOllama ? document.getElementById('opensource-llm-dropdown') : document.getElementById('standard-llm-dropdown');
+
+                    if (targetDropdown) {
+                        if (!targetDropdown.querySelector(`option[value="${config.model}"]`)) {
+                            const newOption = document.createElement('option');
+                            newOption.value = config.model;
+                            newOption.innerHTML = config.name;
+                            targetDropdown.appendChild(newOption);
+                            console.log(`✅ Restored model option: ${config.name} -> ${targetDropdown.id}`);
+                        }
+                    }
+
+                    const plusBtnElement = document.getElementById('plusModelBtn');
+                    if (plusBtnElement) {
+                        const sidebarWrapper = plusBtnElement.parentElement;
+
+                        const existingSidebarItems = Array.from(sidebarWrapper.querySelectorAll('.sub-item'));
+                        const matchesExisting = existingSidebarItems.some(item => item.textContent.includes(config.name));
+
+                        if (!matchesExisting) {
+                            const newSidebarItem = document.createElement('div');
+                            newSidebarItem.className = 'sub-item';
+                            newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${config.name}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
+
+                            sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
+                            console.log(`✅ Restored sidebar list item: ${config.name}`);
+                        }
+                    }
+                });
             })
             .catch(error => {
-                console.error("Error saving model configuration:", error);
-                alert(`Failed to save model: ${error.message}`);
+                console.error("❌ Failed to parse data stream or populate dropdown elements:", error);
+            });
+    }
+
+    // ==========================================
+    // SYSTEM INSTRUCTIONS MODAL
+    // ==========================================
+    let currentSystemInstructions = "";
+    function saveInstructions() {
+        const textareaEl = document.getElementById("instructions-text");
+        const submitBtn = document.getElementById("submit-btn");
+        const dialogBox = document.getElementById("inst-box");
+        currentSystemInstructions = textareaEl.value.trim();
+        console.log("Captured Data Payload saved globally:", currentSystemInstructions);
+
+        submitBtn.innerText = "Submitted! ✓";
+        submitBtn.style.background = "#059669";
+        submitBtn.disabled = true;
+
+        setTimeout(() => {
+            dialogBox.close();
+            submitBtn.innerText = "Submit";
+            submitBtn.style.background = "#10b981";
+            submitBtn.disabled = false;
+        }, 800);
+    }
+
+    // ==========================================
+    // RIGHT SIDEBAR COLLAPSE (Chain of Thought)
+    // ==========================================
+    document.addEventListener('DOMContentLoaded', function () {
+        const collapseBtn = document.querySelector('.collapse-btn');
+        const sidebar = document.querySelector('.right-sidebar');
+        const thoughtChain = document.querySelector('.thought-chain');
+        const panelTitle = document.querySelector('.panel-title');
+
+        if (collapseBtn) {
+            collapseBtn.addEventListener('click', function () {
+                const isVisible = thoughtChain.style.display !== 'none';
+
+                if (isVisible) {
+                    thoughtChain.style.display = 'none';
+                    panelTitle.style.display = 'none';
+                    sidebar.style.width = '60px';
+                    collapseBtn.textContent = '+';
+
+                    const header = document.querySelector('.right-panel-header');
+                    if (header) {
+                        header.style.justifyContent = 'center';
+                    }
+                } else {
+                    thoughtChain.style.display = 'block';
+                    panelTitle.style.display = 'block';
+                    sidebar.style.width = '350px';
+                    collapseBtn.textContent = '−';
+
+                    const header = document.querySelector('.right-panel-header');
+                    if (header) {
+                        header.style.justifyContent = 'space-between';
+                    }
+                }
             });
         }
- 
-        // ==========================================
-        // CHAT MESSAGE INJECTOR INTERCEPTOR
-        // ==========================================
-        const originalFetch = window.fetch;
-        window.fetch = async function (...args) {
-            let [url, config] = args;
-            if (typeof url === 'string' && url.includes('/api/chat/message')) {
- 
-                if (!window.activeBackendModelName) {
-                    const savedModel = localStorage.getItem('saarthi_active_model');
-                    if (savedModel) {
-                        window.activeBackendModelName = savedModel;
-                        console.log(`⚡ Background state auto-recovered: ${window.activeBackendModelName}`);
-                    }
-                }
-                localStorage.setItem('saarthi_active_model', window.activeBackendModelName);
- 
-                if (!window.activeBackendModelName) {
-                    alert("Please select the model before proceeding.");
-                    return new Response(JSON.stringify({
-                        status: "success",
-                        response: "⚠️ Request cancelled. Please select a model from the dropdown selection panel above to begin.",
-                        session_id: 1,
-                        query_result: {},
-                        suggestions: []
-                    }), {
-                        status: 200,
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                }
- 
-                if (config && config.body) {
-                    try {
-                        let body = JSON.parse(config.body);
-                        body.model_name = window.activeBackendModelName;
-                        if (window.activeBackendModelName.includes("://")) {
-                            body.custom_key = localStorage.getItem('presentation_api_key') || "";
-                        }
-                        config.body = JSON.stringify(body);
-                    } catch (e) {
-                        console.error("Payload injection error:", e);
-                    }
-                }
+    });
+
+    // ==========================================
+    // LIVE CHAIN-OF-THOUGHT STEP STREAM (SSE)
+    // ==========================================
+    let stepEventSource = null;
+
+    function initializeLiveStepStream(sessionId, onConnectionOpen) {
+        const thoughtChainContainer = document.querySelector('.thought-chain');
+        const panelTitle = document.querySelector('.panel-title');
+
+        if (!thoughtChainContainer) return;
+
+        thoughtChainContainer.innerHTML = '';
+        if (panelTitle) panelTitle.innerText = "Analyzing Query Intent...";
+
+        if (stepEventSource) {
+            stepEventSource.close();
+        }
+
+        let liveStepIndex = 0;
+
+        stepEventSource = new EventSource(`/api/chat/stream_steps?session_id=${sessionId}`);
+        stepEventSource.onopen = function () {
+            console.log("⚡ SSE Connection opened successfully!");
+            if (onConnectionOpen) {
+                onConnectionOpen();
             }
-            const response = await originalFetch(...args);
-            if (typeof url === 'string' && url.includes('/api/chat/message')) {
-                const chatContainer = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-                if (chatContainer) {
-                    localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
-                }
-            }
-            return response;
         };
- 
-        // ==========================================
-        // DATABASE SYNC: RESTORE MODELS ON REFRESH
-        // ==========================================
-        function loadSavedDatabaseModels() {
-            console.log("🔄 Fetching saved configurations from backend database...");
- 
-            fetch('/api/model-config/configurations')
-                .then(response => {
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                    return response.json();
-                })
-                .then(data => {
-                    if (!data || !data.configurations) {
-                        console.warn("⚠️ No configurations returned from database matrix.");
-                        return;
-                    }
- 
-                    console.log(`📋 Found ${data.configurations.length} models in DB. Syncing to UI dropdowns...`);
- 
-                    data.configurations.forEach(config => {
-                        const isOllama = config.provider === 'ollama' || config.model.startsWith('ollama://');
-                        let targetDropdown = isOllama ? document.getElementById('opensource-llm-dropdown') : document.getElementById('standard-llm-dropdown');
- 
-                        if (targetDropdown) {
-                            if (!targetDropdown.querySelector(`option[value="${config.model}"]`)) {
-                                const newOption = document.createElement('option');
-                                newOption.value = config.model;
-                                newOption.innerHTML = config.name;
-                                targetDropdown.appendChild(newOption);
-                                console.log(`✅ Restored model option: ${config.name} -> ${targetDropdown.id}`);
-                            }
-                        }
- 
-                        const plusBtnElement = document.getElementById('plusModelBtn');
-                        if (plusBtnElement) {
-                            const sidebarWrapper = plusBtnElement.parentElement;
- 
-                            const existingSidebarItems = Array.from(sidebarWrapper.querySelectorAll('.sub-item'));
-                            const matchesExisting = existingSidebarItems.some(item => item.textContent.includes(config.name));
- 
-                            if (!matchesExisting) {
-                                const newSidebarItem = document.createElement('div');
-                                newSidebarItem.className = 'sub-item';
-                                newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${config.name}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
- 
-                                sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
-                                console.log(`✅ Restored sidebar list item: ${config.name}`);
-                            }
-                        }
-                    });
-                })
-                .catch(error => {
-                    console.error("❌ Failed to parse data stream or populate dropdown elements:", error);
-                });
-        }
- 
-        // ==========================================
-        // SYSTEM INSTRUCTIONS MODAL
-        // ==========================================
-        let currentSystemInstructions = "";
-        function saveInstructions() {
-            const textareaEl = document.getElementById("instructions-text");
-            const submitBtn = document.getElementById("submit-btn");
-            const dialogBox = document.getElementById("inst-box");
-            currentSystemInstructions = textareaEl.value.trim();
-            console.log("Captured Data Payload saved globally:", currentSystemInstructions);
- 
-            submitBtn.innerText = "Submitted! ✓";
-            submitBtn.style.background = "#059669";
-            submitBtn.disabled = true;
- 
-            setTimeout(() => {
-                dialogBox.close();
-                submitBtn.innerText = "Submit";
-                submitBtn.style.background = "#10b981";
-                submitBtn.disabled = false;
-            }, 800);
-        }
- 
-        // ==========================================
-        // RIGHT SIDEBAR COLLAPSE (Chain of Thought)
-        // ==========================================
-        document.addEventListener('DOMContentLoaded', function () {
-            const collapseBtn = document.querySelector('.collapse-btn');
-            const sidebar = document.querySelector('.right-sidebar');
-            const thoughtChain = document.querySelector('.thought-chain');
-            const panelTitle = document.querySelector('.panel-title');
- 
-            if (collapseBtn) {
-                collapseBtn.addEventListener('click', function () {
-                    const isVisible = thoughtChain.style.display !== 'none';
- 
-                    if (isVisible) {
-                        thoughtChain.style.display = 'none';
-                        panelTitle.style.display = 'none';
-                        sidebar.style.width = '60px';
-                        collapseBtn.textContent = '+';
- 
-                        const header = document.querySelector('.right-panel-header');
-                        if (header) {
-                            header.style.justifyContent = 'center';
-                        }
-                    } else {
-                        thoughtChain.style.display = 'block';
-                        panelTitle.style.display = 'block';
-                        sidebar.style.width = '350px';
-                        collapseBtn.textContent = '−';
- 
-                        const header = document.querySelector('.right-panel-header');
-                        if (header) {
-                            header.style.justifyContent = 'space-between';
-                        }
-                    }
-                });
-            }
-        });
- 
-        // ==========================================
-        // LIVE CHAIN-OF-THOUGHT STEP STREAM (SSE)
-        // ==========================================
-        let stepEventSource = null;
- 
-        function initializeLiveStepStream(sessionId, onConnectionOpen) {
-            const thoughtChainContainer = document.querySelector('.thought-chain');
-            const panelTitle = document.querySelector('.panel-title');
- 
-            if (!thoughtChainContainer) return;
- 
-            thoughtChainContainer.innerHTML = '';
-            if (panelTitle) panelTitle.innerText = "Analyzing Query Intent...";
- 
-            if (stepEventSource) {
-                stepEventSource.close();
-            }
- 
-            let liveStepIndex = 0;
- 
-            stepEventSource = new EventSource(`/api/chat/stream_steps?session_id=${sessionId}`);
-            stepEventSource.onopen = function () {
-                console.log("⚡ SSE Connection opened successfully!");
-                if (onConnectionOpen) {
-                    onConnectionOpen();
-                }
-            };
- 
-            stepEventSource.addEventListener('message', function (event) {
-                console.log("STEP EVENT:", event.data);
- 
-                const payload = JSON.parse(event.data);
- 
-                if (payload.heartbeat) return;
- 
-                if (payload.step === "DONE") {
-                    finalizeLiveSteps(payload.is_sql);
-                    if (stepEventSource) {
-                        stepEventSource.close();
-                    }
-                    return;
-                }
- 
-                const data = payload.step;
-                if (!data) return;
- 
-                if (typeof data === "string") {
-                    const rawStep = data;
-                    let title = rawStep.includes(' - ')
-                        ? rawStep.split(' - ')[0]
-                        : `Step ${liveStepIndex + 1}`;
- 
-                    let description = rawStep.includes(' - ')
-                        ? rawStep.split(' - ')[1]
-                        : rawStep;
- 
-                    const stepHtml = `
-                        <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-                            <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
-                                STEP ${liveStepIndex + 1}
-                            </div>
-                            <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
-                                ${title}
-                            </div>
-                            <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
-                                ${description}
-                            </div>
-                            <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
-                                ✓ Completed
-                            </span>
-                        </div>
-                    `;
- 
-                    thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
-                    liveStepIndex++;
-                    return;
-                }
- 
-                const {
-                    event: eventType,
-                    title,
-                    description,
-                    is_sql
-                } = data;
- 
-                if (panelTitle) {
-                    if (is_sql) {
-                        panelTitle.innerText = "SQL Agent Analysis";
-                    }
-                    else if (title && (title.includes("Request Received") || title.includes("Knowledge Alignment") || title.includes("Model Execution"))) {
-                        panelTitle.innerText = "General Knowledge Assistant";
-                    }
-                    else if (title && (title.includes("Automation") || title.includes("Context") || title.includes("Schema") || title.includes("Response"))) {
-                        panelTitle.innerText = "API Workflow Execution";
-                    }
-                    else {
-                        panelTitle.innerText = "RAG Document Analysis";
-                    }
-                }
- 
-                if (eventType === "start") {
-                    const stepHtml = `
-                        <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-                            <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
-                                STEP ${liveStepIndex + 1}
-                            </div>
-                            <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
-                                ${title}
-                            </div>
-                            <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
-                                ${description}
-                            </div>
-                            <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">
-                                ⏳ Processing...
-                            </span>
-                        </div>
-                    `;
- 
-                    thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
- 
-                    const element = document.getElementById(`live-step-${liveStepIndex}`);
-                    if (element) {
-                        setTimeout(() => {
-                            element.style.opacity = "1";
-                            element.style.transform = "translateY(0)";
-                        }, 50);
-                    }
- 
-                    liveStepIndex++;
-                }
-                else if (eventType === "complete") {
-                    const currentStep = document.querySelector(`#live-step-${liveStepIndex - 1}`);
-                    if (currentStep) {
-                        const descEl = currentStep.querySelector('.thought-description');
-                        const statusEl = currentStep.querySelector('.status-indicator');
- 
-                        if (descEl) {
-                            descEl.innerHTML = description;
-                        }
-                        if (statusEl) {
-                            statusEl.innerHTML = "✓ Completed";
-                            statusEl.style.color = "#10B981";
-                        }
-                    }
-                }
-            });
- 
-            stepEventSource.onerror = function () {
+
+        stepEventSource.addEventListener('message', function (event) {
+            console.log("STEP EVENT:", event.data);
+
+            const payload = JSON.parse(event.data);
+
+            if (payload.heartbeat) return;
+
+            if (payload.step === "DONE") {
+                finalizeLiveSteps(payload.is_sql);
                 if (stepEventSource) {
                     stepEventSource.close();
                 }
-            };
-        }
- 
-        function finalizeLiveSteps(isSql) {
-            const panelTitle = document.querySelector('.panel-title');
-            if (panelTitle) {
-                const currentTitle = panelTitle.innerText;
-                if (currentTitle.includes("General")) {
-                    panelTitle.innerText = "General Knowledge Complete";
-                } else if (currentTitle.includes("API")) {
-                    panelTitle.innerText = "API Execution Complete";
-                } else {
-                    panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
-                }
-            }
- 
-            const statusIndicators = document.querySelectorAll('.status-indicator');
-            if (statusIndicators.length > 0) {
-                const finalStatus = statusIndicators[statusIndicators.length - 1];
-                finalStatus.innerHTML = "✓ Completed";
-                finalStatus.style.color = "#10B981";
-            }
-        }
- 
-        // ==========================================
-        // CHAT SEND / RENDER
-        // ==========================================
-        const chatInput = document.querySelector('.chat-input');
-        const sendBtn = document.querySelector('.send-btn');
-        const chatContainer = document.querySelector('.chat-container');
- 
-        async function handleChat() {
-            const message = chatInput.value.trim();
-            if (!message) return;
- 
-            if (!window.activeBackendModelName) {
-                alert("Please select the model before proceeding.");
                 return;
             }
- 
-            const currentSessionId = 1;
- 
-            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            renderMessage('You', `<span style="color: #E2E8F0;">${message}</span>`, '👤', time, false);
-            chatInput.value = '';
- 
-            initializeLiveStepStream(currentSessionId, async function () {
- 
-                try {
-                    const response = await fetch('/api/chat/message', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            message: message,
-                            session_id: 1,
-                            mode: 'chat',
-                            system_instructions: currentSystemInstructions
-                        })
-                    });
- 
-                    const data = await response.json();
- 
-                    if (data.status === "success") {
-                        const ui = data.response;
- 
-                        const isSqlResult = ui.sql !== undefined && ui.sql !== null && ui.sql !== "-- No SQL Generated --" && ui.sql !== "null";
-                        setTimeout(() => {
-                            finalizeLiveSteps(isSqlResult);
-                        }, 1500);
- 
-                        let finalOutput = `<div style="font-family: 'Inter', sans-serif; display: flex; flex-direction: column; gap: 15px;">`;
- 
-                        finalOutput += `<div style="color: #E2E8F0; font-size: 15px;">${ui.answer}</div>`;
- 
-                        if (ui.chart && ui.chart.recommended && ui.chart[ui.chart.recommended]) {
-                            const chartId = 'chart-' + Date.now();
-                            finalOutput += `
-                                <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
-                                    <canvas id="${chartId}" style="max-height:240px; width:100%;"></canvas>
-                                </div>`;
- 
-                            setTimeout(() => {
-                                const canvasEl = document.getElementById(chartId);
-                                if (canvasEl) {
-                                    new Chart(canvasEl.getContext('2d'), ui.chart[ui.chart.recommended]);
-                                }
-                            }, 350);
-                        }
-                        else if (ui.table && ui.table.length > 0) {
-                            const headers = Object.keys(ui.table[0]);
-                            const headerHtml = headers.map(key => `<th style="padding:10px; text-align:left; background:transparent; border-bottom:2px solid #e2e8f0; color:#666;">${key}</th>`).join('');
-                            const rowsHtml = ui.table.map(row => `<tr>${headers.map(h => `<td style="padding:10px; border-bottom:1px solid #eee; color:#333;">${row[h]}</td>`).join('')}</tr>`).join('');
- 
-                            finalOutput += `
-                                <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05); overflow-x:auto;">
-                                    <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                                        <thead><tr>${headerHtml}</tr></thead>
-                                        <tbody>${rowsHtml}</tbody>
-                                    </table>
-                                </div>`;
-                        }
- 
-                        if (ui.format === "kpi" || (ui.table && ui.table.length === 1)) {
-                            const primaryRecord = ui.table[0];
-                            if (primaryRecord) {
-                                const keys = Object.keys(primaryRecord);
-                                const kpiLabel = keys[1] || keys[0];
-                                const kpiValue = primaryRecord[kpiLabel];
- 
-                                finalOutput += `
-                                    <div style="padding: 20px; border-radius: 14px; background: rgba(255,255,255,0.05); border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: inline-block; min-width: 220px; margin-top: 15px;">
-                                        <div style="font-size: 11px; color: #a0aec0; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${kpiLabel.replace(/_/g, ' ')}</div>
-                                        <div style="font-size: 32px; font-weight: 700; color: #ffffff; margin-top: 5px;">${kpiValue}</div>
-                                        <div style="font-size: 12px; color: #48bb78; margin-top: 5px;">✅ Single summary entry</div>
-                                    </div>`;
-                            }
-                        }
- 
-                        if (ui.insights && Array.isArray(ui.insights) && ui.insights.length > 0) {
-                            const insightsHtml = ui.insights.map(insight => {
-                                let textValue = (insight && typeof insight === 'object')
-                                    ? (insight.insight || insight.text || Object.values(insight)[0] || "")
-                                    : insight;
-                                return `
-                                <li style="margin-bottom: 8px; display: flex; gap: 8px; align-items: flex-start;">
-                                    <span style="color: #4a90e2; font-weight: bold;">•</span>
-                                    <span style="color: #E2E8F0; font-size: 14px;">${textValue}</span>
-                                </li>
-                                `;
-                            }).join('');
- 
-                            finalOutput += `
-                                <div style="padding: 15px 0px; background: transparent; margin-top: 10px;">
-                                    <div style="font-size: 12px; font-weight: 700; color: #FFFFFF; margin-bottom: 10px; letter-spacing: 0.5px;">Data Insights</div>
-                                    <ul style="list-style: none; padding: 0; margin: 0; line-height: 1.6;">
-                                        ${insightsHtml}
-                                    </ul>
-                                </div>`;
-                        }
- 
-                        finalOutput += `</div>`;
-                        renderMessage('Saarthi AI', finalOutput, 'S', time, true);
-                    }
-                } catch (error) {
-                    console.error("Fetch Error:", error);
-                    renderMessage('Saarthi AI', "❌ Connection Error.", 'S', time, true);
-                }
-            });
-        }
- 
-        function renderMessage(author, text, avatar, time, isAI) {
-            const aiStyle = isAI ? 'style="background: #4a90e2;"' : '';
-            const html = `
-                <div class="message" style="margin-bottom: 20px; display: flex; gap: 12px;">
-                    <div class="message-avatar" ${aiStyle} style="width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; flex-shrink: 0;">${avatar}</div>
-                    <div class="message-content" style="flex-grow: 1;">
-                        <div class="message-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                            <span class="message-author" style="font-weight: 600; font-size: 14px;">${author}</span>
-                            <span class="message-time" style="font-size: 11px; color: #888;">${time}</span>
+
+            const data = payload.step;
+            if (!data) return;
+
+            if (typeof data === "string") {
+                const rawStep = data;
+                let title = rawStep.includes(' - ')
+                    ? rawStep.split(' - ')[0]
+                    : `Step ${liveStepIndex + 1}`;
+
+                let description = rawStep.includes(' - ')
+                    ? rawStep.split(' - ')[1]
+                    : rawStep;
+
+                const stepHtml = `
+                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
+                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
+                            STEP ${liveStepIndex + 1}
                         </div>
-                        <div class="message-text" style="font-size: 15px; line-height: 1.5; color: #444;">${text}</div>
+                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
+                            ${title}
+                        </div>
+                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                            ${description}
+                        </div>
+                        <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
+                            ✓ Completed
+                        </span>
                     </div>
-                </div>`;
-            chatContainer.insertAdjacentHTML('beforeend', html);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-            localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
-        }
- 
-        document.addEventListener('DOMContentLoaded', function () {
-            const savedHistory = localStorage.getItem('saarthi_chat_history');
-            if (savedHistory && chatContainer) {
-                chatContainer.innerHTML = savedHistory;
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-                console.log("💾 Previous chat conversation successfully restored from storage!");
+                `;
+
+                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+                liveStepIndex++;
+                return;
             }
-        });
- 
-        sendBtn.addEventListener('click', handleChat);
-        chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleChat();
-            }
-        });
- 
-        // ==========================================
-        // CHAT SESSION HISTORY (sidebar "Recents")
-        // ==========================================
-        let chatSessions = [];
-        let currentSessionId = 'session_' + Date.now();
- 
-        async function fetchSavedSessions() {
-            try {
-                const response = await fetch('/api/chat/sessions');
-                const data = await response.json();
-                if (data.sessions) {
-                    chatSessions = data.sessions.map(s => ({
-                        id: s.session_id,
-                        title: s.title,
-                        html: s.chat_history || ''
-                    }));
-                    renderAuditTrailList();
+
+            const {
+                event: eventType,
+                title,
+                description,
+                is_sql
+            } = data;
+
+            if (panelTitle) {
+                if (is_sql) {
+                    panelTitle.innerText = "SQL Agent Analysis";
                 }
-            } catch (err) {
-                console.error("❌ Failed to pull audit trail records from server:", err);
+                else if (title && (title.includes("Request Received") || title.includes("Knowledge Alignment") || title.includes("Model Execution"))) {
+                    panelTitle.innerText = "General Knowledge Assistant";
+                }
+                else if (title && (title.includes("Automation") || title.includes("Context") || title.includes("Schema") || title.includes("Response"))) {
+                    panelTitle.innerText = "API Workflow Execution";
+                }
+                else {
+                    panelTitle.innerText = "RAG Document Analysis";
+                }
+            }
+
+            if (eventType === "start") {
+                const stepHtml = `
+                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
+                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
+                            STEP ${liveStepIndex + 1}
+                        </div>
+                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
+                            ${title}
+                        </div>
+                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                            ${description}
+                        </div>
+                        <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">
+                            ⏳ Processing...
+                        </span>
+                    </div>
+                `;
+
+                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+
+                const element = document.getElementById(`live-step-${liveStepIndex}`);
+                if (element) {
+                    setTimeout(() => {
+                        element.style.opacity = "1";
+                        element.style.transform = "translateY(0)";
+                    }, 50);
+                }
+
+                liveStepIndex++;
+            }
+            else if (eventType === "complete") {
+                const currentStep = document.querySelector(`#live-step-${liveStepIndex - 1}`);
+                if (currentStep) {
+                    const descEl = currentStep.querySelector('.thought-description');
+                    const statusEl = currentStep.querySelector('.status-indicator');
+
+                    if (descEl) {
+                        descEl.innerHTML = description;
+                    }
+                    if (statusEl) {
+                        statusEl.innerHTML = "✓ Completed";
+                        statusEl.style.color = "#10B981";
+                    }
+                }
+            }
+        });
+
+        stepEventSource.onerror = function () {
+            if (stepEventSource) {
+                stepEventSource.close();
+            }
+        };
+    }
+
+    function finalizeLiveSteps(isSql) {
+        const panelTitle = document.querySelector('.panel-title');
+        if (panelTitle) {
+            const currentTitle = panelTitle.innerText;
+            if (currentTitle.includes("General")) {
+                panelTitle.innerText = "General Knowledge Complete";
+            } else if (currentTitle.includes("API")) {
+                panelTitle.innerText = "API Execution Complete";
+            } else {
+                panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
             }
         }
- 
-        async function saveActiveChatToHistory() {
-            const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-            if (!chatContainerEl || !chatContainerEl.innerHTML.trim()) return;
- 
-            const firstMsg = chatContainerEl.querySelector('.message-text');
-            let title = firstMsg ? firstMsg.textContent.substring(0, 20) + '...' : 'Conversation ' + (chatSessions.length + 1);
- 
+
+        const statusIndicators = document.querySelectorAll('.status-indicator');
+        if (statusIndicators.length > 0) {
+            const finalStatus = statusIndicators[statusIndicators.length - 1];
+            finalStatus.innerHTML = "✓ Completed";
+            finalStatus.style.color = "#10B981";
+        }
+    }
+
+    // ==========================================
+    // CHAT SEND / RENDER
+    // ==========================================
+    const chatInput = document.querySelector('.chat-input');
+    const sendBtn = document.querySelector('.send-btn');
+    const chatContainer = document.querySelector('.chat-container');
+
+    async function handleChat() {
+        const message = chatInput.value.trim();
+        if (!message) return;
+
+        if (!window.activeBackendModelName) {
+            alert("Please select the model before proceeding.");
+            return;
+        }
+
+        const currentSessionId = 1;
+
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        renderMessage('You', `<span style="color: #E2E8F0;">${message}</span>`, '👤', time, false);
+        chatInput.value = '';
+
+        initializeLiveStepStream(currentSessionId, async function () {
+
             try {
-                await fetch('/api/chat/sessions', {
+                const response = await fetch('/api/chat/message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        session_id: currentSessionId,
-                        title: title,
-                        chat_history: chatContainerEl.innerHTML
+                        message: message,
+                        session_id: 1,
+                        mode: 'chat',
+                        system_instructions: currentSystemInstructions
                     })
                 });
- 
-                await fetchSavedSessions();
-            } catch (err) {
-                console.error("❌ Error saving chat session to database:", err);
-            }
-        }
- 
-        function renderAuditTrailList() {
-            const listContainer = document.getElementById('audit-trail-list');
-            if (!listContainer) return;
- 
-            if (chatSessions.length === 0) {
-                listContainer.innerHTML = `<div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">No previous chats found</div>`;
-                return;
-            }
- 
-            listContainer.innerHTML = '';
- 
-            chatSessions.forEach(session => {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'sub-item';
-                wrapper.style.cssText = "display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 4px 6px;";
- 
-                const textSpan = document.createElement('span');
-                textSpan.textContent = `💬 ${session.title}`;
-                textSpan.style.flexGrow = "1";
- 
-                if (session.id === currentSessionId) {
-                    textSpan.style.color = 'var(--primary-blue, #3b82f6)';
-                    textSpan.style.fontWeight = '600';
+
+                const data = await response.json();
+
+                if (data.status === "success") {
+                    const ui = data.response;
+
+                    const isSqlResult = ui.sql !== undefined && ui.sql !== null && ui.sql !== "-- No SQL Generated --" && ui.sql !== "null";
+                    setTimeout(() => {
+                        finalizeLiveSteps(isSqlResult);
+                    }, 1500);
+
+                    let finalOutput = `<div style="font-family: 'Inter', sans-serif; display: flex; flex-direction: column; gap: 15px;">`;
+
+                    finalOutput += `<div style="color: #E2E8F0; font-size: 15px;">${ui.answer}</div>`;
+
+                    if (ui.chart && ui.chart.recommended && ui.chart[ui.chart.recommended]) {
+                        const chartId = 'chart-' + Date.now();
+                        finalOutput += `
+                            <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
+                                <canvas id="${chartId}" style="max-height:240px; width:100%;"></canvas>
+                            </div>`;
+
+                        setTimeout(() => {
+                            const canvasEl = document.getElementById(chartId);
+                            if (canvasEl) {
+                                new Chart(canvasEl.getContext('2d'), ui.chart[ui.chart.recommended]);
+                            }
+                        }, 350);
+                    }
+                    else if (ui.table && ui.table.length > 0) {
+                        const headers = Object.keys(ui.table[0]);
+                        const headerHtml = headers.map(key => `<th style="padding:10px; text-align:left; background:transparent; border-bottom:2px solid #e2e8f0; color:#666;">${key}</th>`).join('');
+                        const rowsHtml = ui.table.map(row => `<tr>${headers.map(h => `<td style="padding:10px; border-bottom:1px solid #eee; color:#333;">${row[h]}</td>`).join('')}</tr>`).join('');
+
+                        finalOutput += `
+                            <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05); overflow-x:auto;">
+                                <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                                    <thead><tr>${headerHtml}</tr></thead>
+                                    <tbody>${rowsHtml}</tbody>
+                                </table>
+                            </div>`;
+                    }
+
+                    if (ui.format === "kpi" || (ui.table && ui.table.length === 1)) {
+                        const primaryRecord = ui.table[0];
+                        if (primaryRecord) {
+                            const keys = Object.keys(primaryRecord);
+                            const kpiLabel = keys[1] || keys[0];
+                            const kpiValue = primaryRecord[kpiLabel];
+
+                            finalOutput += `
+                                <div style="padding: 20px; border-radius: 14px; background: rgba(255,255,255,0.05); border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: inline-block; min-width: 220px; margin-top: 15px;">
+                                    <div style="font-size: 11px; color: #a0aec0; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${kpiLabel.replace(/_/g, ' ')}</div>
+                                    <div style="font-size: 32px; font-weight: 700; color: #ffffff; margin-top: 5px;">${kpiValue}</div>
+                                    <div style="font-size: 12px; color: #48bb78; margin-top: 5px;">✅ Single summary entry</div>
+                                </div>`;
+                        }
+                    }
+
+                    if (ui.insights && Array.isArray(ui.insights) && ui.insights.length > 0) {
+                        const insightsHtml = ui.insights.map(insight => {
+                            let textValue = (insight && typeof insight === 'object')
+                                ? (insight.insight || insight.text || Object.values(insight)[0] || "")
+                                : insight;
+                            return `
+                            <li style="margin-bottom: 8px; display: flex; gap: 8px; align-items: flex-start;">
+                                <span style="color: #4a90e2; font-weight: bold;">•</span>
+                                <span style="color: #E2E8F0; font-size: 14px;">${textValue}</span>
+                            </li>
+                            `;
+                        }).join('');
+
+                        finalOutput += `
+                            <div style="padding: 15px 0px; background: transparent; margin-top: 10px;">
+                                <div style="font-size: 12px; font-weight: 700; color: #FFFFFF; margin-bottom: 10px; letter-spacing: 0.5px;">Data Insights</div>
+                                <ul style="list-style: none; padding: 0; margin: 0; line-height: 1.6;">
+                                    ${insightsHtml}
+                                </ul>
+                            </div>`;
+                    }
+
+                    finalOutput += `</div>`;
+                    renderMessage('Saarthi AI', finalOutput, 'S', time, true);
                 }
- 
-                textSpan.addEventListener('click', async () => {
-                    currentSessionId = session.id;
- 
-                    try {
-                        const res = await fetch(`/api/chat/sessions/${session.id}`);
-                        const data = await res.json();
-                        if (data.session) {
-                            const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-                            if (chatContainerEl) {
-                                chatContainerEl.innerHTML = data.session.chat_history;
-                                chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
- 
-                                localStorage.setItem('saarthi_chat_history', data.session.chat_history);
-                            }
-                        }
-                    } catch (err) {
-                        console.error("Error loading chat from database:", err);
-                    }
-                    renderAuditTrailList();
-                });
- 
-                const deleteBtn = document.createElement('span');
-                deleteBtn.innerHTML = '🗑️';
-                deleteBtn.style.cssText = "opacity: 0.4; margin-left: 8px; transition: opacity 0.2s; cursor: pointer;";
-                deleteBtn.onmouseover = () => deleteBtn.style.opacity = "1";
-                deleteBtn.onmouseout = () => deleteBtn.style.opacity = "0.4";
- 
-                deleteBtn.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    if (confirm("Are you sure you want to delete this chat session permanently?")) {
-                        try {
-                            await fetch(`/api/chat/sessions/${session.id}`, { method: 'DELETE' });
- 
-                            if (currentSessionId === session.id) {
-                                const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-                                if (chatContainerEl) chatContainerEl.innerHTML = '';
-                                currentSessionId = 'session_' + Date.now();
-                            }
-                            await fetchSavedSessions();
-                        } catch (err) {
-                            console.error("Failed to delete session record:", err);
-                        }
-                    }
-                });
- 
-                wrapper.appendChild(textSpan);
-                wrapper.appendChild(deleteBtn);
-                listContainer.appendChild(wrapper);
-            });
-        }
- 
-        async function startNewChat() {
-            await saveActiveChatToHistory();
- 
-            const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
-            if (chatContainerEl) {
-                chatContainerEl.innerHTML = '';
+            } catch (error) {
+                console.error("Fetch Error:", error);
+                renderMessage('Saarthi AI', "❌ Connection Error.", 'S', time, true);
             }
- 
-            const thoughtChainEl = document.querySelector('.thought-chain') || document.getElementById('thoughtChain');
-            if (thoughtChainEl) {
-                thoughtChainEl.innerHTML = '';
-            }
- 
-            currentSessionId = 'session_' + Date.now();
-            renderAuditTrailList();
-            console.log("🆕 Switched to a brand new conversation channel.");
-        }
- 
-        document.addEventListener('DOMContentLoaded', () => {
-            const newChatButton = document.getElementById('new-chat-btn');
-            if (newChatButton) {
-                newChatButton.addEventListener('click', startNewChat);
-            }
- 
-            fetchSavedSessions();
         });
-    </script>
-</body>
-</html>
- 
+    }
+
+    function renderMessage(author, text, avatar, time, isAI) {
+        const aiStyle = isAI ? 'style="background: #4a90e2;"' : '';
+        const html = `
+            <div class="message" style="margin-bottom: 20px; display: flex; gap: 12px;">
+                <div class="message-avatar" ${aiStyle} style="width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; flex-shrink: 0;">${avatar}</div>
+                <div class="message-content" style="flex-grow: 1;">
+                    <div class="message-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <span class="message-author" style="font-weight: 600; font-size: 14px;">${author}</span>
+                        <span class="message-time" style="font-size: 11px; color: #888;">${time}</span>
+                    </div>
+                    <div class="message-text" style="font-size: 15px; line-height: 1.5; color: #444;">${text}</div>
+                </div>
+            </div>`;
+        chatContainer.insertAdjacentHTML('beforeend', html);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const savedHistory = localStorage.getItem('saarthi_chat_history');
+        if (savedHistory && chatContainer) {
+            chatContainer.innerHTML = savedHistory;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            console.log("💾 Previous chat conversation successfully restored from storage!");
+        }
+    });
+
+    sendBtn.addEventListener('click', handleChat);
+    chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleChat();
+        }
+    });
+
+    // ==========================================
+    // CHAT SESSION HISTORY (sidebar "Recents")
+    // ==========================================
+    let chatSessions = [];
+    let currentSessionId = 'session_' + Date.now();
+
+    async function fetchSavedSessions() {
+        try {
+            const response = await fetch('/api/chat/sessions');
+            const data = await response.json();
+            if (data.sessions) {
+                chatSessions = data.sessions.map(s => ({
+                    id: s.session_id,
+                    title: s.title,
+                    html: s.chat_history || ''
+                }));
+                renderAuditTrailList();
+            }
+        } catch (err) {
+            console.error("❌ Failed to pull audit trail records from server:", err);
+        }
+    }
+
+    async function saveActiveChatToHistory() {
+        const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+        if (!chatContainerEl || !chatContainerEl.innerHTML.trim()) return;
+
+        const firstMsg = chatContainerEl.querySelector('.message-text');
+        let title = firstMsg ? firstMsg.textContent.substring(0, 20) + '...' : 'Conversation ' + (chatSessions.length + 1);
+
+        try {
+            await fetch('/api/chat/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: currentSessionId,
+                    title: title,
+                    chat_history: chatContainerEl.innerHTML
+                })
+            });
+
+            await fetchSavedSessions();
+        } catch (err) {
+            console.error("❌ Error saving chat session to database:", err);
+        }
+    }
+
+    function renderAuditTrailList() {
+        const listContainer = document.getElementById('audit-trail-list');
+        if (!listContainer) return;
+
+        if (chatSessions.length === 0) {
+            listContainer.innerHTML = `<div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">No previous chats found</div>`;
+            return;
+        }
+
+        listContainer.innerHTML = '';
+
+        chatSessions.forEach(session => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'sub-item';
+            wrapper.style.cssText = "display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 4px 6px;";
+
+            const textSpan = document.createElement('span');
+            textSpan.textContent = `💬 ${session.title}`;
+            textSpan.style.flexGrow = "1";
+
+            if (session.id === currentSessionId) {
+                textSpan.style.color = 'var(--primary-blue, #3b82f6)';
+                textSpan.style.fontWeight = '600';
+            }
+
+            textSpan.addEventListener('click', async () => {
+                currentSessionId = session.id;
+
+                try {
+                    const res = await fetch(`/api/chat/sessions/${session.id}`);
+                    const data = await res.json();
+                    if (data.session) {
+                        const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+                        if (chatContainerEl) {
+                            chatContainerEl.innerHTML = data.session.chat_history;
+                            chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
+
+                            localStorage.setItem('saarthi_chat_history', data.session.chat_history);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error loading chat from database:", err);
+                }
+                renderAuditTrailList();
+            });
+
+            const deleteBtn = document.createElement('span');
+            deleteBtn.innerHTML = '🗑️';
+            deleteBtn.style.cssText = "opacity: 0.4; margin-left: 8px; transition: opacity 0.2s; cursor: pointer;";
+            deleteBtn.onmouseover = () => deleteBtn.style.opacity = "1";
+            deleteBtn.onmouseout = () => deleteBtn.style.opacity = "0.4";
+
+            deleteBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (confirm("Are you sure you want to delete this chat session permanently?")) {
+                    try {
+                        await fetch(`/api/chat/sessions/${session.id}`, { method: 'DELETE' });
+
+                        if (currentSessionId === session.id) {
+                            const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+                            if (chatContainerEl) chatContainerEl.innerHTML = '';
+                            currentSessionId = 'session_' + Date.now();
+                        }
+                        await fetchSavedSessions();
+                    } catch (err) {
+                        console.error("Failed to delete session record:", err);
+                    }
+                }
+            });
+
+            wrapper.appendChild(textSpan);
+            wrapper.appendChild(deleteBtn);
+            listContainer.appendChild(wrapper);
+        });
+    }
+
+    async function startNewChat() {
+        await saveActiveChatToHistory();
+
+        const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
+        if (chatContainerEl) {
+            chatContainerEl.innerHTML = '';
+        }
+
+        const thoughtChainEl = document.querySelector('.thought-chain') || document.getElementById('thoughtChain');
+        if (thoughtChainEl) {
+            thoughtChainEl.innerHTML = '';
+        }
+
+        currentSessionId = 'session_' + Date.now();
+        renderAuditTrailList();
+        console.log("🆕 Switched to a brand new conversation channel.");
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const newChatButton = document.getElementById('new-chat-btn');
+        if (newChatButton) {
+            newChatButton.addEventListener('click', startNewChat);
+        }
+
+        fetchSavedSessions();
+    });
+</script>
+{% endblock %}
