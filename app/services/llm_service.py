@@ -20,8 +20,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from dotenv import load_dotenv
 import requests 
 import json
+from .rag_config import load_rag_config
 #from .databridge_services import run_data_bridge_agent
-from .databridge_services.langgraph_agent import run_data_bridge_agent
+try:
+    from .databridge_services.langgraph_agent import run_data_bridge_agent
+except Exception as e:
+    run_data_bridge_agent = None
+    print(f"⚠️ Optional databridge import failed: {e}")
 from app.services.stream_manager import stream_manager
 
 load_dotenv()
@@ -30,6 +35,8 @@ class LLMService:
     """Service for LLM provider interactions and RAG pipeline"""
     
     def __init__(self):
+        self.rag_config = load_rag_config()
+
         # Initialize NLTK
         try:
             _create_unverified_https_context = ssl._create_unverified_context
@@ -49,12 +56,12 @@ class LLMService:
         
         # Initialize Embeddings Model
         self.embeddings_model = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+            model_name=self.rag_config["embedding"]["model"]
         )
 
         # Permanent Docker Config
-        self.qdrant_url = "http://qdrant:6333"
-        self.collection_name = "saarthi_unstructured"
+        self.qdrant_url = self.rag_config["vector_store"]["url"]
+        self.collection_name = self.rag_config["vector_store"]["collection_name"]
 
         #self.llm = ChatOpenAI(
         #    model="gpt-4o-mini",
@@ -67,12 +74,12 @@ class LLMService:
         self.models = {
                 "gpt-4o-mini": ChatOpenAI(
                     model="gpt-4o-mini",
-                    temperature=0,
+                    temperature=self.rag_config["generation"]["temperature"],
                     openai_api_key=self.openai_key
                 ),
                 "gpt-4o": ChatOpenAI(
                     model="gpt-4o",
-                    temperature=0,
+                    temperature=self.rag_config["generation"]["temperature"],
                     openai_api_key=self.openai_key
                 )
             }
@@ -85,10 +92,10 @@ class LLMService:
             "type": "ollama",
             "url": "http://ollama:11434/api/generate",
             "model": "phi3:mini",
-            "max_tokens": 1024,
-            "temperature": 0.0,
-            "timeout": 300,
-            "num_ctx":8192
+            "max_tokens": self.rag_config["generation"]["max_tokens"],
+            "temperature": self.rag_config["generation"]["temperature"],
+            "timeout": self.rag_config["generation"]["timeout_seconds"],
+            "num_ctx": self.rag_config["generation"]["ollama_context_window"]
         }
 
     #     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -174,6 +181,189 @@ class LLMService:
     def validate_sql(self, sql_query, database_schema):
         pass
 
+    def _table_to_markdown(self, rows):
+        """Turns a list-of-rows table into a clean markdown table string."""
+        if not rows:
+            return ""
+        header = rows[0]
+        lines = ["| " + " | ".join(str(c or "") for c in header) + " |"]
+        lines.append("|" + "|".join(["---"] * len(header)) + "|")
+        for row in rows[1:]:
+            lines.append("| " + " | ".join(str(c or "") for c in row) + " |")
+        return "\n".join(lines)
+
+    def _extract_pdf_tables(self, file_path, document_code):
+        import pdfplumber
+        from langchain_core.documents import Document
+        import uuid
+
+        table_cfg = self.rag_config["chunking"]["table"]
+        chunks = []
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                for page_num, page in enumerate(pdf.pages):
+                    for table_index, table in enumerate(page.extract_tables()):
+                        if not table or len(table) < 2:
+                            continue
+                        table_id = f"{document_code}_table_p{page_num}_{table_index}_{uuid.uuid4().hex[:6]}"
+                        header, body_rows = table[0], table[1:]
+                        if len(body_rows) <= table_cfg["keep_whole_if_under_rows"]:
+                            chunks.append(Document(
+                                page_content=self._table_to_markdown(table),
+                                metadata={"document_code": document_code, "table_id": table_id,
+                                          "source": "pdf_table", "page": page_num}
+                            ))
+                        else:
+                            group_size = table_cfg["keep_whole_if_under_rows"]
+                            for i in range(0, len(body_rows), group_size):
+                                group = body_rows[i:i + group_size]
+                                piece_rows = ([header] + group) if table_cfg["repeat_headers_on_split"] else group
+                                chunks.append(Document(
+                                    page_content=self._table_to_markdown(piece_rows),
+                                    metadata={"document_code": document_code, "table_id": table_id,
+                                              "source": "pdf_table", "page": page_num}
+                                ))
+        except Exception as e:
+            print(f"⚠️ [RAG] Could not extract PDF tables from {file_path}: {e}")
+        return chunks
+
+    def _extract_docx_tables(self, file_path, document_code):
+        from docx import Document as DocxDocument
+        from langchain_core.documents import Document
+        import uuid
+
+        table_cfg = self.rag_config["chunking"]["table"]
+        chunks = []
+        try:
+            doc = DocxDocument(file_path)
+            for table_index, table in enumerate(doc.tables):
+                rows = [[cell.text for cell in row.cells] for row in table.rows]
+                if len(rows) < 2:
+                    continue
+                table_id = f"{document_code}_table_{table_index}_{uuid.uuid4().hex[:6]}"
+                header, body_rows = rows[0], rows[1:]
+                if len(body_rows) <= table_cfg["keep_whole_if_under_rows"]:
+                    chunks.append(Document(
+                        page_content=self._table_to_markdown(rows),
+                        metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table"}
+                    ))
+                else:
+                    group_size = table_cfg["keep_whole_if_under_rows"]
+                    for i in range(0, len(body_rows), group_size):
+                        group = body_rows[i:i + group_size]
+                        piece_rows = ([header] + group) if table_cfg["repeat_headers_on_split"] else group
+                        chunks.append(Document(
+                            page_content=self._table_to_markdown(piece_rows),
+                            metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table"}
+                        ))
+        except Exception as e:
+            print(f"⚠️ [RAG] Could not extract DOCX tables from {file_path}: {e}")
+        return chunks
+
+    def _extract_pdf_images(self, file_path, document_code):
+        import fitz
+        import base64
+        from langchain_core.documents import Document
+        import uuid
+
+        image_cfg = self.rag_config["ingestion"]["images"]
+        chunks = []
+        try:
+            pdf_doc = fitz.open(file_path)
+            for page_num in range(len(pdf_doc)):
+                page = pdf_doc[page_num]
+                for img_index, img in enumerate(page.get_images(full=True)):
+                    xref = img[0]
+                    base_image = pdf_doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    if len(image_bytes) < image_cfg["min_image_size_bytes"]:
+                        continue
+                    b64_image = base64.b64encode(image_bytes).decode("utf-8")
+                    caption = self._caption_image(b64_image, base_image["ext"])
+                    if caption:
+                        image_id = f"{document_code}_image_p{page_num}_{img_index}_{uuid.uuid4().hex[:6]}"
+                        chunks.append(Document(
+                            page_content=caption,
+                            metadata={"document_code": document_code, "image_id": image_id,
+                                      "source": "pdf_image", "page": page_num}
+                        ))
+            pdf_doc.close()
+        except Exception as e:
+            print(f"⚠️ [RAG] Could not extract PDF images from {file_path}: {e}")
+        return chunks
+
+    def _caption_image(self, b64_image, image_ext):
+        try:
+            vision_llm = ChatOpenAI(model="gpt-4o-mini", temperature=self.rag_config["generation"]["temperature"], openai_api_key=os.getenv("OPENAI_API_KEY"))
+            message = HumanMessage(content=[
+                {"type": "text", "text": "Describe this image in 2-3 sentences, focusing on any data, numbers, chart values, or important details a business user would need to know."},
+                {"type": "image_url", "image_url": {"url": f"data:image/{image_ext};base64,{b64_image}"}}
+            ])
+            response = vision_llm.invoke([message])
+            return response.content.strip()
+        except Exception as e:
+            print(f"⚠️ [RAG] Could not caption image: {e}")
+            return None
+
+    def _generate_hyde_document(self, query):
+        """Writes a short hypothetical answer to search with, instead of the raw question."""
+        try:
+            hyde_llm = ChatOpenAI(
+                model=self.rag_config["retrieval"]["hyde"]["model"],
+                temperature=0.3,
+                openai_api_key=os.getenv("OPENAI_API_KEY")
+            )
+            prompt = (
+                "Write a short, plausible-sounding paragraph that could be the answer to "
+                "this question. It does not need to be factually correct - it only needs "
+                "to read like a real document that would contain the answer. Do not "
+                "include any disclaimers, just write the paragraph.\n\n"
+                f"Question: {query}"
+            )
+            response = hyde_llm.invoke([HumanMessage(content=prompt)])
+            return response.content.strip()
+        except Exception as e:
+            print(f"⚠️ [RAG] HyDE generation failed, using raw query instead: {e}")
+            return query
+
+    def _generate_query_variations(self, query):
+        """Asks the LLM to reword the question a few different ways, for multi-query retrieval."""
+        mq_cfg = self.rag_config["retrieval"]["multi_query"]
+        try:
+            mq_llm = ChatOpenAI(
+                model=mq_cfg["model"],
+                temperature=0.5,
+                openai_api_key=os.getenv("OPENAI_API_KEY")
+            )
+            prompt = (
+                f"Reword this question {mq_cfg['num_variations']} different ways, keeping "
+                "the same meaning. Return only the numbered list, nothing else.\n\n"
+                f"Question: {query}"
+            )
+            response = mq_llm.invoke([HumanMessage(content=prompt)])
+            lines = [l.strip() for l in response.content.strip().split("\n") if l.strip()]
+            cleaned = []
+            for line in lines:
+                line = re.sub(r'^[\d\.\)\-\s]+', '', line).strip()
+                if line:
+                    cleaned.append(line)
+            return cleaned[:mq_cfg["num_variations"]]
+        except Exception as e:
+            print(f"⚠️ [RAG] Multi-query generation failed, using original query only: {e}")
+            return []
+
+    def _merge_and_dedupe_docs(self, doc_lists):
+        """Combines results from multiple searches, dropping exact duplicate chunk content."""
+        seen = set()
+        merged = []
+        for docs in doc_lists:
+            for doc in docs:
+                key = doc.page_content.strip()
+                if key not in seen:
+                    seen.add(key)
+                    merged.append(doc)
+        return merged
+
     # --- Core Processing Logic ---
 
     def process_to_embeddings(self, file_path, document_code=None):
@@ -201,16 +391,34 @@ class LLMService:
             # Load the data
             documents = loader.load()
 
+            # Extract tables and images separately, gated by rag_config.yaml so this
+            # is a no-op until those settings are turned on.
+            # NOTE: the normal text loader above will still also pull table content
+            # as garbled plain text - some duplication is expected, not a bug.
+            table_chunks = []
+            if self.rag_config["chunking"]["table"]["enabled"]:
+                if ext == ".pdf":
+                    table_chunks = self._extract_pdf_tables(file_path, document_code)
+                elif ext in [".docx", ".doc"]:
+                    table_chunks = self._extract_docx_tables(file_path, document_code)
+
+            image_chunks = []
+            if ext == ".pdf" and self.rag_config["ingestion"]["images"]["extract_from_pdf"]:
+                image_chunks = self._extract_pdf_images(file_path, document_code)
+
             # 2. Chunking
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=800, 
-                chunk_overlap=80
+                chunk_size=self.rag_config["chunking"]["chunk_size"],
+                chunk_overlap=self.rag_config["chunking"]["chunk_overlap"]
             )
             chunks = text_splitter.split_documents(documents)
 
             # Add metadata to identify chunks by document code
             for chunk in chunks:
                 chunk.metadata["document_code"] = document_code
+
+            chunks.extend(table_chunks)
+            chunks.extend(image_chunks)
 
             # 3. Store in Qdrant Vector Database
             # This handles both embedding and storage in one go
@@ -359,27 +567,27 @@ class LLMService:
                         from langchain_anthropic import ChatAnthropic
                         dynamic_llm = ChatAnthropic(
                             model=actual_model,
-                            temperature=0,
+                            temperature=self.rag_config["generation"]["temperature"],
                             anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY")
                         )
                     elif "gemini" in actual_model:
                         from langchain_google_genai import ChatGoogleGenerativeAI
                         dynamic_llm = ChatGoogleGenerativeAI(
                             model=actual_model,
-                            temperature=0,
+                            temperature=self.rag_config["generation"]["temperature"],
                             google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY")
                         )
                     elif "deepseek" in actual_model:
                         dynamic_llm = ChatOpenAI(
                             model=actual_model,
-                            temperature=0,
+                            temperature=self.rag_config["generation"]["temperature"],
                             openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"),
                             openai_api_base="https://api.deepseek.com/v1"
                         )
                     else:  # Custom GPT models
                         dynamic_llm = ChatOpenAI(
                             model=actual_model,
-                            temperature=0,
+                            temperature=self.rag_config["generation"]["temperature"],
                             openai_api_key=custom_key if custom_key else self.openai_key
                         )
                     
@@ -433,7 +641,20 @@ class LLMService:
             push_rag_event("start", "Vector Space Search", "Scanning local Qdrant collections for high-probability matching fragments...")
             # --- CODE CHANGE END ---
             
-            docs = vector_store.similarity_search(user_query, k=3)
+            retrieval_cfg = self.rag_config["retrieval"]
+            search_queries = [user_query]
+
+            if retrieval_cfg["multi_query"]["enabled"]:
+                search_queries.extend(self._generate_query_variations(user_query))
+
+            if retrieval_cfg["hyde"]["enabled"]:
+                search_queries = [self._generate_hyde_document(q) for q in search_queries]
+
+            if len(search_queries) > 1:
+                doc_lists = [vector_store.similarity_search(q, k=retrieval_cfg["top_k"]) for q in search_queries]
+                docs = self._merge_and_dedupe_docs(doc_lists)
+            else:
+                docs = vector_store.similarity_search(search_queries[0], k=retrieval_cfg["top_k"])
             context_text = "\n\n".join([doc.page_content for doc in docs])
             
             retrieval_msg = f"Successfully matched and isolated {len(docs)} high-relevance documentation segments."
@@ -536,7 +757,7 @@ class LLMService:
                     from langchain_anthropic import ChatAnthropic
                     dynamic_llm = ChatAnthropic(
                         model=actual_model,
-                        temperature=0,
+                        temperature=self.rag_config["generation"]["temperature"],
                         anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY")
                     )
                     ai_response = dynamic_llm.invoke(messages)
@@ -547,7 +768,7 @@ class LLMService:
                     from langchain_google_genai import ChatGoogleGenerativeAI
                     dynamic_llm = ChatGoogleGenerativeAI(
                         model=actual_model,
-                        temperature=0,
+                        temperature=self.rag_config["generation"]["temperature"],
                         google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY")
                     )
                     ai_response = dynamic_llm.invoke(messages)
@@ -557,7 +778,7 @@ class LLMService:
                 elif "deepseek" in actual_model:
                     dynamic_llm = ChatOpenAI(
                         model=actual_model,
-                        temperature=0,
+                        temperature=self.rag_config["generation"]["temperature"],
                         openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"),
                         openai_api_base="https://api.deepseek.com/v1"
                     )
@@ -568,7 +789,7 @@ class LLMService:
                 elif "gpt" in actual_model or "openai" in actual_model:
                     dynamic_llm = ChatOpenAI(
                         model=actual_model,
-                        temperature=0,
+                        temperature=self.rag_config["generation"]["temperature"],
                         openai_api_key=custom_key if custom_key else self.openai_key
                     )
                     ai_response = dynamic_llm.invoke(messages)
@@ -632,17 +853,17 @@ class LLMService:
 
 _shared_llm_service = LLMService()
 
-def answer_from_docs(user_query, model_name, session_id=1, custom_key='',system_instructions=''):
+def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions=''):
     """
     Top-level module function mapping so your orchestrator router can import 
     it cleanly without needing class-level structural instantiation overhead.
     """
     return _shared_llm_service.answer_from_docs(
-        user_query=user_query, 
-        model_name=model_name, 
-        session_id=session_id, 
+        user_query=user_query,
+        model_name=model_name,
+        session_id=session_id,
         custom_key=custom_key,
-        system_instructions=''
+        system_instructions=system_instructions
     )   
        
 

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Saarthi - Resource Mapping{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .rm-container { max-width: 760px; }
+    .rm-section { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .rm-row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+    .rm-row select, .rm-row input { flex: 1; padding: 8px; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); }
+    .rm-list-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+    .rm-list-item:last-child { border-bottom: none; }
+    .rm-remove-btn { color: #F48771; cursor: pointer; background: none; border: none; font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rm-container">
+    <h2 style="margin-bottom: 16px;">Resource Mapping</h2>
+
+    <div class="rm-section">
+        <div class="rm-row">
+            <select id="userSelect"><option value="">Select a user...</option></select>
+        </div>
+        <div class="rm-row">
+            <select id="resourceSelect"><option value="">Select a resource...</option></select>
+            <button class="btn btn-primary" onclick="addMapping()">Connect</button>
+        </div>
+    </div>
+
+    <div class="rm-section">
+        <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--accent-green);">Current mappings for this user</h3>
+        <div id="mappingsList"><div style="color: var(--text-secondary); font-size: 13px;">Select a user above to see their mapped resources.</div></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let allResources = [];
+
+    async function loadUsers() {
+        const res = await fetch('/api/resource-mapping/users');
+        const data = await res.json();
+        const select = document.getElementById('userSelect');
+        (data.users || []).forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u.id;
+            opt.textContent = `${u.name} (${u.email}) - ${u.role}`;
+            select.appendChild(opt);
+        });
+    }
+
+    async function loadResources() {
+        const res = await fetch('/api/resource-mapping/resources');
+        const data = await res.json();
+        allResources = data.resources || [];
+        const select = document.getElementById('resourceSelect');
+        allResources.forEach((r, i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = `[${r.type}] ${r.name}`;
+            select.appendChild(opt);
+        });
+    }
+
+    async function loadMappingsForUser(userId) {
+        const listEl = document.getElementById('mappingsList');
+        if (!userId) {
+            listEl.innerHTML = '<div style="color: var(--text-secondary); font-size: 13px;">Select a user above to see their mapped resources.</div>';
+            return;
+        }
+        const res = await fetch(`/api/resource-mapping/${userId}`);
+        const data = await res.json();
+        const mappings = data.mappings || [];
+        if (mappings.length === 0) {
+            listEl.innerHTML = '<div style="color: var(--text-secondary); font-size: 13px;">No resources mapped yet.</div>';
+            return;
+        }
+        listEl.innerHTML = mappings.map(m => `
+            <div class="rm-list-item">
+                <span>[${m.resource_type}] ${m.resource_name || m.resource_id}</span>
+                <button class="rm-remove-btn" onclick="removeMapping(${m.id}, ${userId})">Remove</button>
+            </div>
+        `).join('');
+    }
+
+    async function addMapping() {
+        const userId = document.getElementById('userSelect').value;
+        const resourceIndex = document.getElementById('resourceSelect').value;
+        if (!userId || resourceIndex === '') {
+            alert('Select both a user and a resource first.');
+            return;
+        }
+        const resource = allResources[resourceIndex];
+        await fetch('/api/resource-mapping', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                resource_type: resource.type,
+                resource_id: resource.id,
+                resource_name: resource.name
+            })
+        });
+        loadMappingsForUser(userId);
+    }
+
+    async function removeMapping(mappingId, userId) {
+        await fetch(`/api/resource-mapping/${mappingId}`, { method: 'DELETE' });
+        loadMappingsForUser(userId);
+    }
+
+    document.getElementById('userSelect').addEventListener('change', (e) => loadMappingsForUser(e.target.value));
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadUsers();
+        loadResources();
+    });
+</script>
+{% endblock %}

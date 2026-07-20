@@ -493,6 +493,19 @@ class RouterService:
             # LAYER 3: Tool-calling router decision
             # ------------------------------------------------
             openai_api_key = custom_key if custom_key else os.getenv("OPENAI_API_KEY")
+            
+
+            # --- TEMP DEBUG: remove once the 401 is sorted -------------
+            _k = openai_api_key or ""
+            print("🔑 DEBUG key source:", "custom_key (from request)" if custom_key else "OPENAI_API_KEY (from env)")
+            print("🔑 DEBUG key length:", len(_k))
+            print("🔑 DEBUG key preview:", (_k[:7] + "..." + _k[-4:]) if len(_k) > 15 else "too short / empty")
+            print("🔑 DEBUG has quote chars:", ('"' in _k) or ("'" in _k))
+            print("🔑 DEBUG has stray whitespace/CR:", _k != _k.strip())
+            print("🔑 DEBUG model requested:", model_name)
+            # -------------------------------------------------------------
+
+            
             router_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0, openai_api_key=openai_api_key)
             response = router_llm.bind_tools(_ALL_TOOLS).invoke(messages)
             tool_calls = getattr(response, "tool_calls", None) or []

@@ -110,6 +110,12 @@ def create_database_connection():
         
         db.session.add(connection)
         db.session.commit()
+
+        try:
+            from app.services.automated_metamind import generate_router_config
+            generate_router_config(force=True)
+        except Exception as e:
+            print(f"⚠️ [METAMIND SYNC] Failed to refresh router config after DB connection add: {e}")
         
         return jsonify({
             'database': serialize_connection(connection),

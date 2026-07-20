@@ -1,0 +1,65 @@
+# RAG behavior settings. Edit this file to change chunking, retrieval, and
+# generation behavior. No code changes needed for anything below.
+#
+# NOTE: settings are only re-read when the server restarts. Editing this file
+# (by hand or via the Settings page) does not take effect until you restart
+# the web container.
+
+embedding:
+  model: sentence-transformers/all-MiniLM-L6-v2
+  batch_size: 32
+
+vector_store:
+  url: http://qdrant:6333
+  collection_name: saarthi_unstructured
+  distance_metric: cosine
+
+ingestion:
+  supported_file_types: [".pdf", ".docx", ".doc", ".md", ".rtf", ".txt"]
+  images:
+    extract_from_pdf: false
+    describe_with_vision_model: false
+    min_image_size_bytes: 5000
+
+chunking:
+  strategy: fixed_size             # fixed_size | heading_aware (heading_aware not implemented yet)
+  chunk_size: 800
+  chunk_overlap: 80
+  heading_aware:
+    enabled: false                 # placeholder - not implemented yet (Phase 5)
+    keep_heading_path_in_metadata: true
+  table:
+    enabled: false                 # turn table extraction on/off
+    keep_whole_if_under_rows: 200
+    repeat_headers_on_split: true
+    tag_siblings: true
+
+retrieval:
+  top_k: 3
+  similarity_score_threshold: 0.0  # placeholder - not implemented yet (Phase 5)
+  group_table_siblings: false      # placeholder - not implemented yet (Phase 5)
+  hyde:
+    enabled: false
+    model: gpt-4o-mini
+  multi_query:
+    enabled: false
+    num_variations: 3
+    model: gpt-4o-mini
+
+generation:
+  temperature: 0.0
+  max_tokens: 1024
+  timeout_seconds: 300
+  ollama_context_window: 8192
+
+quality_checks:                     # placeholder - not implemented yet (Phase 5)
+  groundedness:
+    enabled: false
+    min_score_to_flag: 70
+  relevance_check:
+    enabled: false
+    min_score_to_flag: 70
+
+chain_of_thought:                   # placeholder - not implemented yet (Phase 5)
+  show_quality_check_steps: true
+  show_retrieved_chunk_previews: false

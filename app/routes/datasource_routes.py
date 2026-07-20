@@ -258,6 +258,12 @@ def process_unstructured_file(document_code):
             if "error" in result:
                 return jsonify({"status": "error", "message": result["error"]}), 500
 
+            try:
+                from app.services.automated_metamind import generate_router_config
+                generate_router_config(force=True)
+            except Exception as e:
+                print(f"⚠️ [METAMIND SYNC] Failed to refresh router config after file add: {e}")
+
             # 3. Return the results to the Frontend
             return jsonify({
                 "status": "success",

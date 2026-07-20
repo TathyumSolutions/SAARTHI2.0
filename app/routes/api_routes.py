@@ -83,6 +83,12 @@ def save_tool():
         
         cursor.close()
         conn.close()
+
+        try:
+            from app.services.automated_metamind import generate_router_config
+            generate_router_config(force=True)
+        except Exception as e:
+            print(f"⚠️ [METAMIND SYNC] Failed to refresh router config after API tool add: {e}")
         
         print(f"🔥 Successfully written tool to registry: {integration_name} -> {base_url}{endpoint}")
         return jsonify({

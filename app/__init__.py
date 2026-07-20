@@ -53,7 +53,15 @@ def create_app(config_name='development'):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    Swagger(app)
+    swagger_template = {
+        "swagger": "2.0",
+        "info": {
+            "title": "Saarthi API",
+            "description": "Saarthi Chat API reference",
+            "version": "1.0.0"
+        }
+    }
+    Swagger(app, template=swagger_template)
     print("Initialisation completed")
     
     # Register blueprints
@@ -73,7 +81,9 @@ def create_app(config_name='development'):
         export_routes,
         model_config_routes,
         user_routes,
-        upload_routes
+        upload_routes,
+        settings_routes,
+        resource_mapping_routes
     )
     
     # HTML page routes (no prefix)
@@ -93,6 +103,8 @@ def create_app(config_name='development'):
     app.register_blueprint(model_config_routes.bp)
     app.register_blueprint(user_routes.bp)
     app.register_blueprint(api_routes.bp)
+    app.register_blueprint(settings_routes.bp)
+    app.register_blueprint(resource_mapping_routes.bp)
     
     from app.routes.upload_routes import upload_bp
     app.register_blueprint(upload_bp)
