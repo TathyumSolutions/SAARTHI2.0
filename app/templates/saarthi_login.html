@@ -1125,6 +1125,23 @@
         </div>
       </div>
 
+      <div class="field signup-only">
+        <label for="company_code">Company code</label>
+        <div class="input-wrap">
+          <input type="text" id="company_code" placeholder="e.g. TATHYUM2026" autocomplete="organization" />
+        </div>
+      </div>
+
+      <div class="field signup-only">
+        <label for="role">Role</label>
+        <div class="input-wrap">
+          <select id="role" style="width: 100%; background: transparent; border: none; color: inherit; font: inherit;">
+            <option value="user" selected>User</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+
       <div class="meta-row signin-only">
         <label class="remember">
           <input type="checkbox" id="remember" />
@@ -1300,8 +1317,10 @@
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       const confirm_password = document.getElementById('confirm_password')?.value;
+      const company_code = document.getElementById('company_code')?.value?.trim();
+      const role = document.getElementById('role')?.value || 'user';
 
-      if (!name || !email || !password || !confirm_password) {
+      if (!name || !email || !password || !confirm_password || !company_code) {
           alert("Please fill out all fields to register.");
           return;
       }
@@ -1315,7 +1334,7 @@
           const response = await fetch('/api/auth/register', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name, email, password, confirm_password })
+            body: JSON.stringify({ name, email, password, confirm_password, company_code, role })
           });
 
           const result = await response.json();

@@ -186,9 +186,18 @@ def register():
     password = data.get("password") or request.form.get("password")
     confirm_password = data.get("confirm_password") or request.form.get("confirm_password")
 
+    # Normalize email so different casing maps to one account identity.
+    if email:
+        email = email.strip().lower()
+    company_code = (data.get("company_code") or request.form.get("company_code") or "").strip()
+    role = (data.get("role") or request.form.get("role") or "user").strip().lower()
+
     # Guard clause: Verify all inputs are present
-    if not all([name, email, password, confirm_password]):
+    if not all([name, email, password, confirm_password, company_code]):
         return jsonify({"status": "error", "message": "Missing required registration fields."}), 400
+
+    if role not in ("admin", "user"):
+        return jsonify({"status": "error", "message": "Role must be either 'admin' or 'user'."}), 400
 
     # Guard clause: Match verification passwords
     if password != confirm_password:
@@ -212,8 +221,8 @@ def register():
 
         # Insert user into PostgreSQL table
         cursor.execute(
-            "INSERT INTO users (name, email, password_hash) VALUES (%s, %s, %s);",
-            (name, email, password_hash)
+            "INSERT INTO users (name, email, password_hash, company_code, role) VALUES (%s, %s, %s, %s, %s);",
+            (name, email, password_hash, company_code, role)
         )
         conn.commit()
         cursor.close()
@@ -223,6 +232,10 @@ def register():
             "status": "success", 
             "message": "User registered successfully"
         }), 201
+
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"status": "error", "message": "An account with this email already exists."}), 400
 
     except Exception as e:
         print(f"Registration DB Error: {e}")
@@ -242,6 +255,9 @@ def login():
 
     if not email or not password:
         return jsonify({"status": "error", "message": "Missing email or password fields."}), 400
+
+    # Same normalization as register() so login matches stored lowercase emails.
+    email = email.strip().lower()
 
     try:
         conn = get_auth_db_connection()

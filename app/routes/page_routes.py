@@ -208,6 +208,11 @@ def power_automate():
 def rpa_workflows():
     return render_template('management/rpa_workflows.html')
 
+
+@bp.route('/resource_mapping')
+def resource_mapping_page():
+    return render_template('resource_mapping.html')
+
 # API Connectors
 @bp.route('/api-connectors/rest-apis')
 def rest_apis():

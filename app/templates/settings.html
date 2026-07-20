@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Saarthi - RAG Settings{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .settings-container { max-width: 720px; padding: 32px; }
+    .settings-section { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .settings-section h3 { font-size: 15px; margin-bottom: 12px; color: var(--accent-green); }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-label { font-size: 14px; }
+    .setting-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .setting-input input[type="number"] { width: 90px; padding: 6px; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); }
+    .toggle { position: relative; display: inline-block; width: 40px; height: 22px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; top:0; left:0; right:0; bottom:0; background:#555; border-radius: 22px; transition: .2s; }
+    .toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: .2s; }
+    .toggle input:checked + .toggle-slider { background: var(--primary-blue); }
+    .toggle input:checked + .toggle-slider:before { transform: translateX(18px); }
+    .save-bar { position: sticky; bottom: 0; background: var(--sidebar-bg); padding: 16px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
+    .save-status { font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <h2 style="margin-bottom: 16px;">RAG Settings</h2>
+
+    <div class="settings-section">
+        <h3>Retrieval</h3>
+        <div class="setting-row">
+            <div><div class="setting-label">Chunks to retrieve (top_k)</div><div class="setting-desc">How many chunks to fetch per search</div></div>
+            <div class="setting-input"><input type="number" data-path="retrieval.top_k" min="1" max="20"></div>
+        </div>
+        <div class="setting-row">
+            <div><div class="setting-label">HyDE</div><div class="setting-desc">Search using a hypothetical answer instead of the raw question</div></div>
+            <label class="toggle"><input type="checkbox" data-path="retrieval.hyde.enabled"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="setting-row">
+            <div><div class="setting-label">Multi-Query Retrieval</div><div class="setting-desc">Search using several reworded versions of the question</div></div>
+            <label class="toggle"><input type="checkbox" data-path="retrieval.multi_query.enabled"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="setting-row">
+            <div><div class="setting-label">Number of query variations</div><div class="setting-desc">Only used if Multi-Query is on</div></div>
+            <div class="setting-input"><input type="number" data-path="retrieval.multi_query.num_variations" min="1" max="6"></div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Document Processing</h3>
+        <div class="setting-row">
+            <div><div class="setting-label">Chunk size</div><div class="setting-desc">Characters per chunk</div></div>
+            <div class="setting-input"><input type="number" data-path="chunking.chunk_size" min="100" max="4000"></div>
+        </div>
+        <div class="setting-row">
+            <div><div class="setting-label">Chunk overlap</div><div class="setting-desc">Characters shared between adjacent chunks</div></div>
+            <div class="setting-input"><input type="number" data-path="chunking.chunk_overlap" min="0" max="1000"></div>
+        </div>
+        <div class="setting-row">
+            <div><div class="setting-label">Table extraction</div><div class="setting-desc">Pull tables out as clean, structured chunks</div></div>
+            <label class="toggle"><input type="checkbox" data-path="chunking.table.enabled"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="setting-row">
+            <div><div class="setting-label">Image extraction (PDF)</div><div class="setting-desc">Extract and caption images found in PDFs</div></div>
+            <label class="toggle"><input type="checkbox" data-path="ingestion.images.extract_from_pdf"><span class="toggle-slider"></span></label>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Generation</h3>
+        <div class="setting-row">
+            <div><div class="setting-label">Temperature</div><div class="setting-desc">0 = focused/deterministic, higher = more varied</div></div>
+            <div class="setting-input"><input type="number" data-path="generation.temperature" min="0" max="2" step="0.1"></div>
+        </div>
+    </div>
+</div>
+
+<div class="save-bar">
+    <span class="save-status" id="saveStatus"></span>
+    <button class="btn btn-secondary" type="button" onclick="loadSettings()">Revert</button>
+    <button class="btn btn-primary" type="button" onclick="saveSettings()">Save Settings</button>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function getByPath(obj, path) {
+        return path.split('.').reduce((o, k) => (o || {})[k], obj);
+    }
+    function setByPath(obj, path, value) {
+        const keys = path.split('.');
+        let curr = obj;
+        for (let i = 0; i < keys.length - 1; i++) {
+            if (!curr[keys[i]]) curr[keys[i]] = {};
+            curr = curr[keys[i]];
+        }
+        curr[keys[keys.length - 1]] = value;
+    }
+
+    async function loadSettings() {
+        const res = await fetch('/api/settings/rag-config');
+        const config = await res.json();
+        document.querySelectorAll('[data-path]').forEach(el => {
+            const val = getByPath(config, el.dataset.path);
+            if (val === undefined) return;
+            if (el.type === 'checkbox') el.checked = !!val;
+            else el.value = val;
+        });
+    }
+
+    async function saveSettings() {
+        const updates = {};
+        document.querySelectorAll('[data-path]').forEach(el => {
+            const value = el.type === 'checkbox' ? el.checked : (el.type === 'number' ? Number(el.value) : el.value);
+            setByPath(updates, el.dataset.path, value);
+        });
+
+        const statusEl = document.getElementById('saveStatus');
+        try {
+            const res = await fetch('/api/settings/rag-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            statusEl.textContent = '✓ Saved — restart the server for changes to take effect';
+            statusEl.style.color = 'var(--accent-green)';
+        } catch (e) {
+            statusEl.textContent = '✗ Failed to save: ' + e.message;
+            statusEl.style.color = '#F48771';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadSettings);
+</script>
+{% endblock %}

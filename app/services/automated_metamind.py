@@ -19,6 +19,7 @@ import hashlib
 import datetime
 
 import psycopg2
+from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
 
 try:
@@ -59,10 +60,23 @@ HASH_PATH = os.path.join(BASE_DIR, ".router_config_hash")
 # STEP 1: INTROSPECT databrige_db -> DB datasource
 # ============================================================
 
+# Tables larger than this are still counted, but skipped for the
+# per-column null/unique/sample profiling queries below, since those run
+# roughly one full-table scan per column - fine for hundreds/thousands of
+# rows, not something you want on a 50-million-row table every time a
+# datasource is added. Raise/remove this if your tables are small and you
+# always want full stats.
+MAX_ROWS_FOR_COLUMN_PROFILING = 100_000
+
+
 def introspect_databridge_db():
     """
     Connects to databrige_db and pulls every table + column + simple
-    description (derived from PostgreSQL comments if present, else generic).
+    description (derived from PostgreSQL comments if present, else generic),
+    plus:
+    - row_count: total rows in the table
+    - constraints: primary key / foreign keys / unique columns
+    - per column: data_type, nullable, unique_values, null_count, sample_values
     """
     try:
         conn = psycopg2.connect(**DB_CONFIG, connect_timeout=5)
@@ -86,15 +100,6 @@ def introspect_databridge_db():
                 table_name = row["table_name"]
 
                 cur.execute("""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public' AND table_name = %s
-                    ORDER BY ordinal_position;
-                """, (table_name,))
-                col_rows = cur.fetchall()
-                columns = [c["column_name"] for c in col_rows]
-
-                cur.execute("""
                     SELECT obj_description(
                         (quote_ident(%s))::regclass, 'pg_class'
                     ) AS comment;
@@ -103,8 +108,92 @@ def introspect_databridge_db():
                 description = (comment_row["comment"] if comment_row and comment_row["comment"]
                                else f"Table storing {table_name} records.")
 
+                try:
+                    cur.execute(
+                        sql.SQL("SELECT COUNT(*) AS cnt FROM {};").format(sql.Identifier(table_name))
+                    )
+                    row_count = cur.fetchone()["cnt"]
+                except Exception as e:
+                    print(f"⚠️ [DB] Could not count rows for {table_name}: {e}")
+                    row_count = None
+
+                constraints = _get_table_constraints(cur, table_name)
+
+                cur.execute("""
+                    SELECT column_name, data_type, is_nullable
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = %s
+                    ORDER BY ordinal_position;
+                """, (table_name,))
+                col_rows = cur.fetchall()
+
+                columns = []
+                should_profile = isinstance(row_count, int) and row_count is not None and row_count <= MAX_ROWS_FOR_COLUMN_PROFILING
+
+                if not should_profile and isinstance(row_count, int):
+                    print(f"ℹ️ [DB] Skipping column profiling for {table_name} because row_count={row_count} exceeds {MAX_ROWS_FOR_COLUMN_PROFILING}.")
+
+                for col in col_rows:
+                    col_name = col["column_name"]
+                    col_type = col["data_type"]
+                    nullable = col["is_nullable"] == "YES"
+
+                    if should_profile:
+                        try:
+                            cur.execute(
+                                sql.SQL(
+                                    "SELECT COUNT(DISTINCT {}) AS unique_values, "
+                                    "SUM(CASE WHEN {} IS NULL THEN 1 ELSE 0 END) AS null_count "
+                                    "FROM {};"
+                                ).format(
+                                    sql.Identifier(col_name),
+                                    sql.Identifier(col_name),
+                                    sql.Identifier(table_name),
+                                )
+                            )
+                            profile_row = cur.fetchone()
+                            unique_values = profile_row["unique_values"]
+                            null_count = profile_row["null_count"]
+
+                            cur.execute(
+                                sql.SQL("SELECT {} FROM {} WHERE {} IS NOT NULL LIMIT 5;").format(
+                                    sql.Identifier(col_name),
+                                    sql.Identifier(table_name),
+                                    sql.Identifier(col_name),
+                                )
+                            )
+                            sample_rows = cur.fetchall()
+                            sample_values = []
+                            for sample_row in sample_rows:
+                                value = sample_row.get(col_name)
+                                if value is None:
+                                    continue
+                                if not isinstance(value, (str, int, float, bool)):
+                                    value = str(value)
+                                sample_values.append(value)
+                        except Exception as e:
+                            print(f"⚠️ [DB] Could not profile column {table_name}.{col_name}: {e}")
+                            unique_values = None
+                            null_count = None
+                            sample_values = []
+                    else:
+                        unique_values = None
+                        null_count = None
+                        sample_values = []
+
+                    columns.append({
+                        "name": col_name,
+                        "data_type": col_type,
+                        "nullable": nullable,
+                        "unique_values": unique_values,
+                        "null_count": null_count,
+                        "sample_values": sample_values,
+                    })
+
                 tables_out[table_name] = {
                     "description": description,
+                    "row_count": row_count,
+                    "constraints": constraints,
                     "columns": columns
                 }
 
@@ -120,6 +209,67 @@ def introspect_databridge_db():
 
     print(f"✅ [DB] Found {len(tables_out)} tables in databrige_db")
     return tables_out
+
+
+def _get_table_constraints(cur, table_name):
+    """
+    Returns primary key, foreign key, and unique constraint info for one
+    table, using Postgres's own information_schema (same trusted catalog
+    source as everything else in this file - no user input involved).
+    """
+    constraints = {"primary_key": [], "foreign_keys": [], "unique_columns": []}
+
+    try:
+        cur.execute("""
+            SELECT kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            WHERE tc.constraint_type = 'PRIMARY KEY'
+              AND tc.table_name = %s AND tc.table_schema = 'public';
+        """, (table_name,))
+        constraints["primary_key"] = [r["column_name"] for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT
+                kcu.column_name AS column,
+                ccu.table_name AS references_table,
+                ccu.column_name AS references_column
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage ccu
+              ON tc.constraint_name = ccu.constraint_name
+             AND tc.table_schema = ccu.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND tc.table_name = %s AND tc.table_schema = 'public';
+        """, (table_name,))
+        constraints["foreign_keys"] = [
+            {
+                "column": r["column"],
+                "references_table": r["references_table"],
+                "references_column": r["references_column"],
+            }
+            for r in cur.fetchall()
+        ]
+
+        cur.execute("""
+            SELECT kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            WHERE tc.constraint_type = 'UNIQUE'
+              AND tc.table_name = %s AND tc.table_schema = 'public';
+        """, (table_name,))
+        constraints["unique_columns"] = [r["column_name"] for r in cur.fetchall()]
+
+    except Exception as e:
+        print(f"⚠️ [DB] Could not fetch constraints for {table_name}: {e}")
+
+    return constraints
 
 
 # ============================================================

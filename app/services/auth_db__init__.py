@@ -56,6 +56,25 @@ def init_auth_database(base_database_url):
         );
         """
         cursor.execute(create_table_query)
+        # Add company_code and role if the table already existed from a previous run
+        # (ALTER ... ADD COLUMN IF NOT EXISTS is safe to run every time, on fresh or existing tables)
+        cursor.execute("""
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS company_code VARCHAR(100);
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user';
+        """)
+        print("[Auth DB Setup] Columns 'company_code' and 'role' verified on 'users' table.")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_resource_mapping (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                resource_type VARCHAR(20) NOT NULL,
+                resource_id VARCHAR(255) NOT NULL,
+                resource_name VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, resource_type, resource_id)
+            );
+        """)
+        print("[Auth DB Setup] Table 'user_resource_mapping' is verified and ready.")
         print("[Auth DB Setup] Table 'users' is verified and ready for authentication.")
         
         cursor.close()

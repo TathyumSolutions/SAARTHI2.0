@@ -44,6 +44,10 @@ pandas==2.3.2
 nltk==3.9.1
 Faker==37.12.0
 requests==2.32.5
+pyyaml
+pdfplumber
+python-docx
+PyMuPDF
 
 # --- Testing ---
 pytest

@@ -15,7 +15,9 @@ from . import (
     export_routes,
     model_config_routes,
     user_routes,
-    upload_routes
+    upload_routes,
+    settings_routes,
+    resource_mapping_routes
 )
 
 __all__ = [
@@ -32,5 +34,7 @@ __all__ = [
     'export_routes',
     'model_config_routes',
     'user_routes',
-    'upload_routes'
+    'upload_routes',
+    'settings_routes',
+    'resource_mapping_routes'
 ]

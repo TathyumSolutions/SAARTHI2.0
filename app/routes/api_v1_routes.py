@@ -41,6 +41,9 @@ def chat():
               description: Optional prior chat messages for context.
               items:
                 type: object
+            system_instructions:
+              type: string
+              description: Optional custom persona/formatting instructions to apply to this response.
         examples:
           application/json:
             query: "Show revenue by region for last quarter."
@@ -110,13 +113,15 @@ def chat():
     model = data.get('model', 'gpt-4o-mini')
     session_id = data.get('session_id', 1)
     chat_history = data.get('chat_history')
+    system_instructions = data.get('system_instructions', '')
 
     try:
         response = router_service.get_smart_response(
             query,
             model_name=model,
             session_id=session_id,
-            chat_history=chat_history
+            chat_history=chat_history,
+            system_instructions=system_instructions
         )
 
         return jsonify({
