@@ -469,17 +469,11 @@ class QueryFormatterAgent:
     def __init__(self, env_path: str = ".env", llm_url: str = "http://ollama:11434/api/generate", model: str = "llama3:latest"):
         load_dotenv(env_path)
         self.db_config = {
-            #"host": os.getenv("PGHOST"),
-            #"port": os.getenv("PGPORT"),
-            #"dbname": os.getenv("PGDATABASE"),
-            #"user": os.getenv("PGUSER"),
-            #"password": os.getenv("PGPASSWORD")
-            "host": "db",
-            "port": "5432",
-            "dbname":"databrige_db" ,
-            "user": "saarthi",
-            "password": "password"
-
+            "host": os.getenv("DATABRIDGE_DB_HOST", os.getenv("PGHOST", "db")),
+            "port": os.getenv("DATABRIDGE_DB_PORT", os.getenv("PGPORT", "5432")),
+            "dbname": os.getenv("DATABRIDGE_DB_NAME", os.getenv("PGDATABASE", "databrige_db")),
+            "user": os.getenv("DATABRIDGE_DB_USER", os.getenv("PGUSER", "saarthi")),
+            "password": os.getenv("DATABRIDGE_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
         }
         self.state = {}
         self.insight_generator = DataInsightGeneratorAgent(llm_url=llm_url, model=model)

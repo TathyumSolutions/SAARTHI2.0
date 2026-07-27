@@ -8,6 +8,8 @@ python-dotenv==1.1.1
 gunicorn
 gevent==24.10.1
 
+# --- unstructured---
+
 # --- Database Drivers ---
 psycopg2-binary>=2.9.0
 mysql-connector-python>=8.0.0
@@ -47,6 +49,7 @@ requests==2.32.5
 pyyaml
 pdfplumber
 python-docx
+docx2txt
 PyMuPDF
 
 # --- Testing ---

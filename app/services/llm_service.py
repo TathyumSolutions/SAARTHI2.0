@@ -260,6 +260,50 @@ class LLMService:
             print(f"⚠️ [RAG] Could not extract DOCX tables from {file_path}: {e}")
         return chunks
 
+    def _extract_docx_images(self, file_path, document_code):
+        from docx import Document as DocxDocument
+        from langchain_core.documents import Document
+        import base64
+        import uuid
+
+        image_cfg = self.rag_config["ingestion"]["images"]
+        chunks = []
+        try:
+            doc = DocxDocument(file_path)
+            image_parts = getattr(getattr(doc, "part", None), "package", None)
+            image_parts = getattr(image_parts, "image_parts", []) or []
+
+            for img_index, image_part in enumerate(image_parts):
+                image_bytes = getattr(image_part, "blob", None)
+                if not image_bytes:
+                    continue
+
+                if len(image_bytes) < image_cfg["min_image_size_bytes"]:
+                    continue
+
+                content_type = (getattr(image_part, "content_type", "image/png") or "image/png").lower()
+                image_ext = content_type.split("/")[-1] if "/" in content_type else "png"
+                if not image_ext:
+                    image_ext = "png"
+
+                b64_image = base64.b64encode(image_bytes).decode("utf-8")
+                caption = self._caption_image(b64_image, image_ext)
+                if caption:
+                    image_id = f"{document_code}_image_{img_index}_{uuid.uuid4().hex[:6]}"
+                    chunks.append(Document(
+                        page_content=caption,
+                        metadata={
+                            "document_code": document_code,
+                            "image_id": image_id,
+                            "source": "docx_image"
+                        }
+                    ))
+        except Exception as e:
+            print(f"⚠️ [RAG] Could not extract DOCX images from {file_path}: {e}")
+            return []
+
+        return chunks
+
     def _extract_pdf_images(self, file_path, document_code):
         import fitz
         import base64
@@ -403,8 +447,14 @@ class LLMService:
                     table_chunks = self._extract_docx_tables(file_path, document_code)
 
             image_chunks = []
-            if ext == ".pdf" and self.rag_config["ingestion"]["images"]["extract_from_pdf"]:
+            images_cfg = self.rag_config["ingestion"]["images"]
+            if ext == ".pdf" and images_cfg.get("extract_from_pdf"):
                 image_chunks = self._extract_pdf_images(file_path, document_code)
+            elif ext in [".docx", ".doc"] and images_cfg.get("extract_from_docx"):
+                if ext == ".doc":
+                    print("⚠️ [RAG] Image extraction not supported for legacy .doc format, only .docx")
+                else:
+                    image_chunks = self._extract_docx_images(file_path, document_code)
 
             # 2. Chunking
             text_splitter = RecursiveCharacterTextSplitter(

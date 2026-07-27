@@ -129,11 +129,15 @@
 
 
 #  dec10code
+import os
 import psycopg2
 import json
 #from ollama import Ollama
 import ollama
 from ollama import Client
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def get_sap_schema_with_comments(host, port, dbname, user, password, schema="public"):
     """
@@ -274,13 +278,12 @@ if __name__ == "__main__":
     client = Client(host='http://ollama:11434')
 
     schema = get_sap_schema_with_comments(
-        host="db",           
-        port=5432,
-        dbname="databrige_db", # Hardcoded target
-        user="saarthi",      
-        password="password"
+        host=os.getenv("DATABRIDGE_DB_HOST", os.getenv("PGHOST", "db")),
+        port=int(os.getenv("DATABRIDGE_DB_PORT", os.getenv("PGPORT", "5432"))),
+        dbname=os.getenv("DATABRIDGE_DB_NAME", os.getenv("PGDATABASE", "databrige_db")),
+        user=os.getenv("DATABRIDGE_DB_USER", os.getenv("PGUSER", "saarthi")),
+        password=os.getenv("DATABRIDGE_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
     )
-    import os
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     save_path = os.path.join(BASE_DIR, "sap_schema_with_sap_comments.json")
 

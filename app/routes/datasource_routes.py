@@ -232,7 +232,7 @@ def delete_datasource(document_code):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500    
 
-@bp.route('/unstructured/process/<document_code>', methods=['POST'])
+@bp.route('/unstructured/<document_code>/process', methods=['POST'])
 def process_unstructured_file(document_code):
     try:
         # 1. Access the Metadata to find the physical file path
@@ -258,16 +258,18 @@ def process_unstructured_file(document_code):
             if "error" in result:
                 return jsonify({"status": "error", "message": result["error"]}), 500
 
+            from app.services.automated_metamind import generate_router_config
             try:
-                from app.services.automated_metamind import generate_router_config
                 generate_router_config(force=True)
+                router_sync_message = "Router config updated"
             except Exception as e:
-                print(f"⚠️ [METAMIND SYNC] Failed to refresh router config after file add: {e}")
+                return jsonify({"status": "error", "message": str(e)}), 500
 
             # 3. Return the results to the Frontend
             return jsonify({
                 "status": "success",
-                "message": result.get("message"), # Now returns the Vector DB success string
+                "message": router_sync_message,
+                "processing_message": result.get("message"),
                 "data": {
                     "filename": file_info.get('file_name'),
                     "chunk_count": result.get("chunk_count")

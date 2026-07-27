@@ -10,6 +10,8 @@ from app.models.database_connection import DatabaseConnection
 import subprocess
 import sys  
 import os
+import logging
+import datetime
 
 bp = Blueprint('database', __name__, url_prefix='/api/databases')
 
@@ -110,12 +112,6 @@ def create_database_connection():
         
         db.session.add(connection)
         db.session.commit()
-
-        try:
-            from app.services.automated_metamind import generate_router_config
-            generate_router_config(force=True)
-        except Exception as e:
-            print(f"⚠️ [METAMIND SYNC] Failed to refresh router config after DB connection add: {e}")
         
         return jsonify({
             'database': serialize_connection(connection),
@@ -257,6 +253,29 @@ def test_database_connection(db_id):
         print(f"Test connection error: {str(e)}")
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/<int:db_id>/process', methods=['POST'])
+def process_database_connection(db_id):
+    """
+    Explicit process action for a saved database connection.
+    Triggers router config regeneration only when user clicks Process.
+    """
+    try:
+        connection = DatabaseConnection.query.get(db_id)
+        if not connection:
+            return jsonify({"status": "error", "message": "Connection not found"}), 404
+
+        from app.services.automated_metamind import generate_router_config
+        try:
+            generate_router_config(force=True)
+            return jsonify({"status": "success", "message": "Router config updated"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e:
+        print(f"Process connection error: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @bp.route('/test', methods=['POST'])
@@ -402,7 +421,25 @@ def get_database_types():
     
 @bp.route('/run-agentic-process/<int:conn_id>', methods=['POST'])
 def run_agentic_process(conn_id):
-    print(f"🔥 Path verified! Starting Process for ID: {conn_id}")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = "/app/logs"
+    log_path = os.path.join(log_dir, f"process_{conn_id}_{timestamp}.log")
+    os.makedirs(log_dir, exist_ok=True)
+
+    logger_name = f"process_{conn_id}_{timestamp}"
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    # Ensure we don't duplicate handlers if this logger name is reused.
+    for existing_handler in list(logger.handlers):
+        logger.removeHandler(existing_handler)
+
+    handler = logging.FileHandler(log_path)
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    logger.addHandler(handler)
+
+    logger.info(f"Process started for connection ID: {conn_id}")
     try:
         # We add the extra /app/ here based on your 'find' command
         base_path = "/app/app/services/databridge_services"
@@ -411,20 +448,44 @@ def run_agentic_process(conn_id):
         meta_script = os.path.join(base_path, "metamind.py")
 
         # Step 1: Build SAP tables
-        print(f"⏳ Executing: {db_script}")
-        subprocess.run([sys.executable, db_script], check=True,timeout=5000)
+        logger.info(f"Step 1 [build_sap_tables] start | conn_id={conn_id} | script={db_script}")
+        result1 = subprocess.run(
+            [sys.executable, db_script],
+            check=True,
+            timeout=5000,
+            capture_output=True,
+            text=True,
+        )
+        logger.info(f"Step 1 stdout:\n{result1.stdout}")
+        logger.info(f"Step 1 stderr:\n{result1.stderr}")
+        logger.info("Step 1 completed successfully")
         
         time.sleep(5) 
 
         # Step 2: Running the 40-minute LLM analysis
-        print(f"⏳ Executing: {meta_script}")
-        subprocess.run([sys.executable, meta_script], check=True,timeout=5000)
+        logger.info(f"Step 2 [metamind_analysis] start | conn_id={conn_id} | script={meta_script}")
+        result2 = subprocess.run(
+            [sys.executable, meta_script],
+            check=True,
+            timeout=5000,
+            capture_output=True,
+            text=True,
+        )
+        logger.info(f"Step 2 stdout:\n{result2.stdout}")
+        logger.info(f"Step 2 stderr:\n{result2.stderr}")
+        logger.info("Step 2 completed successfully")
+        logger.info("Process finished successfully, router config JSON updated")
 
-        return jsonify({"status": "success", "message": "Successfully JSON file created!"}), 200
+        return jsonify({"status": "success", "message": "Successfully JSON file created!", "log_path": log_path}), 200
     
     except subprocess.CalledProcessError as e:
-        print(f"❌ Script Crash: {str(e)}")
-        return jsonify({"error": f"Script failed: {str(e)}"}), 500
+        logger.error(f"Script crashed: {e}")
+        logger.error(f"stdout:\n{e.stdout}")
+        logger.error(f"stderr:\n{e.stderr}")
+        return jsonify({"error": f"Script failed: {e.stderr or str(e)}", "log_path": log_path}), 500
     except Exception as e:
-        print(f"❌ System Error: {str(e)}")
-        return jsonify({"error": str(e)}, 500)
+        logger.error(f"Unexpected system error: {e}", exc_info=True)
+        return jsonify({"error": str(e), "log_path": log_path}), 500
+    finally:
+        handler.close()
+        logger.removeHandler(handler)

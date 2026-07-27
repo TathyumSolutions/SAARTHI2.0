@@ -545,7 +545,7 @@
                     '<td>' + sizeFormatted + '</td>' +
                     '<td>' + file.upload_date + '</td>' +
                     '<td><span class="status-badge status-success">Uploaded</span></td>' +
-                    '<td>' +'<button class="btn btn-primary" style="padding: 6px 12px; margin-right: 4px;" onclick="window.processFile(\'' + file.document_code + '\')">Process</button>' +
+                    '<td>' +'<button class="btn btn-primary" style="padding: 6px 12px; margin-right: 4px;" onclick="window.processFile(\'' + file.document_code + '\', this)">Process</button>' +
                     '<button class="btn btn-secondary" style="padding: 6px 12px; margin-right: 4px;" onclick="viewFile(\'' + file.document_code + '\')">View</button>' +
                     '<button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteFile(\'' + file.document_code + '\')">Delete</button>' +
                     '</td>' +
@@ -626,8 +626,7 @@
         };
 
 
-        window.processFile = function(documentCode) {
-            const btn = event.target;
+        window.processFile = function(documentCode, btn) {
             const parentCell = btn.parentElement;
             
             // Disable button to prevent multi-clicks
@@ -644,7 +643,7 @@
 
             resultContainer.innerHTML = '<span style="color: var(--accent-orange);">⌛ Processing...</span>';
 
-            fetch('/api/datasources/unstructured/process/' + documentCode, {
+            fetch('/api/datasources/unstructured/' + documentCode + '/process', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -655,10 +654,12 @@
             })
             .then(function(data) {
                 if (data.status === 'success') {
-                    // Pulls the "stored in vector database successfully" message from Python
                     resultContainer.innerHTML = `
                         <div style="color: var(--accent-green); font-weight: bold;">
                             ✅ ${data.message}
+                        </div>
+                        <div style="color: var(--text-secondary);">
+                            ${data.processing_message || 'File processed successfully'}
                         </div>
                         <div style="color: var(--text-secondary);">
                             Chunks Created: ${data.data.chunk_count}

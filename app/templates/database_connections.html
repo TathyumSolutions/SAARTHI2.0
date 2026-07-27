@@ -752,7 +752,7 @@
         console.log('✅ Database type selection completed');
     }*/
 
-    function selectDatabaseType(dbType, event = null) {
+    function selectDatabaseType(dbType, event = null, preserveEditingContext = false) {
         console.log('🎯 Database type selected: ' + dbType);
 
         // 1. Update UI: Clear selection from all cards
@@ -818,8 +818,14 @@
             renderAdditionalFields(config.fields);
         }
 
-        // 7. Reset editing state and attach listeners
-        editingConnectionId = null;
+        // 7. Reset editing state only for new-connection flow.
+        if (!preserveEditingContext) {
+            editingConnectionId = null;
+            const saveBtnText = document.getElementById('saveBtnText');
+            if (saveBtnText) {
+                saveBtnText.innerHTML = '💾 Save Connection';
+            }
+        }
         if (typeof attachFormButtonListeners === 'function') {
             attachFormButtonListeners();
         }
@@ -1255,7 +1261,7 @@
                             <div id="formAlertSuccess" class="test-result success" style="display: none; margin-bottom: 5px;"><span id="formAlertSuccessMessage"></span></div>
                             <div id="formAlertError" class="test-result error" style="display: none; margin-bottom: 5px;"><span id="formAlertErrorMessage"></span></div>
     
-                            <button class="btn btn-secondary" id="processBtn" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id})">Process</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id}, this)">Process</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="testExistingConnection(${conn.id})">Test</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
                             <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>
@@ -1364,7 +1370,7 @@
                 
                 // Select database type
                 selectedDbType = conn.type;
-                selectDatabaseType(conn.type);
+                selectDatabaseType(conn.type, null, true);
                 
                 // Populate form
                 setTimeout(() => {
@@ -1375,6 +1381,11 @@
                     document.getElementById('username').value = conn.username || '';
                     document.getElementById('workspaceId').value = conn.workspace_id || '';
                     // Don't populate password for security
+
+                    const saveBtnText = document.getElementById('saveBtnText');
+                    if (saveBtnText) {
+                        saveBtnText.innerHTML = '✏️ Update Connection';
+                    }
                     
                     showFormAlert('Editing existing connection. Update the fields as needed.', 'info');
                 }, 500);
@@ -1431,6 +1442,11 @@
         // Reset state
         selectedDbType = null;
         editingConnectionId = null;
+
+        const saveBtnText = document.getElementById('saveBtnText');
+        if (saveBtnText) {
+            saveBtnText.innerHTML = '💾 Save Connection';
+        }
         
         // Hide alerts
         hideFormAlerts();
@@ -1555,32 +1571,21 @@
         }
     }, 2000);
 
-    async function runAgenticPipeline(id) {
-        const btn = document.getElementById('processBtn');
-        const successDiv = document.getElementById('formAlertSuccess');
-        const errorDiv = document.getElementById('formAlertError');
-        const successMsg = document.getElementById('formAlertSuccessMessage');
-        const errorMsg = document.getElementById('formAlertErrorMessage');
-
+    async function runAgenticPipeline(id, btn) {
         btn.disabled = true;
         btn.innerText = "Processing...";
-        successDiv.style.display = 'none';
-        errorDiv.style.display = 'none';
 
         try {
-        
-            const response = await fetch(`/api/databases/run-agentic-process/${id}`, { method: 'POST' });
+            const response = await fetch(`/api/databases/${id}/process`, { method: 'POST' });
             const result = await response.json();
 
-            if (response.ok) {
-                successMsg.innerText = "✅ Successfully JSON file created!";
-                successDiv.style.display = 'block';
+            if (response.ok && result.status === 'success') {
+                showAlert(result.message || 'Router config updated', 'success');
             } else {
-                throw new Error(result.error || "Pipeline failed");
+                throw new Error(result.message || result.error || 'Process failed');
             }
         } catch (err) {
-            errorMsg.innerText = "❌ Error: " + err.message;
-            errorDiv.style.display = 'block';
+            showAlert("Process failed: " + err.message, 'error');
         } finally {
             btn.disabled = false;
             btn.innerText = "Process";
