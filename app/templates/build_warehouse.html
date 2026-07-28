@@ -1,0 +1,596 @@
+{% extends "base.html" %}
+{% block title %}Build Warehouse - Saarthi{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .warehouse-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .warehouse-section {
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 24px;
+        margin-bottom: 18px;
+    }
+
+    .warehouse-section h3 {
+        margin-bottom: 14px;
+        font-size: 16px;
+        color: var(--accent-green);
+    }
+
+    .section-help {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 16px;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-bottom: 12px;
+    }
+
+    .form-group {
+        margin-bottom: 12px;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+
+    .checkbox-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+    }
+
+    .mode-card {
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 12px;
+        background: var(--dark-bg);
+    }
+
+    .mode-card label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .mode-note {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--text-secondary);
+    }
+
+    .table-list-wrap {
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        max-height: 320px;
+        overflow-y: auto;
+        padding: 10px;
+        background: var(--dark-bg);
+    }
+
+    .table-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .table-item:last-child {
+        border-bottom: none;
+    }
+
+    .table-title {
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .table-meta {
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin-top: 2px;
+    }
+
+    .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        border: 1px solid var(--border-color);
+        background: var(--hover-bg);
+        color: var(--text-primary);
+        border-radius: 4px;
+        padding: 8px 14px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: var(--primary-blue);
+        border-color: var(--primary-blue);
+        color: white;
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .status {
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    .history-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+    }
+
+    .history-table th,
+    .history-table td {
+        border-bottom: 1px solid var(--border-color);
+        padding: 9px;
+        text-align: left;
+        font-size: 13px;
+    }
+
+    .status-success {
+        color: var(--accent-green);
+        font-weight: 600;
+    }
+
+    .status-failed {
+        color: #f48771;
+        font-weight: 600;
+    }
+
+    @media (max-width: 900px) {
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="warehouse-container">
+    <h2 style="margin-bottom: 16px;">Build Warehouse</h2>
+
+    <div class="warehouse-section">
+        <h3>1. Target Connection</h3>
+        <div class="section-help">Create or select a warehouse target connection. New connections are saved using the existing DatabaseConnection API with role warehouse_target.</div>
+
+        <div class="form-group">
+            <label class="form-label" for="existingTargetSelect">Use Existing Warehouse Target</label>
+            <select class="form-input" id="existingTargetSelect"></select>
+        </div>
+
+        <form id="targetConnectionForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="connName">Connection Name</label>
+                    <input class="form-input" id="connName" required placeholder="Warehouse Target" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="connType">Database Type</label>
+                    <select class="form-input" id="connType" required>
+                        <option value="PostgreSQL" selected>PostgreSQL</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="connHost">Host</label>
+                    <input class="form-input" id="connHost" required placeholder="localhost" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="connPort">Port</label>
+                    <input class="form-input" id="connPort" type="number" required value="5432" />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="connDatabase">Database</label>
+                    <input class="form-input" id="connDatabase" required placeholder="warehouse_db" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="connUsername">Username</label>
+                    <input class="form-input" id="connUsername" required placeholder="postgres" />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="connPassword">Password</label>
+                    <input class="form-input" id="connPassword" type="password" required />
+                </div>
+                <div class="form-group" style="display: flex; align-items: end;">
+                    <button class="btn btn-primary" type="submit">Save Target Connection</button>
+                </div>
+            </div>
+        </form>
+
+        <div class="status" id="targetStatus"></div>
+    </div>
+
+    <div class="warehouse-section">
+        <h3>2. Load Modes</h3>
+        <div class="section-help">Schema Generator runs first if selected. Incremental Load and Full Load are mutually exclusive.</div>
+        <div class="checkbox-grid">
+            <div class="mode-card">
+                <label><input type="checkbox" id="modeSchema" /> Schema Generator</label>
+                <div class="mode-note">Creates target tables from discovered metadata.</div>
+            </div>
+            <div class="mode-card">
+                <label><input type="checkbox" id="modeIncremental" /> Incremental Load</label>
+                <div class="mode-note">Loads only new or changed rows by watermark.</div>
+            </div>
+            <div class="mode-card">
+                <label><input type="checkbox" id="modeFull" /> Full Load</label>
+                <div class="mode-note">Replaces target table data with a full copy.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="warehouse-section">
+        <h3>3. Table Selection</h3>
+        <div class="toolbar">
+            <button class="btn" type="button" id="selectAllTablesBtn">Select All</button>
+            <button class="btn" type="button" id="clearAllTablesBtn">Clear All</button>
+            <span class="status" id="tableCountLabel">0 selected</span>
+        </div>
+        <div class="table-list-wrap" id="tableListWrap"></div>
+    </div>
+
+    <div class="warehouse-section">
+        <h3>4. Generate Script</h3>
+        <div class="toolbar">
+            <button class="btn btn-primary" id="generateScriptBtn" type="button" disabled>Generate Script</button>
+            <span class="status" id="generateStatus">Select at least one mode to enable generation.</span>
+        </div>
+    </div>
+
+    <div class="warehouse-section">
+        <h3>5. Run History</h3>
+        <div class="section-help">History from warehouse_sync_log on the selected warehouse target connection.</div>
+        <div style="overflow-x: auto;">
+            <table class="history-table" id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Run Timestamp</th>
+                        <th>Table</th>
+                        <th>Load Type</th>
+                        <th>Rows Loaded</th>
+                        <th>Status</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const state = {
+        targets: [],
+        selectedTargetId: null,
+        tables: []
+    };
+
+    function getSelectedModes() {
+        return {
+            schema_generator: document.getElementById('modeSchema').checked,
+            incremental_load: document.getElementById('modeIncremental').checked,
+            full_load: document.getElementById('modeFull').checked
+        };
+    }
+
+    function updateGenerateButtonState() {
+        const modes = getSelectedModes();
+        const hasMode = modes.schema_generator || modes.incremental_load || modes.full_load;
+        const btn = document.getElementById('generateScriptBtn');
+        const status = document.getElementById('generateStatus');
+
+        btn.disabled = !hasMode;
+        status.textContent = hasMode
+            ? 'Ready to generate. Select target connection and tables.'
+            : 'Select at least one mode to enable generation.';
+    }
+
+    function enforceModeExclusivity(changedId) {
+        const incremental = document.getElementById('modeIncremental');
+        const full = document.getElementById('modeFull');
+
+        if (changedId === 'modeIncremental' && incremental.checked) {
+            full.checked = false;
+        }
+        if (changedId === 'modeFull' && full.checked) {
+            incremental.checked = false;
+        }
+
+        updateGenerateButtonState();
+    }
+
+    function selectedTables() {
+        return Array.from(document.querySelectorAll('.table-select:checked')).map(cb => cb.value);
+    }
+
+    function updateTableSelectionLabel() {
+        const count = selectedTables().length;
+        document.getElementById('tableCountLabel').textContent = `${count} selected`;
+    }
+
+    function renderTableList() {
+        const wrap = document.getElementById('tableListWrap');
+        wrap.innerHTML = '';
+
+        if (!state.tables.length) {
+            wrap.innerHTML = '<div class="status">No discovered tables found.</div>';
+            updateTableSelectionLabel();
+            return;
+        }
+
+        state.tables.forEach(table => {
+            const item = document.createElement('div');
+            item.className = 'table-item';
+
+            const cols = (table.columns || []).length;
+            const rowCount = table.row_count === null || table.row_count === undefined ? 'n/a' : table.row_count;
+
+            item.innerHTML = `
+                <input class="table-select" type="checkbox" value="${table.name}">
+                <div>
+                    <div class="table-title">${table.name}</div>
+                    <div class="table-meta">Columns: ${cols} | Rows: ${rowCount}</div>
+                </div>
+            `;
+
+            const checkbox = item.querySelector('.table-select');
+            checkbox.addEventListener('change', updateTableSelectionLabel);
+            wrap.appendChild(item);
+        });
+
+        updateTableSelectionLabel();
+    }
+
+    function renderTargetOptions() {
+        const select = document.getElementById('existingTargetSelect');
+        select.innerHTML = '';
+
+        if (!state.targets.length) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'No saved warehouse targets. Create one below.';
+            select.appendChild(opt);
+            state.selectedTargetId = null;
+            return;
+        }
+
+        state.targets.forEach((target, index) => {
+            const opt = document.createElement('option');
+            opt.value = String(target.id);
+            opt.textContent = `${target.name} (${target.host}:${target.port}/${target.database})`;
+            if (index === 0) {
+                opt.selected = true;
+                state.selectedTargetId = target.id;
+            }
+            select.appendChild(opt);
+        });
+    }
+
+    async function loadTargets() {
+        const res = await fetch('/api/warehouse/targets?workspace_id=1');
+        const data = await res.json();
+        state.targets = data.connections || [];
+
+        renderTargetOptions();
+        await loadHistory();
+    }
+
+    async function loadTables() {
+        const res = await fetch('/api/warehouse/tables');
+        const data = await res.json();
+        state.tables = data.tables || [];
+        renderTableList();
+    }
+
+    async function loadHistory() {
+        const body = document.getElementById('historyBody');
+        body.innerHTML = '';
+
+        const targetId = state.selectedTargetId;
+        const query = targetId ? `?target_connection_id=${targetId}` : '';
+
+        const res = await fetch(`/api/warehouse/history${query}`);
+        const data = await res.json();
+
+        const history = data.history || [];
+        if (!history.length) {
+            body.innerHTML = '<tr><td colspan="6" class="status">No run history found.</td></tr>';
+            return;
+        }
+
+        history.forEach(item => {
+            const tr = document.createElement('tr');
+            const statusClass = item.status === 'success' ? 'status-success' : 'status-failed';
+            tr.innerHTML = `
+                <td>${item.run_timestamp || ''}</td>
+                <td>${item.table_name || ''}</td>
+                <td>${item.load_type || ''}</td>
+                <td>${item.rows_loaded || 0}</td>
+                <td class="${statusClass}">${item.status || ''}</td>
+                <td>${item.error_message || ''}</td>
+            `;
+            body.appendChild(tr);
+        });
+    }
+
+    async function saveTargetConnection(event) {
+        event.preventDefault();
+
+        const payload = {
+            name: document.getElementById('connName').value,
+            type: document.getElementById('connType').value,
+            host: document.getElementById('connHost').value,
+            port: Number(document.getElementById('connPort').value),
+            database: document.getElementById('connDatabase').value,
+            username: document.getElementById('connUsername').value,
+            password: document.getElementById('connPassword').value,
+            workspace_id: 1,
+            config: {
+                role: 'warehouse_target'
+            }
+        };
+
+        const status = document.getElementById('targetStatus');
+        status.textContent = 'Saving target connection...';
+
+        try {
+            const res = await fetch('/api/databases/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+
+            status.textContent = 'Target connection saved.';
+            if (data.database && data.database.id) {
+                state.selectedTargetId = data.database.id;
+            }
+
+            await loadTargets();
+            const select = document.getElementById('existingTargetSelect');
+            if (state.selectedTargetId) {
+                select.value = String(state.selectedTargetId);
+            }
+            await loadHistory();
+        } catch (err) {
+            status.textContent = `Failed to save target: ${err.message}`;
+        }
+    }
+
+    async function generateScript() {
+        const targetId = Number(document.getElementById('existingTargetSelect').value);
+        const tables = selectedTables();
+        const modes = getSelectedModes();
+
+        const status = document.getElementById('generateStatus');
+
+        if (!targetId) {
+            status.textContent = 'Select or create a target connection first.';
+            return;
+        }
+
+        if (!tables.length) {
+            status.textContent = 'Select at least one table.';
+            return;
+        }
+
+        status.textContent = 'Generating script...';
+
+        const res = await fetch('/api/warehouse/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                target_connection_id: targetId,
+                selected_tables: tables,
+                ...modes
+            })
+        });
+
+        if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            status.textContent = `Generation failed: ${errJson.error || `HTTP ${res.status}`}`;
+            return;
+        }
+
+        const blob = await res.blob();
+        const contentDisposition = res.headers.get('Content-Disposition') || '';
+        const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+        const filename = match ? match[1] : 'warehouse_etl.py';
+
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+
+        status.textContent = 'Script generated and downloaded.';
+        await loadHistory();
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        document.getElementById('targetConnectionForm').addEventListener('submit', saveTargetConnection);
+
+        document.getElementById('modeSchema').addEventListener('change', () => updateGenerateButtonState());
+        document.getElementById('modeIncremental').addEventListener('change', () => enforceModeExclusivity('modeIncremental'));
+        document.getElementById('modeFull').addEventListener('change', () => enforceModeExclusivity('modeFull'));
+
+        document.getElementById('selectAllTablesBtn').addEventListener('click', () => {
+            document.querySelectorAll('.table-select').forEach(cb => {
+                cb.checked = true;
+            });
+            updateTableSelectionLabel();
+        });
+
+        document.getElementById('clearAllTablesBtn').addEventListener('click', () => {
+            document.querySelectorAll('.table-select').forEach(cb => {
+                cb.checked = false;
+            });
+            updateTableSelectionLabel();
+        });
+
+        document.getElementById('existingTargetSelect').addEventListener('change', async (e) => {
+            state.selectedTargetId = Number(e.target.value) || null;
+            await loadHistory();
+        });
+
+        document.getElementById('generateScriptBtn').addEventListener('click', generateScript);
+
+        updateGenerateButtonState();
+        await loadTables();
+        await loadTargets();
+    });
+</script>
+{% endblock %}

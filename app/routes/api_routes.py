@@ -5,6 +5,13 @@ from urllib.parse import urlparse
 # 1. Define the separate blueprint for API data sources
 bp = Blueprint('api_connectors', __name__)
 
+
+@bp.route('/api/feedback', methods=['POST'])
+def submit_feedback_alias():
+    """Alias endpoint for feedback submission."""
+    from app.routes.chat_routes import submit_feedback
+    return submit_feedback()
+
 @bp.route('/api_connectors/rest_apis')
 def rest_apis_page():
     """Renders the REST API custom tool registration dashboard"""

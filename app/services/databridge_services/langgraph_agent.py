@@ -8,6 +8,7 @@ from .agent_routers import validation_router, error_recovery_router, format_rout
 import os
 from app.services.stream_manager import stream_manager
 import time
+from app.services.model_selection_service import get_model_for_step
 
 # Import all agents from the agents package
 from .agents import (
@@ -95,13 +96,13 @@ def simplifier_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Simplifier Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    print("STATE KEYS =", state.keys())
-    print("STATE MODEL =", state.get("model_name"))
-    print("AGENT MODEL BEFORE =", query_simplifier.model_name)
-    if state.get("model_name"):
-        query_simplifier.model_name = state["model_name"]
-        print("AGENT MODEL AFTER =", query_simplifier.model_name)
-        print("================================")
+    requested_main_model = state.get("requested_model_name") or state.get("model_name")
+    user_id = state.get("user_id", 1)
+    step_model = get_model_for_step("query_simplifier", requested_main_model=requested_main_model, user_id=user_id)
+    if step_model:
+        state["model_name"] = step_model
+        query_simplifier.model_name = step_model
+    print(f"[ModelSelection] query_simplifier -> {step_model}")
     return query_simplifier.execute(state)
     
 
@@ -115,8 +116,13 @@ def query_sense_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Sense Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    if state.get("model_name"):
-        query_sense.ollama_model = state["model_name"]
+    requested_main_model = state.get("requested_model_name") or state.get("model_name")
+    user_id = state.get("user_id", 1)
+    step_model = get_model_for_step("query_sense", requested_main_model=requested_main_model, user_id=user_id)
+    if step_model:
+        state["model_name"] = step_model
+        query_sense.ollama_model = step_model
+    print(f"[ModelSelection] query_sense -> {step_model}")
     return query_sense.execute(state)
   
 
@@ -129,8 +135,12 @@ def validator_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Validator Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    #if state.get("model_name"):
-     #   data_visualizer.model = state["model_name"]
+    requested_main_model = state.get("requested_model_name") or state.get("model_name")
+    user_id = state.get("user_id", 1)
+    step_model = get_model_for_step("query_validator", requested_main_model=requested_main_model, user_id=user_id)
+    if step_model:
+        state["model_name"] = step_model
+    print(f"[ModelSelection] query_validator -> {step_model}")
     return query_validator.execute(state)
 
 
@@ -143,8 +153,13 @@ def sql_generator_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "SQL Generator Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    if state.get("model_name"):
-        sql_generator.llm_backend["model"] = state["model_name"]
+    requested_main_model = state.get("requested_model_name") or state.get("model_name")
+    user_id = state.get("user_id", 1)
+    step_model = get_model_for_step("sql_generator", requested_main_model=requested_main_model, user_id=user_id)
+    if step_model:
+        state["model_name"] = step_model
+        sql_generator.llm_backend["model"] = step_model
+    print(f"[ModelSelection] sql_generator -> {step_model}")
     return sql_generator.execute(state)
    
 
@@ -157,8 +172,12 @@ def query_formatter_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Formatter Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    #if state.get("model_name") and hasattr(query_formatter, "model"):
-    #    query_formatter.model = state["model_name"]
+    requested_main_model = state.get("requested_model_name") or state.get("model_name")
+    user_id = state.get("user_id", 1)
+    step_model = get_model_for_step("query_formatter", requested_main_model=requested_main_model, user_id=user_id)
+    if step_model:
+        state["model_name"] = step_model
+    print(f"[ModelSelection] query_formatter -> {step_model}")
     return query_formatter.execute(state)
 
 
@@ -171,6 +190,13 @@ def insight_generator_node(state: DataBridgeState) -> DataBridgeState:
         is_sql=True
     )
 
+    requested_main_model = state.get("requested_model_name") or state.get("model_name")
+    user_id = state.get("user_id", 1)
+    step_model = get_model_for_step("data_insight_generator", requested_main_model=requested_main_model, user_id=user_id)
+    if step_model:
+        state["model_name"] = step_model
+        data_insight_generator.model = step_model
+    print(f"[ModelSelection] data_insight_generator -> {step_model}")
     return data_insight_generator.execute(state)
 
 
@@ -182,8 +208,13 @@ def visualizer_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Data Visualizer Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    #if state.get("model_name"):
-    #    data_visualizer.model = state["model_name"]
+    requested_main_model = state.get("requested_model_name") or state.get("model_name")
+    user_id = state.get("user_id", 1)
+    step_model = get_model_for_step("data_visualizer", requested_main_model=requested_main_model, user_id=user_id)
+    if step_model:
+        state["model_name"] = step_model
+        data_visualizer.model = step_model
+    print(f"[ModelSelection] data_visualizer -> {step_model}")
     return data_visualizer.execute(state)
 
 
@@ -195,8 +226,12 @@ def error_diagnosis_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Error Diagnosis Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    #if state.get("model_name") and hasattr(error_diagnosis, "model"):
-    #    error_diagnosis.model = state["model_name"]
+    requested_main_model = state.get("requested_model_name") or state.get("model_name")
+    user_id = state.get("user_id", 1)
+    step_model = get_model_for_step("error_diagnosis", requested_main_model=requested_main_model, user_id=user_id)
+    if step_model:
+        state["model_name"] = step_model
+    print(f"[ModelSelection] error_diagnosis -> {step_model}")
     return error_diagnosis.execute(state)
 
 
@@ -347,7 +382,7 @@ def create_data_bridge_graph():
 langgraph_app = create_data_bridge_graph()
 
 
-def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "") -> dict:
+def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "", user_id: int = 1) -> dict:
     """Run the Data Bridge agent with error recovery"""
     print(f"\n{'='*80}")
     print(f"🚀 Starting LangGraph Data Bridge Agent with Error Recovery")
@@ -384,6 +419,8 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
     initial_state = {
         "user_query": user_query,
         "model_name": model_name,
+        "requested_model_name": model_name,
+        "user_id": user_id,
         "custom_key": custom_key,
         "system_instructions": system_instructions,
         "steps": [],

@@ -83,7 +83,8 @@ def create_app(config_name='development'):
         user_routes,
         upload_routes,
         settings_routes,
-        resource_mapping_routes
+        resource_mapping_routes,
+        warehouse_routes
     )
     
     # HTML page routes (no prefix)
@@ -105,6 +106,7 @@ def create_app(config_name='development'):
     app.register_blueprint(api_routes.bp)
     app.register_blueprint(settings_routes.bp)
     app.register_blueprint(resource_mapping_routes.bp)
+    app.register_blueprint(warehouse_routes.bp)
     
     from app.routes.upload_routes import upload_bp
     app.register_blueprint(upload_bp)

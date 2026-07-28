@@ -4,13 +4,16 @@ Handles conversational interface for data queries
 """
 from flask import Blueprint, request, jsonify
 from flask import Response, stream_with_context
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 import queue
 import json
+from app import db
 from app.services.llm_service import LLMService
 from flask import Response, stream_with_context, request
 from app.services.stream_manager import stream_manager
 from app.models.model_config import ModelConfiguration
+from app.models.feedback import ResponseFeedback
+from app.models.user import User
 import os  # 👈 Fixes the 'environ' underline
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -26,6 +29,75 @@ def get_chats_db_connection():
     else:
         chats_db_uri = "postgresql://saarthi:password@db:5432/saarthi_chats_db"
     return psycopg2.connect(chats_db_uri)
+
+
+def _resolve_feedback_user():
+    """Resolve the current user from JWT if available; fallback to user 1."""
+    try:
+        verify_jwt_in_request(optional=True)
+        jwt_identity = get_jwt_identity()
+        if jwt_identity:
+            user = User.query.get(int(jwt_identity))
+            if user:
+                return user
+    except Exception:
+        pass
+
+    fallback_user = User.query.get(1)
+    return fallback_user
+
+
+def _resolve_router_snapshot(router_decision: str):
+    try:
+        config_path = os.path.join(
+            os.path.dirname(__file__), '..', 'services', 'metamind_router_config.json'
+        )
+        with open(config_path, 'r', encoding='utf-8') as handle:
+            full_config = json.load(handle)
+
+        decision = (router_decision or '').upper()
+        snapshot = full_config.get(decision)
+        if snapshot is None:
+            data_sources = full_config.get('routing_menu', {}).get('datasources', {})
+            snapshot = data_sources.get(decision)
+        return snapshot
+    except Exception as exc:
+        print(f"⚠️ Could not attach metamind info to feedback: {exc}")
+        return None
+
+
+@bp.route('/feedback', methods=['POST'])
+def submit_feedback():
+    data = request.get_json() or {}
+
+    if data.get('feedback_type') not in ('like', 'dislike'):
+        return jsonify({'error': 'feedback_type must be like or dislike'}), 400
+    if not data.get('question') or not data.get('answer'):
+        return jsonify({'error': 'question and answer are required'}), 400
+
+    current_user = _resolve_feedback_user()
+    if not current_user:
+        return jsonify({'error': 'No authenticated user found for feedback'}), 401
+
+    try:
+        fb = ResponseFeedback(
+            user_id=current_user.id,
+            company_name=current_user.company_name,
+            question=data.get('question'),
+            answer=data.get('answer'),
+            sql_query=data.get('sql_query'),
+            router_decision=data.get('router_decision'),
+            feedback_type=data.get('feedback_type'),
+            remarks=data.get('remarks'),
+            metamind_snapshot=_resolve_router_snapshot(data.get('router_decision'))
+        )
+        db.session.add(fb)
+        db.session.commit()
+        return jsonify({'status': 'success'}), 200
+    except Exception as exc:
+        db.session.rollback()
+        print(f"Feedback save failed: {exc}")
+        return jsonify({'error': 'Failed to save feedback'}), 500
 
 @bp.route('/sessions', methods=['GET'])
 def get_chat_sessions():
@@ -245,7 +317,19 @@ def send_message():
         # STEP 1: Get the answer from your RAG logic in LLMService
         # We will build 'answer_from_docs' in the next step
         #ai_response = llm_service.answer_from_docs(user_query)
-        ai_response = router_service.get_smart_response(user_query,session_id=session_id,model_name=model_name,custom_key=custom_key,system_instructions=system_instructions)
+        current_user = _resolve_feedback_user()
+        user_id = current_user.id if current_user else 1
+        company_name = current_user.company_name if current_user else None
+
+        ai_response = router_service.get_smart_response(
+            user_query,
+            session_id=session_id,
+            model_name=model_name,
+            custom_key=custom_key,
+            system_instructions=system_instructions,
+            company_name=company_name,
+            user_id=user_id,
+        )
         print(f"DEBUG: AI Response from Service: {ai_response}")
 
         # STEP 2: Return the response in the format the frontend expects

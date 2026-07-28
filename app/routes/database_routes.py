@@ -27,6 +27,7 @@ def serialize_connection(conn):
             'database': conn.database,
             'username': conn.username,
             'password': '********',
+            'config': conn.config or {},
             'workspace_id': conn.workspace_id,
             'status': conn.status,
             'created_at': conn.created_at.isoformat() if conn.created_at else None,
@@ -106,6 +107,7 @@ def create_database_connection():
             username=data.get('username'),
             password=data.get('password'),
             connection_string=data.get('connection_string'),
+            config=data.get('config', {}),
             workspace_id=data.get('workspace_id', 1),
             status='connected'
         )

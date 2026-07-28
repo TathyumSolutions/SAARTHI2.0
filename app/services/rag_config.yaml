@@ -64,3 +64,6 @@ quality_checks:                     # placeholder - not implemented yet (Phase 5
 chain_of_thought:                   # placeholder - not implemented yet (Phase 5)
   show_quality_check_steps: true
   show_retrieved_chunk_previews: false
+
+self_learning:
+  enabled: false

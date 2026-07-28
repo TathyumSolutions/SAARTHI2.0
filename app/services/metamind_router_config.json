@@ -1755,6 +1755,114 @@
               }
             ]
           },
+          "response_feedback": {
+            "description": "Table storing response_feedback records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "user_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "user_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "company_name",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "question",
+                "data_type": "text",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "answer",
+                "data_type": "text",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "sql_query",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "router_decision",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "feedback_type",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "remarks",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "metamind_snapshot",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
           "saved_queries": {
             "description": "Table storing saved_queries records.",
             "row_count": 0,
@@ -2394,7 +2502,7 @@
         ],
         "vector_store_info": {
           "collection": "saarthi_unstructured",
-          "points_count": 14
+          "points_count": 16
         }
       },
       "API": {
@@ -2436,6 +2544,6 @@
       "rule_6": "When in doubt between DB and FILES -> prefer FILES",
       "output_format": "Return ONLY a JSON array. Example: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"DB\", \"FILES\"]"
     },
-    "generated_at": "2026-07-27T18:47:27.129901Z"
+    "generated_at": "2026-07-28T18:32:13.644389Z"
   }
 }

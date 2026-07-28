@@ -29,12 +29,16 @@ history first, then the router config.
 
 import json
 import os
+import math
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.tools import tool
+from app.models.feedback import ResponseFeedback
+from app.services.rag_config import load_rag_config
 
 # Import individual track execution services (unchanged from before)
 from .databridge_services.langgraph_agent import run_data_bridge_agent
@@ -74,6 +78,7 @@ _ROUTER_CONFIG_PATH = os.path.join(_SERVICE_DIR, "metamind_router_config.json")
 ROUTER_CONTEXT_TOKEN_BUDGET = 6000
 _HISTORY_SHARE = 0.4   # of the remaining budget, after the current query
 _MIN_CONFIG_BUDGET = 300
+_feedback_embedder: Optional[HuggingFaceEmbeddings] = None
 
 
 # ============================================================
@@ -207,8 +212,79 @@ def _normalize_chat_history(chat_history) -> list[dict]:
     return normalized
 
 
+def _get_feedback_embedder() -> HuggingFaceEmbeddings:
+    global _feedback_embedder
+    if _feedback_embedder is not None:
+        return _feedback_embedder
+
+    rag_cfg = load_rag_config()
+    model_name = rag_cfg.get("embedding", {}).get("model", "sentence-transformers/all-MiniLM-L6-v2")
+    _feedback_embedder = HuggingFaceEmbeddings(model_name=model_name)
+    return _feedback_embedder
+
+
+def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return -1.0
+
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    norm_a = math.sqrt(sum(a * a for a in vec_a))
+    norm_b = math.sqrt(sum(b * b for b in vec_b))
+
+    if norm_a == 0 or norm_b == 0:
+        return -1.0
+    return dot / (norm_a * norm_b)
+
+
+def _build_company_feedback_context(company_name: str, user_query: str, top_k: int = 4) -> str:
+    if not company_name or not user_query:
+        return ""
+
+    candidates = (
+        ResponseFeedback.query
+        .filter(ResponseFeedback.company_name == company_name)
+        .filter(ResponseFeedback.question.isnot(None))
+        .filter(ResponseFeedback.answer.isnot(None))
+        .order_by(ResponseFeedback.created_at.desc())
+        .limit(200)
+        .all()
+    )
+
+    if not candidates:
+        return ""
+
+    embedder = _get_feedback_embedder()
+    query_vec = embedder.embed_query(user_query)
+
+    scored = []
+    for row in candidates:
+        question = (row.question or "").strip()
+        if not question:
+            continue
+        score = _cosine_similarity(query_vec, embedder.embed_query(question))
+        scored.append((score, row))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    best = [row for score, row in scored[:top_k] if score > 0]
+    if not best:
+        return ""
+
+    lines = []
+    for item in best:
+        if item.feedback_type == "dislike":
+            remark = (item.remarks or "No remark provided").strip()
+            lines.append(
+                f"- A similar question was DISLIKED before, with this remark: \"{remark}\" - avoid this problem."
+            )
+        else:
+            lines.append("- A similar question was LIKED before - this style of answer worked well.")
+
+    return "COMPANY FEEDBACK CONTEXT:\n" + "\n".join(lines)
+
+
 def _build_router_messages(user_query: str, chat_history, router_config: dict,
-                            live_tools_summary: str, system_instructions: str) -> list:
+                            live_tools_summary: str, system_instructions: str,
+                            company_feedback_context: str = "") -> list:
     """
     Assembles the message list for the routing LLM call under a fixed token
     budget. Priority order when something has to be cut:
@@ -268,6 +344,9 @@ LIVE REGISTERED TOOLS FOR THE 'API' TRACK:
 CURRENT DATA SOURCE CONFIGURATION (router_metamind.json — may be trimmed for length):
 {config_str}
 """
+    if company_feedback_context:
+        system_prompt += f"\n\n{company_feedback_context}"
+
     if system_instructions and system_instructions.strip():
         system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
 
@@ -372,9 +451,13 @@ def _answer_status_check(args: dict, router_config: dict) -> dict:
 # TRACK DISPATCH (same underlying services as before, called manually)
 # ============================================================
 def _run_db_track(question: str, ctx: dict) -> dict:
+    enriched_question = question
+    if ctx.get("company_feedback_context"):
+        enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+
     full_result = run_data_bridge_agent(
-        question, session_id=ctx["session_id"],
-        model_name=ctx["model_name"], custom_key=ctx["custom_key"]
+        enriched_question, session_id=ctx["session_id"],
+        model_name=ctx["model_name"], custom_key=ctx["custom_key"], user_id=ctx.get("user_id", 1)
     )
     chat_ui = full_result.get("chat_ui", {}) if isinstance(full_result, dict) else {}
     return {
@@ -386,8 +469,12 @@ def _run_db_track(question: str, ctx: dict) -> dict:
 
 
 def _run_files_track(question: str, ctx: dict) -> dict:
+    enriched_question = question
+    if ctx.get("company_feedback_context"):
+        enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+
     rag_res = answer_from_docs(
-        question, model_name=ctx["model_name"],
+        enriched_question, model_name=ctx["model_name"],
         session_id=ctx["session_id"], custom_key=ctx["custom_key"]
     )
     return {
@@ -398,12 +485,16 @@ def _run_files_track(question: str, ctx: dict) -> dict:
 
 
 def _run_api_track(question: str, ctx: dict) -> dict:
+    enriched_question = question
+    if ctx.get("company_feedback_context"):
+        enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+
     payload = ask_dynamic_model_with_tools(
-        user_message=question, llm_tools_list=ctx["active_db_tools"],
+        user_message=enriched_question, llm_tools_list=ctx["active_db_tools"],
         model_name=ctx["model_name"], session_id=ctx["session_id"],
         custom_key=ctx["custom_key"],
         ollama_config={"url": "http://ollama:11434/api/chat", "temperature": 0},
-        display_query=question,
+        display_query=enriched_question,
     )
     if isinstance(payload, dict):
         return {
@@ -416,8 +507,12 @@ def _run_api_track(question: str, ctx: dict) -> dict:
 
 
 def _run_general_track(question: str, ctx: dict) -> dict:
+    enriched_question = question
+    if ctx.get("company_feedback_context"):
+        enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+
     gen_result = answer_general_knowledge(
-        question, ctx["model_name"], ctx["custom_key"], ctx["system_instructions"], []
+        enriched_question, ctx["model_name"], ctx["custom_key"], ctx["system_instructions"], []
     )
     return {
         "answer": gen_result.get("answer"),
@@ -456,6 +551,8 @@ class RouterService:
         custom_key: str = "",
         system_instructions: str = "",
         chat_history: Optional[list] = None,
+        company_name: Optional[str] = None,
+        user_id: int = 1,
     ) -> dict:
 
         try:
@@ -473,6 +570,7 @@ class RouterService:
                 )
                 if isinstance(fast_res, dict):
                     fast_res["chain_of_thought"] = fast_res.get("steps", [])
+                    fast_res["router_decision"] = "GENERAL"
                 return fast_res
 
             # ------------------------------------------------
@@ -485,8 +583,20 @@ class RouterService:
                 for t in active_db_tools
             ) or "No active external tools registered currently."
 
+            self_learning_enabled = bool(load_rag_config().get("self_learning", {}).get("enabled", False))
+            company_feedback_context = ""
+            if self_learning_enabled and company_name:
+                company_feedback_context = _build_company_feedback_context(company_name, user_query)
+                if company_feedback_context:
+                    print(f"🧠 [SELF-LEARNING] Injected company feedback context for company: {company_name}")
+
             messages = _build_router_messages(
-                user_query, chat_history, router_config, live_tools_summary, system_instructions
+                user_query,
+                chat_history,
+                router_config,
+                live_tools_summary,
+                system_instructions,
+                company_feedback_context,
             )
 
             # ------------------------------------------------
@@ -517,12 +627,15 @@ class RouterService:
                     "answer": response.content,
                     "sql": None, "table": [], "chart": {}, "insights": [],
                     "steps": ["Router answered directly, no data source tool needed."],
+                    "router_decision": "GENERAL",
                 }
 
             ctx = {
                 "user_query": user_query, "model_name": model_name, "session_id": session_id,
                 "custom_key": custom_key, "system_instructions": system_instructions,
                 "active_db_tools": active_db_tools, "router_config": router_config,
+                "company_feedback_context": company_feedback_context,
+                "user_id": user_id,
             }
 
             # ------------------------------------------------
@@ -550,9 +663,17 @@ class RouterService:
 
             # Single tool selected — return its result directly, unmodified.
             if len(results) == 1:
-                _, result = results[0]
+                tool_name, result = results[0]
+                router_map = {
+                    "query_database": "DB",
+                    "search_documents": "FILES",
+                    "call_external_api": "API",
+                    "answer_general_knowledge_tool": "GENERAL",
+                    "check_data_source_status": "GENERAL",
+                }
                 result["chain_of_thought"] = master_steps
                 result["steps"] = master_steps
+                result["router_decision"] = router_map.get(tool_name, "GENERAL")
                 return result
 
             # ------------------------------------------------
@@ -579,6 +700,7 @@ Provide a clean, natural enterprise assistant response.
                 "chart": db_result.get("chart", {}), "insights": db_result.get("insights", []),
                 "steps": master_steps,
                 "chain_of_thought": master_steps,
+                "router_decision": "MULTI",
             }
 
         except Exception as e:
@@ -589,4 +711,5 @@ Provide a clean, natural enterprise assistant response.
                 "answer": "The system encountered an error routing your request.",
                 "sql": None, "table": [], "chart": {}, "insights": [],
                 "steps": [f"Failed at master router step: {e}"],
+                "router_decision": "GENERAL",
             }
