@@ -1217,6 +1217,14 @@
         }
     }
 
+    function setElementTextImmediately(element, text) {
+        if (!element) return;
+        element.textContent = String(text || "");
+        if (chatContainer) {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+    }
+
     function simplifyStepText(text) {
         if (!text) return "";
 
@@ -1240,20 +1248,22 @@
         let safeDescription = simplifyStepText(description);
         const joined = `${safeTitle} ${safeDescription}`.toLowerCase();
 
-        if (joined.includes("your question") || joined.includes("request received")) {
-            safeTitle = "Understanding your question";
-        } else if (joined.includes("right tool") || joined.includes("tool selection") || joined.includes("route")) {
-            safeTitle = "Choosing the best path";
-        } else if (joined.includes("data source status") || joined.includes("availability")) {
+        if (joined.includes("your question") || joined.includes("request received") || joined.includes("understanding")) {
+            safeTitle = "Understanding your request";
+        } else if (joined.includes("right tool") || joined.includes("tool selection") || joined.includes("route") || joined.includes("best path")) {
+            safeTitle = "Choosing the right approach";
+        } else if (joined.includes("data source status") || joined.includes("availability") || joined.includes("available")) {
             safeTitle = "Checking what is available";
-        } else if (joined.includes("live system") || joined.includes("integration") || joined.includes("external api")) {
-            safeTitle = "Getting data from connected systems";
-        } else if (joined.includes("preparing your answer") || joined.includes("putting your answer together") || joined.includes("synthesis")) {
+        } else if (joined.includes("live system") || joined.includes("integration") || joined.includes("external api") || joined.includes("connected")) {
+            safeTitle = "Gathering details from connected systems";
+        } else if (joined.includes("preparing your answer") || joined.includes("putting your answer together") || joined.includes("synthesis") || joined.includes("answer")) {
             safeTitle = "Preparing your answer";
+        } else {
+            safeTitle = "Working through your request";
         }
 
         if (!safeDescription) {
-            safeDescription = "Working on this step now.";
+            safeDescription = "Working through this step now.";
         }
 
         return { title: safeTitle, description: safeDescription };
@@ -1289,8 +1299,8 @@
         const titleEl = element.querySelector('.thought-title');
         const descEl = element.querySelector('.thought-description');
 
-        if (titleEl) await typeTextIntoElement(titleEl, title, 9);
-        if (descEl) await typeTextIntoElement(descEl, description, 7);
+        if (titleEl) setElementTextImmediately(titleEl, title);
+        if (descEl) setElementTextImmediately(descEl, description);
     }
 
     function initializeLiveStepStream(sessionId, onConnectionOpen) {
@@ -1300,7 +1310,7 @@
         if (!thoughtChainContainer) return;
 
         thoughtChainContainer.innerHTML = '';
-        if (panelTitle) panelTitle.innerText = "Analyzing Query Intent...";
+        if (panelTitle) panelTitle.innerText = "Chain of Thought";
 
         if (stepEventSource) {
             stepEventSource.close();
@@ -1365,18 +1375,7 @@
                 } = data;
 
                 if (panelTitle) {
-                    if (is_sql) {
-                        panelTitle.innerText = "Working on your data request";
-                    }
-                    else if (title && (title.includes("Automation") || title.includes("API") || title.includes("Tool"))) {
-                        panelTitle.innerText = "Working with connected systems";
-                    }
-                    else if (title && (title.includes("General") || title.includes("Knowledge"))) {
-                        panelTitle.innerText = "Building your answer";
-                    }
-                    else {
-                        panelTitle.innerText = "Reviewing and preparing response";
-                    }
+                    panelTitle.innerText = "Chain of Thought";
                 }
 
                 if (eventType === "start") {
@@ -1399,7 +1398,7 @@
                     const humanized = humanizeStep(title, description);
 
                     if (descEl && humanized.description) {
-                        await typeTextIntoElement(descEl, humanized.description, 6);
+                        setElementTextImmediately(descEl, humanized.description);
                     }
                     if (statusEl) {
                         statusEl.innerHTML = "✓ Completed";
@@ -1421,14 +1420,7 @@
     function finalizeLiveSteps(isSql) {
         const panelTitle = document.querySelector('.panel-title');
         if (panelTitle) {
-            const currentTitle = panelTitle.innerText;
-            if (currentTitle.includes("General")) {
-                panelTitle.innerText = "General Knowledge Complete";
-            } else if (currentTitle.includes("API")) {
-                panelTitle.innerText = "API Execution Complete";
-            } else {
-                panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
-            }
+            panelTitle.innerText = "Chain of Thought";
         }
 
         const statusIndicators = document.querySelectorAll('.status-indicator');
@@ -1450,7 +1442,7 @@
         if (existingSteps > 0 || fallbackSteps.length === 0) return;
 
         if (panelTitle) {
-            panelTitle.innerText = isSql ? "SQL Analysis Complete" : "Analysis Complete";
+            panelTitle.innerText = "Chain of Thought";
         }
 
         fallbackSteps.forEach((step, index) => {
@@ -1542,9 +1534,7 @@
 
                     const isSqlResult = ui.sql !== undefined && ui.sql !== null && ui.sql !== "-- No SQL Generated --" && ui.sql !== "null";
                     renderFallbackStepsFromResponse(ui, isSqlResult);
-                    setTimeout(() => {
-                        finalizeLiveSteps(isSqlResult);
-                    }, 1500);
+                    finalizeLiveSteps(isSqlResult);
 
                     let extraOutput = ``;
 
