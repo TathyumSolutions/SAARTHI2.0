@@ -312,6 +312,8 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
     # Whatever history didn't use, the config gets to keep.
     config_budget += (history_budget - running)
     config_str = _fit_router_config_to_budget(router_config, config_budget)
+    known_tables = list(router_config.get("routing_menu", {}).get("datasources", {}).get("DB", {}).get("tables", {}).keys())
+    known_tables_str = ", ".join(known_tables) if known_tables else "(no database tables configured)"
 
     system_prompt = f"""You are the enterprise orchestration router for Saarthi AI.
 
@@ -330,13 +332,25 @@ TOOLS AVAILABLE:
   itself.
 - query_database: for questions needing real rows/counts/sums/filters from
   connected structured tables.
+    Only use query_database if the question is actually about one of these
+    real tables: {known_tables_str}. If the question mentions a word that
+    merely looks like a table/column name but isn't in this list, treat it as
+    a documents/files question instead, not a database question.
 - search_documents: for questions about internal company documents, policies,
-  or uploaded files.
+    or uploaded files - including questions about tables or images found
+    inside those documents (check the FILES vector_store_info chunk_type_breakdown
+    below to see if tables/images are actually available before answering that
+    they exist).
 - call_external_api: for questions matching a live registered external tool.
 - answer_general_knowledge: for world knowledge, definitions, greetings, or
   anything not covered by the company's own data sources.
 
 If none of the tools fit, just answer directly in plain text.
+If you are not confident which single source has the answer, call more than
+one tool rather than guessing - for example call both query_database and
+search_documents if the question could reasonably be answered by either.
+It is better to check two sources and combine the answer than to pick the
+wrong one.
 
 LIVE REGISTERED TOOLS FOR THE 'API' TRACK:
 {live_tools_summary}

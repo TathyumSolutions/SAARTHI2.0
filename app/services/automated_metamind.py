@@ -57,6 +57,17 @@ SUMMARY_OUTPUT_PATH = os.path.join(BASE_DIR, "metamind_router_config_summary.jso
 HASH_PATH = os.path.join(BASE_DIR, ".router_config_hash")
 
 
+# These are Saarthi's own internal application tables - never show them
+# to the AI as if they were customer/business data.
+INTERNAL_SYSTEM_TABLES = {
+    "charts", "reports", "audit_logs", "activities",
+    "chat_sessions", "chat_messages", "database_connections",
+    "datasources", "response_feedback", "model_configurations",
+    "queries", "saved_queries", "app_users", "workspaces",
+    "users", "user_resource_mapping", "alembic_version",
+}
+
+
 # ============================================================
 # STEP 1: INTROSPECT databrige_db -> DB datasource
 # ============================================================
@@ -123,6 +134,9 @@ def introspect_databridge_db():
 
             for row in table_rows:
                 table_name = row["table_name"]
+
+                if table_name in INTERNAL_SYSTEM_TABLES:
+                    continue
 
                 comment_row = _safe_fetchone(
                     cur,
@@ -447,8 +461,46 @@ def introspect_qdrant():
             print(f"⚠️ [FILES] Collection '{QDRANT_COLLECTION}' is empty, skipping FILES datasource.")
             return None
 
-        print(f"✅ [FILES] Qdrant collection '{QDRANT_COLLECTION}' has {points_count} points")
-        return {"collection": QDRANT_COLLECTION, "points_count": points_count}
+        # Count chunks by type (text / table / image) so the router knows
+        # what kind of content is actually available in FILES.
+        chunk_type_counts = {"text": 0, "table": 0, "image": 0, "other": 0}
+        next_offset = None
+        while True:
+            points, next_offset = client.scroll(
+                collection_name=QDRANT_COLLECTION,
+                limit=500,
+                offset=next_offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                chunk_type = payload.get("chunk_type")
+
+                # Backward-compatible fallback for older points without chunk_type.
+                if not chunk_type:
+                    source = str(payload.get("source", "")).lower()
+                    if "table" in source:
+                        chunk_type = "table"
+                    elif "image" in source:
+                        chunk_type = "image"
+                    else:
+                        chunk_type = "text"
+
+                chunk_type = str(chunk_type).lower()
+                if chunk_type not in chunk_type_counts:
+                    chunk_type = "other"
+                chunk_type_counts[chunk_type] += 1
+
+            if next_offset is None:
+                break
+
+        print(f"✅ [FILES] Qdrant collection '{QDRANT_COLLECTION}' has {points_count} points: {chunk_type_counts}")
+        return {
+            "collection": QDRANT_COLLECTION,
+            "points_count": points_count,
+            "chunk_type_breakdown": chunk_type_counts,
+        }
 
     except Exception as e:
         print(f"⚠️ [FILES] Could not connect to Qdrant: {e}")

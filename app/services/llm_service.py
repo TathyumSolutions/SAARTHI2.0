@@ -211,7 +211,7 @@ class LLMService:
                             chunks.append(Document(
                                 page_content=self._table_to_markdown(table),
                                 metadata={"document_code": document_code, "table_id": table_id,
-                                          "source": "pdf_table", "page": page_num}
+                                          "source": "pdf_table", "chunk_type": "table", "page": page_num}
                             ))
                         else:
                             group_size = table_cfg["keep_whole_if_under_rows"]
@@ -221,7 +221,7 @@ class LLMService:
                                 chunks.append(Document(
                                     page_content=self._table_to_markdown(piece_rows),
                                     metadata={"document_code": document_code, "table_id": table_id,
-                                              "source": "pdf_table", "page": page_num}
+                                              "source": "pdf_table", "chunk_type": "table", "page": page_num}
                                 ))
         except Exception as e:
             print(f"⚠️ [RAG] Could not extract PDF tables from {file_path}: {e}")
@@ -245,7 +245,7 @@ class LLMService:
                 if len(body_rows) <= table_cfg["keep_whole_if_under_rows"]:
                     chunks.append(Document(
                         page_content=self._table_to_markdown(rows),
-                        metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table"}
+                        metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table", "chunk_type": "table"}
                     ))
                 else:
                     group_size = table_cfg["keep_whole_if_under_rows"]
@@ -254,7 +254,7 @@ class LLMService:
                         piece_rows = ([header] + group) if table_cfg["repeat_headers_on_split"] else group
                         chunks.append(Document(
                             page_content=self._table_to_markdown(piece_rows),
-                            metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table"}
+                            metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table", "chunk_type": "table"}
                         ))
         except Exception as e:
             print(f"⚠️ [RAG] Could not extract DOCX tables from {file_path}: {e}")
@@ -295,7 +295,8 @@ class LLMService:
                         metadata={
                             "document_code": document_code,
                             "image_id": image_id,
-                            "source": "docx_image"
+                            "source": "docx_image",
+                            "chunk_type": "image"
                         }
                     ))
         except Exception as e:
@@ -329,7 +330,7 @@ class LLMService:
                         chunks.append(Document(
                             page_content=caption,
                             metadata={"document_code": document_code, "image_id": image_id,
-                                      "source": "pdf_image", "page": page_num}
+                                      "source": "pdf_image", "chunk_type": "image", "page": page_num}
                         ))
             pdf_doc.close()
         except Exception as e:
@@ -466,6 +467,7 @@ class LLMService:
             # Add metadata to identify chunks by document code
             for chunk in chunks:
                 chunk.metadata["document_code"] = document_code
+                chunk.metadata.setdefault("chunk_type", "text")
 
             chunks.extend(table_chunks)
             chunks.extend(image_chunks)
