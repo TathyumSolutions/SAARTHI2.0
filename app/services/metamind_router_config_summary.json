@@ -4,45 +4,6 @@
       "DB": {
         "description": "Use when query needs structured data, row counts, calculations, filters, aggregations, or specific column values from business database tables.",
         "tables": {
-          "activities": {
-            "description": "Table storing activities records.",
-            "columns": [
-              "id",
-              "user_id",
-              "workspace_id",
-              "type",
-              "action",
-              "details",
-              "created_at"
-            ]
-          },
-          "app_users": {
-            "description": "Table storing app_users records.",
-            "columns": [
-              "id",
-              "email",
-              "name",
-              "password_hash",
-              "role",
-              "status",
-              "created_at",
-              "updated_at",
-              "last_login"
-            ]
-          },
-          "audit_logs": {
-            "description": "Table storing audit_logs records.",
-            "columns": [
-              "id",
-              "user_id",
-              "action",
-              "resource_type",
-              "resource_id",
-              "details",
-              "ip_address",
-              "created_at"
-            ]
-          },
           "bkpf": {
             "description": "Table storing bkpf records.",
             "columns": [
@@ -69,77 +30,6 @@
               "cost_center",
               "profit_center",
               "text"
-            ]
-          },
-          "charts": {
-            "description": "Table storing charts records.",
-            "columns": [
-              "id",
-              "name",
-              "type",
-              "data",
-              "config",
-              "workspace_id",
-              "user_id",
-              "created_at",
-              "updated_at"
-            ]
-          },
-          "chat_messages": {
-            "description": "Table storing chat_messages records.",
-            "columns": [
-              "id",
-              "role",
-              "content",
-              "query_result",
-              "session_id",
-              "created_at"
-            ]
-          },
-          "chat_sessions": {
-            "description": "Table storing chat_sessions records.",
-            "columns": [
-              "id",
-              "title",
-              "mode",
-              "user_id",
-              "workspace_id",
-              "created_at",
-              "updated_at"
-            ]
-          },
-          "database_connections": {
-            "description": "Table storing database_connections records.",
-            "columns": [
-              "id",
-              "name",
-              "type",
-              "host",
-              "port",
-              "database",
-              "username",
-              "password",
-              "connection_string",
-              "config",
-              "status",
-              "workspace_id",
-              "created_at",
-              "updated_at",
-              "last_tested"
-            ]
-          },
-          "datasources": {
-            "description": "Table storing datasources records.",
-            "columns": [
-              "id",
-              "name",
-              "type",
-              "config",
-              "status",
-              "workspace_id",
-              "created_at",
-              "updated_at",
-              "last_sync"
             ]
           },
           "kna1": {
@@ -186,79 +76,6 @@
               "description",
               "base_unit",
               "material_group"
-            ]
-          },
-          "model_configurations": {
-            "description": "Table storing model_configurations records.",
-            "columns": [
-              "id",
-              "name",
-              "model",
-              "provider",
-              "settings",
-              "workspace_id",
-              "user_id",
-              "created_at",
-              "updated_at"
-            ]
-          },
-          "queries": {
-            "description": "Table storing queries records.",
-            "columns": [
-              "id",
-              "natural_language_query",
-              "sql_query",
-              "results",
-              "status",
-              "error_message",
-              "execution_time_ms",
-              "user_id",
-              "database_id",
-              "created_at"
-            ]
-          },
-          "reports": {
-            "description": "Table storing reports records.",
-            "columns": [
-              "id",
-              "name",
-              "type",
-              "content",
-              "config",
-              "workspace_id",
-              "user_id",
-              "created_at",
-              "last_generated"
-            ]
-          },
-          "response_feedback": {
-            "description": "Table storing response_feedback records.",
-            "columns": [
-              "id",
-              "user_id",
-              "company_name",
-              "question",
-              "answer",
-              "sql_query",
-              "router_decision",
-              "feedback_type",
-              "remarks",
-              "metamind_snapshot",
-              "created_at"
-            ]
-          },
-          "saved_queries": {
-            "description": "Table storing saved_queries records.",
-            "columns": [
-              "id",
-              "name",
-              "description",
-              "natural_language_query",
-              "sql_query",
-              "user_id",
-              "workspace_id",
-              "created_at",
-              "updated_at"
             ]
           },
           "ska1": {
@@ -312,18 +129,6 @@
               "material_id",
               "quantity"
             ]
-          },
-          "workspaces": {
-            "description": "Table storing workspaces records.",
-            "columns": [
-              "id",
-              "name",
-              "description",
-              "owner_id",
-              "settings",
-              "created_at",
-              "updated_at"
-            ]
           }
         }
       },
@@ -342,6 +147,6 @@
         ]
       }
     },
-    "generated_at": "2026-07-28T18:32:13.644389Z"
+    "generated_at": "2026-07-29T16:36:12.253880Z"
   }
 }
