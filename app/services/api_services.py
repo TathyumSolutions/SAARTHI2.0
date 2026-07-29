@@ -94,14 +94,14 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
       if system_instructions.strip():
         system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
       try:
-          push_tool_event("start", "Received the user query", f"User query: '{user_message}'")
+                    push_tool_event("start", "Your Question", f"\"{user_message}\"")
           messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_message)]
-          push_tool_event("complete", "Received the user query", f"Query successfully processed: '{user_message}'")
+                    push_tool_event("complete", "Your Question", f"\"{user_message}\"")
           
-          push_tool_event("start", "Context Intent Analysis", "Evaluating structural execution state limits...")
-          push_tool_event("complete", "Context Intent Analysis", "Analysis complete.")
+                    push_tool_event("start", "Understanding What You Need", "Reviewing your request to identify what action is needed.")
+                    push_tool_event("complete", "Understanding What You Need", "I understood what you need.")
 
-          push_tool_event("start", "Schema Blueprint Matching", "Evaluating intent patterns against active JSON database schemas...")
+                    push_tool_event("start", "Finding the Right Tool", "Selecting the best available tool for your request.")
           
           has_tools = False
           tool_payload = None
@@ -179,11 +179,11 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
           else:
               raise ValueError(f"Target '{model_name}' has no active route handler.")
 
-          push_tool_event("complete", "Schema Blueprint Matching", "Model evaluation complete.")
+          push_tool_event("complete", "Finding the Right Tool", "Tool selection complete.")
 
           if not has_tools:
-              push_tool_event("start", "Response Synthesis", "Parsing execution payload...")
-              push_tool_event("complete", "Response Synthesis", "Rejection rule triggered.")
+              push_tool_event("start", "Putting Your Answer Together", "Preparing your final response.")
+              push_tool_event("complete", "Putting Your Answer Together", "No matching tool was available for this request.")
               stream_manager.push_step(session_id, "DONE", is_sql=False)
               return {
                   "answer": "ERROR: No matching workflow tool found to execute this request.",
@@ -212,7 +212,7 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                       base_url, endpoint, method = api_meta[0], api_meta[1], api_meta[2]
                       full_target_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
                       
-                      push_tool_event("start", "Live Tool Execution", f"Executing REST API via {method} protocol...")
+                      push_tool_event("start", "Calling the Live System", f"Calling the live system with a {method} request.")
                       
                       if str(method).upper() == "POST":
                           api_res = requests.post(url=full_target_url, json=tool_args, timeout=15)
@@ -220,9 +220,9 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                           api_res = requests.get(url=full_target_url, params=tool_args, timeout=15)
                           
                       raw_data = api_res.json()
-                      push_tool_event("complete", "Live Tool Execution", "Dynamic REST execution complete.")
+                      push_tool_event("complete", "Calling the Live System", "Live system call completed successfully.")
                       
-                      push_tool_event("start", "Response Synthesis", "Parsing execution payload...")
+                      push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
                       
                       refinement_sys_msg = "You are an expert data analysis engine. Read the following raw API dataset payload context and provide a precise, targeted answer to the user's specific request. Do not include unneeded object structures or JSON syntax wrappers."
                       refinement_usr_msg = f"User intent request: {user_message}\n\nLive API Fetched Raw Dataset Context:\n{str(raw_data)[:3500]}"
@@ -266,16 +266,16 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                               
                           generation_text = refinement_llm.invoke(refinement_prompt).content
                           
-                      push_tool_event("complete", "Response Synthesis", "Workflow tool successfully mapped.")
+                      push_tool_event("complete", "Putting Your Answer Together", "Your answer is ready.")
                   else:
-                      push_tool_event("start", "Response Synthesis", "Parsing execution payload...")
+                      push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
                       generation_text = f"Tool properties for execution identifier '{target_name}' could not be located in database records."
-                      push_tool_event("complete", "Response Synthesis", "Failed: Tool database configurations missing.")
+                      push_tool_event("complete", "Putting Your Answer Together", "Could not find configuration for the selected tool.")
               
               except Exception as e:
-                  push_tool_event("start", "Response Synthesis", "Parsing execution payload...")
+                  push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
                   generation_text = f"Tool identified successfully, but dynamic automation handler failed: {str(e)}"
-                  push_tool_event("complete", "Response Synthesis", f"Failed: {str(e)}")
+                  push_tool_event("complete", "Putting Your Answer Together", f"Could not complete the tool run: {str(e)}")
 
           time.sleep(0.5)
           stream_manager.push_step(session_id, "DONE", is_sql=False)

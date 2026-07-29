@@ -43,14 +43,14 @@ def answer_general_knowledge(
   # ===================================================================
   # STEP 1: REQUEST INITIALIZATION
   # ===================================================================
-  push_general_event("start", "Request Received", f"Processing general inquiry: '{user_query}'")
-  push_general_event("complete", "Request Received", f"General knowledge pipeline initialized for: '{user_query}'")
+    push_general_event("start", "Your Question", f"\"{user_query}\"")
+    push_general_event("complete", "Your Question", f"\"{user_query}\"")
 
   # ===================================================================
   # STEP 2: CLOCK & CONTEXT INJECTION
   # ===================================================================
   #push_general_event("start", "System Context Setup", "Fetching live system clock parameters and custom formatting instructions...")
-  push_general_event("start", "Knowledge Alignment", "Checking query requirements against available knowledge networks...")
+    push_general_event("start", "Checking What I Already Know", "Checking what I already know to answer your question accurately.")
   
   # Fetch live system time dynamically right when the function is called
   live_now = datetime.now()
@@ -73,12 +73,12 @@ def answer_general_knowledge(
       system_content += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
 
   #push_general_event("complete", "System Context Setup", f"Real-time clock injected successfully ({live_now.strftime('%Y-%m-%d %I:%M %p')}).")
-  push_general_event("complete", "Knowledge Alignment", "Query matched successfully with parametric knowledge base parameters.")
+    push_general_event("complete", "Checking What I Already Know", "I matched your question with the most relevant knowledge.")
 
   # ===================================================================
   # STEP 3: MODEL RESPONSE GENERATION
   # ===================================================================
-  push_general_event("start", "Model Execution", f"Querying {model_name} world knowledge base...")
+    push_general_event("start", "Preparing Your Answer", f"Generating your answer with {model_name}.")
   final_answer = ""
 
   try:
@@ -164,11 +164,11 @@ def answer_general_knowledge(
       else:
           raise ValueError(f"Requested model target configuration error: '{model_name}'")
 
-      push_general_event("complete", "Model Execution", f"Response generated successfully through {model_name}.")
+    push_general_event("complete", "Preparing Your Answer", f"Answer generated successfully through {model_name}.")
 
   except Exception as e:
       print(f"⚠️ General Service Track Exception: {e}")
-      push_general_event("complete", "Model Execution", f"Error encountered during generation: {str(e)}")
+    push_general_event("complete", "Preparing Your Answer", f"Error encountered during generation: {str(e)}")
       final_answer = "The system encountered an unexpected error generating your answer via world knowledge parameters."
 
   # Close out execution lifecycle loop

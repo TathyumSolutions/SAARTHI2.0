@@ -294,6 +294,8 @@ def send_message():
     session_id = data.get('session_id', 1) # Default to 1 if not provided
     model_name = data.get('model_name')
 
+    stream_manager.start_new_query(session_id)
+
     custom_key = data.get('custom_key', '')
     system_instructions = data.get('system_instructions', '')
 

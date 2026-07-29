@@ -87,6 +87,65 @@ def list_resources():
     return jsonify({"resources": resources}), 200
 
 
+@bp.route('/bulk', methods=['POST'])
+def create_mappings_bulk():
+    """Creates a mapping for every (user_id, resource) combination submitted."""
+    data = request.get_json(silent=True) or {}
+    user_ids = data.get("user_ids") or []
+    resources = data.get("resources") or []
+
+    if not user_ids or not resources:
+        return jsonify({"status": "error", "message": "user_ids and resources are required."}), 400
+
+    created, skipped = 0, 0
+    try:
+        conn = get_auth_db_connection()
+        cursor = conn.cursor()
+        for user_id in user_ids:
+            for r in resources:
+                resource_type = r.get("type")
+                resource_id = r.get("id")
+                resource_name = r.get("name")
+                if resource_type not in ("database", "file", "api") or not resource_id:
+                    skipped += 1
+                    continue
+                cursor.execute(
+                    "INSERT INTO user_resource_mapping (user_id, resource_type, resource_id, resource_name) "
+                    "VALUES (%s, %s, %s, %s) ON CONFLICT (user_id, resource_type, resource_id) DO NOTHING;",
+                    (user_id, resource_type, str(resource_id), resource_name)
+                )
+                created += 1
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"status": "success", "created": created, "skipped": skipped}), 201
+    except Exception as e:
+        print(f"⚠️ [Resource Mapping] Bulk create failed: {e}")
+        return jsonify({"status": "error", "message": "Could not create mappings."}), 500
+
+
+@bp.route('/all', methods=['GET'])
+def get_all_mappings():
+    """Returns every mapping across all users, joined with user name/email, for the admin table view."""
+    try:
+        conn = get_auth_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            "SELECT m.id, m.user_id, u.name AS user_name, u.email AS user_email, "
+            "m.resource_type, m.resource_id, m.resource_name, m.created_at "
+            "FROM user_resource_mapping m "
+            "JOIN users u ON u.id = m.user_id "
+            "ORDER BY m.created_at DESC;"
+        )
+        mappings = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify({"mappings": mappings}), 200
+    except Exception as e:
+        print(f"⚠️ [Resource Mapping] Could not load all mappings: {e}")
+        return jsonify({"status": "error", "message": "Could not load mappings."}), 500
+
+
 @bp.route('/<int:user_id>', methods=['GET'])
 def get_user_mappings(user_id):
     """Returns the resources a specific user is currently mapped to."""

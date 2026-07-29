@@ -53,6 +53,7 @@ QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "saarthi_unstructured")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_PATH = os.path.join(BASE_DIR, "metamind_router_config.json")
+SUMMARY_OUTPUT_PATH = os.path.join(BASE_DIR, "metamind_router_config_summary.json")
 HASH_PATH = os.path.join(BASE_DIR, ".router_config_hash")
 
 
@@ -559,6 +560,63 @@ def save_hash(new_hash):
 # MAIN ENTRYPOINT
 # ============================================================
 
+def build_routing_menu_summary(menu: dict) -> dict:
+    """
+    Strips the full routing menu down to names + descriptions only -
+    no data_type, nullable, unique_values, null_count, sample_values,
+    row_count, or constraints. Used as a smaller, faster-to-scan config
+    for lightweight routing/UI purposes. Structure mirrors the full menu
+    so downstream consumers can treat it the same way.
+    """
+    full_datasources = menu.get("routing_menu", {}).get("datasources", {})
+    summary_datasources = {}
+
+    if "DB" in full_datasources:
+        summary_tables = {}
+        for table_name, table_data in full_datasources["DB"].get("tables", {}).items():
+            summary_tables[table_name] = {
+                "description": table_data.get("description", ""),
+                "columns": [col.get("name") for col in table_data.get("columns", [])]
+            }
+        summary_datasources["DB"] = {
+            "description": full_datasources["DB"].get("description", ""),
+            "tables": summary_tables
+        }
+
+    if "FILES" in full_datasources:
+        vs_info = full_datasources["FILES"].get("vector_store_info", {})
+        summary_datasources["FILES"] = {
+            "description": full_datasources["FILES"].get("description", ""),
+            "collection": vs_info.get("collection", ""),
+            "points_count": vs_info.get("points_count", 0)
+        }
+
+    if "API" in full_datasources:
+        summary_datasources["API"] = {
+            "description": full_datasources["API"].get("description", ""),
+            "registered_tools": [
+                {"name": t.get("name"), "description": t.get("description", "")}
+                for t in full_datasources["API"].get("registered_tools", [])
+            ]
+        }
+
+    return {
+        "routing_menu_summary": {
+            "datasources": summary_datasources,
+            "generated_at": menu.get("routing_menu", {}).get("generated_at")
+        }
+    }
+
+
+def generate_router_config_summary(menu: dict):
+    """Writes the trimmed summary JSON to disk. Call this only after the
+    full menu has already been built/written by generate_router_config."""
+    summary = build_routing_menu_summary(menu)
+    with open(SUMMARY_OUTPUT_PATH, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"✅ Router config summary regenerated -> {SUMMARY_OUTPUT_PATH}")
+    return SUMMARY_OUTPUT_PATH
+
 def generate_router_config(force=False):
     print("\n" + "=" * 60)
     print("🧠 METAMIND ROUTER CONFIG GENERATOR")
@@ -584,6 +642,8 @@ def generate_router_config(force=False):
 
     with open(OUTPUT_PATH, "w") as f:
         json.dump(menu, f, indent=2)
+
+    generate_router_config_summary(menu)
 
     save_hash(new_hash)
 

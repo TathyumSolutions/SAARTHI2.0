@@ -232,6 +232,34 @@
         color: #F48771;
     }
 
+    @keyframes blink {
+        0%, 80%, 100% { opacity: 0.2; }
+        40% { opacity: 1; }
+    }
+
+    .typing-dots {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .typing-dots span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #94A3B8;
+        opacity: 0.2;
+        animation: blink 1.2s infinite;
+    }
+
+    .typing-dots span:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .typing-dots span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
     /* Modal Styles */
     .modal-overlay {
         display: none;
@@ -1359,6 +1387,11 @@
 
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         renderMessage('You', `<span style="color: #E2E8F0;">${message}</span>`, '👤', time, false);
+        renderMessage('Saarthi AI', `
+            <span id="typing-dots" class="typing-dots" aria-label="Saarthi is typing">
+                <span></span><span></span><span></span>
+            </span>
+        `, 'S', time, true);
         chatInput.value = '';
 
         initializeLiveStepStream(currentSessionId, async function () {
@@ -1456,18 +1489,30 @@
                     }
 
                     finalOutput += `</div>`;
+                    await loadSelfLearningMode();
+                    removeTypingBubble();
                     renderMessage('Saarthi AI', finalOutput, 'S', time, true, {
                         question: lastUserQuestion,
                         answer: ui.answer || '',
                         sql_query: ui.sql || null,
                         router_decision: ui.router_decision || null
                     });
+                } else {
+                    removeTypingBubble();
                 }
             } catch (error) {
                 console.error("Fetch Error:", error);
+                removeTypingBubble();
                 renderMessage('Saarthi AI', "❌ Connection Error.", 'S', time, true);
             }
         });
+    }
+
+    function removeTypingBubble() {
+        const typingBubble = document.getElementById('typing-dots');
+        if (typingBubble) {
+            typingBubble.closest('.message')?.remove();
+        }
     }
 
     function renderMessage(author, text, avatar, time, isAI, meta = null) {
