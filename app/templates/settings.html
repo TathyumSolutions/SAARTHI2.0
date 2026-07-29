@@ -17,6 +17,8 @@
     .toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: .2s; }
     .toggle input:checked + .toggle-slider { background: var(--primary-blue); }
     .toggle input:checked + .toggle-slider:before { transform: translateX(18px); }
+    .btn { padding: 8px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; }
+    .btn-primary { background: var(--primary-blue); color: white; }
     .save-bar { position: sticky; bottom: 0; background: var(--sidebar-bg); padding: 16px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
     .save-status { font-size: 13px; }
 </style>
@@ -71,6 +73,46 @@
         <div class="setting-row">
             <div><div class="setting-label">Temperature</div><div class="setting-desc">0 = focused/deterministic, higher = more varied</div></div>
             <div class="setting-input"><input type="number" data-path="generation.temperature" min="0" max="2" step="0.1"></div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Data Warehouse</h3>
+        <div class="setting-row" style="align-items: flex-start;">
+            <div>
+                <div class="setting-label">Build Warehouse</div>
+                <div class="setting-desc">Generate schema and push complete or incremental data based on Metamind's discovered table metadata</div>
+            </div>
+            <div class="setting-input">
+                <a href="/build_warehouse" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Open</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Self-Learning Mode</h3>
+        <div class="setting-row">
+            <div>
+                <div class="setting-label">Self-Learning Mode</div>
+                <div class="setting-desc">Show like/dislike on answers and use saved feedback to improve future answers for your company</div>
+            </div>
+            <label class="toggle">
+                <input type="checkbox" data-path="self_learning.enabled">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Model Selection</h3>
+        <div class="setting-row" style="align-items: flex-start;">
+            <div>
+                <div class="setting-label">Model Selection</div>
+                <div class="setting-desc">Choose which AI model runs each step of the pipeline</div>
+            </div>
+            <div class="setting-input">
+                <a href="/model_selection" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Open</a>
+            </div>
         </div>
     </div>
 </div>

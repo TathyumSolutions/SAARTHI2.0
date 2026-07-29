@@ -257,13 +257,13 @@ load_dotenv()
 #    "user": os.getenv("PGUSER"),
 #    "password": os.getenv("PGPASSWORD")
 #}
-# Hardcoded connection for databrige_db
+# Environment-driven connection for databridge DB
 DB_CONFIG = {
-    "host": "db",             # Connects to the Docker container
-    "port": "5432",
-    "dbname": "databrige_db", # Your target database
-    "user": "saarthi",        # Your user from yml
-    "password": "password" 
+    "host": os.getenv("DATABRIDGE_DB_HOST", os.getenv("PGHOST", "db")),
+    "port": os.getenv("DATABRIDGE_DB_PORT", os.getenv("PGPORT", "5432")),
+    "dbname": os.getenv("DATABRIDGE_DB_NAME", os.getenv("PGDATABASE", "saarthi_db")),
+    "user": os.getenv("DATABRIDGE_DB_USER", os.getenv("PGUSER", "saarthi")),
+    "password": os.getenv("DATABRIDGE_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
 }
 
 fake = Faker()

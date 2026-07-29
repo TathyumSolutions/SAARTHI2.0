@@ -21,6 +21,12 @@ def index():
     """Main dashboard page"""
     return render_template('index.html')
 
+
+@bp.route('/settings')
+def settings_page():
+    """Settings page"""
+    return render_template('settings.html')
+
 @bp.route('/api_mode')
 def api_mode():
     """API Mode page showing Swagger docs inside the app layout."""
@@ -122,6 +128,18 @@ def cassandra():
 def database_connections():
     """Database connections management page"""
     return render_template('database_connections.html')
+
+
+@bp.route('/build_warehouse')
+def build_warehouse_page():
+    """Build Warehouse page"""
+    return render_template('build_warehouse.html')
+
+
+@bp.route('/model_selection')
+def model_selection_page():
+    """Model Selection page"""
+    return render_template('model_selection.html')
 
 #API integration
 @bp.route('/api_connectors/rest_apis')

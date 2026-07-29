@@ -156,6 +156,7 @@
                 <td style="padding: 12px;"><span style="background: var(--accent-green); color: var(--dark-bg); padding: 4px 8px; border-radius: 3px; font-size: 11px; font-weight: 600;">Active</span></td>
                 <td style="padding: 12px;">
                     <button type="button" onclick="handleEditTrigger('${tool.integration_name}')" style="padding: 6px 12px; background: var(--hover-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Edit</button>
+                    <button type="button" onclick="handleProcessApi('${tool.integration_name}', this)" style="padding: 6px 12px; background: var(--primary-blue); color: white; border: 1px solid var(--primary-blue); border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Process</button>
                     <button type="button" onclick="handleDeleteApi('${tool.integration_name}')" style="padding: 6px 12px; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
                 </td>
             </tr>
@@ -293,6 +294,27 @@
                 showStatusNotification(`❌ Deletion execution system issue: ${data.message}`, false);
             }
         }).catch(() => showStatusNotification("❌ Network storage tracking removal failure exception logs.", false));
+    }
+
+    function handleProcessApi(integrationName, triggerBtn) {
+        triggerBtn.disabled = true;
+        const originalText = triggerBtn.innerText;
+        triggerBtn.innerText = 'Processing...';
+
+        fetch(`/api_connectors/tools/${encodeURIComponent(integrationName)}/process`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showStatusNotification(`✅ ${data.message || 'Router config updated'}`, true);
+            } else {
+                showStatusNotification(`❌ ${data.message || 'Process failed'}`, false);
+            }
+        })
+        .catch(() => showStatusNotification('❌ Failed to run process action.', false))
+        .finally(() => {
+            triggerBtn.disabled = false;
+            triggerBtn.innerText = originalText;
+        });
     }
 </script>
 {% endblock %}

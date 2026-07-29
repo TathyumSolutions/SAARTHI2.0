@@ -5,6 +5,13 @@ from urllib.parse import urlparse
 # 1. Define the separate blueprint for API data sources
 bp = Blueprint('api_connectors', __name__)
 
+
+@bp.route('/api/feedback', methods=['POST'])
+def submit_feedback_alias():
+    """Alias endpoint for feedback submission."""
+    from app.routes.chat_routes import submit_feedback
+    return submit_feedback()
+
 @bp.route('/api_connectors/rest_apis')
 def rest_apis_page():
     """Renders the REST API custom tool registration dashboard"""
@@ -83,12 +90,6 @@ def save_tool():
         
         cursor.close()
         conn.close()
-
-        try:
-            from app.services.automated_metamind import generate_router_config
-            generate_router_config(force=True)
-        except Exception as e:
-            print(f"⚠️ [METAMIND SYNC] Failed to refresh router config after API tool add: {e}")
         
         print(f"🔥 Successfully written tool to registry: {integration_name} -> {base_url}{endpoint}")
         return jsonify({
@@ -184,6 +185,39 @@ def get_tools():
             "status": "error",
             "message": f"Database read transaction failure: {str(e)}"
         }), 500
+
+
+@bp.route('/api_connectors/tools/<string:integration_name>/process', methods=['POST'])
+def process_tool(integration_name):
+    """
+    Explicit process action for a saved API tool.
+    Triggers router config regeneration only when user clicks Process.
+    """
+    base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+
+    try:
+        result = urlparse(base_uri)
+        dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
+
+        conn = psycopg2.connect(dsn)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM registered_tools WHERE integration_name = %s;", (integration_name,))
+        exists = cursor.fetchone() is not None
+        cursor.close()
+        conn.close()
+
+        if not exists:
+            return jsonify({"status": "error", "message": "Tool not found"}), 404
+
+        from app.services.automated_metamind import generate_router_config
+        try:
+            generate_router_config(force=True)
+            return jsonify({"status": "success", "message": "Router config updated"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e:
+        print(f"❌ Error processing tool '{integration_name}': {e}")
+        return jsonify({"status": "error", "message": f"Process action failed: {str(e)}"}), 500
 
     # Connect your DB execution helper here (e.g., db.execute or models.save)
     #print(f"Saving new tool to registry: {integration_name} -> {base_url}{endpoint}")

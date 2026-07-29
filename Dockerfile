@@ -2,11 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Prefer CPU-only PyTorch wheels to avoid pulling large CUDA packages in Docker
+ENV PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    g++ \
     postgresql-client \
     libpq-dev \
+    unixodbc-dev \
     libaio-dev \
     python3-dev \
     python3-setuptools \
@@ -21,7 +26,7 @@ RUN pip install --upgrade pip setuptools wheel
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install premsql==0.1.0 --no-deps
+RUN pip install premsql==0.1.0 --no-deps || true
 
 # Copy application code
 COPY . .

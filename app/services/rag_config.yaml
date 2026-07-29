@@ -18,6 +18,7 @@ ingestion:
   supported_file_types: [".pdf", ".docx", ".doc", ".md", ".rtf", ".txt"]
   images:
     extract_from_pdf: false
+    extract_from_docx: true
     describe_with_vision_model: false
     min_image_size_bytes: 5000
 
@@ -63,3 +64,6 @@ quality_checks:                     # placeholder - not implemented yet (Phase 5
 chain_of_thought:                   # placeholder - not implemented yet (Phase 5)
   show_quality_check_steps: true
   show_retrieved_chunk_previews: false
+
+self_learning:
+  enabled: false

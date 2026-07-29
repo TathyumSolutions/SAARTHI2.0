@@ -523,6 +523,10 @@
     <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)" style="cursor: pointer;">A</div>
 
     <div class="user-dropdown-menu" id="userDropdownMenu" style="display: none; position: absolute; right: 0; top: 100%; background: transparent; border: 1px solid #22252a; border-radius: 6px; padding: 8px; z-index: 1000; min-width: 140px;">
+        <a href="/settings" style="display: block; cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px; text-decoration: none;">
+            ⚙️ Settings
+        </a>
+        <hr style="border: none; border-top: 1px solid #1F2348; margin: 4px 0;">
         <button type="button" onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
             📝 Instructions.md
         </button>
@@ -539,6 +543,15 @@
     <div style="text-align: right;">
         <button onclick="document.getElementById('inst-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer; background: none; border: 1px solid #1F2348; color: #8D90B5; border-radius: 4px;">Cancel</button>
         <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
+    </div>
+</dialog>
+
+<dialog id="dislike-remarks-box" style="padding: 20px; border-radius: 8px; border: 1px solid transparent; width: 400px; background: #292a33; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+    <h3 style="margin-top:0; font-family: sans-serif; color: white;">What went wrong?</h3>
+    <textarea id="dislike-remarks-text" style="width:100%; height:120px; margin-bottom:12px; padding: 8px; box-sizing: border-box; background: #07091e; border: 1px solid #1F2348; border-radius: 4px; font-family: inherit; color: white;" placeholder="Optional remarks..."></textarea>
+    <div style="text-align: right;">
+        <button onclick="document.getElementById('dislike-remarks-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer; background: none; border: 1px solid #1F2348; color: #8D90B5; border-radius: 4px;">Cancel</button>
+        <button onclick="confirmDislikeSubmit()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
     </div>
 </dialog>
 {% endblock %}
@@ -681,6 +694,81 @@
 
 {% block extra_scripts %}
 <script>
+    let selfLearningModeEnabled = false;
+    let lastUserQuestion = '';
+    let _pendingDislike = null;
+
+    function escapeAttr(text) {
+        return String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    async function loadSelfLearningMode() {
+        try {
+            const res = await fetch('/api/settings/rag-config');
+            const cfg = await res.json();
+            selfLearningModeEnabled = !!(cfg && cfg.self_learning && cfg.self_learning.enabled);
+        } catch (e) {
+            selfLearningModeEnabled = false;
+        }
+    }
+
+    function submitFeedback(btn, type) {
+        const box = btn.closest('.feedback-buttons');
+        const payload = {
+            question: box.dataset.question,
+            answer: box.dataset.answer,
+            sql_query: box.dataset.sql || null,
+            router_decision: box.dataset.router || null,
+            feedback_type: type
+        };
+
+        if (type === 'dislike') {
+            _pendingDislike = { payload, box };
+            openDislikeRemarksPopup(payload);
+        } else {
+            sendFeedback(payload);
+            box.querySelectorAll('button').forEach(b => b.disabled = true);
+        }
+    }
+
+    async function sendFeedback(payload) {
+        const token = localStorage.getItem('saarthi_token');
+        await fetch('/api/feedback', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+            },
+            body: JSON.stringify(payload)
+        });
+    }
+
+    function openDislikeRemarksPopup(payload) {
+        _pendingDislike = _pendingDislike || { payload, box: null };
+        document.getElementById('dislike-remarks-text').value = '';
+        document.getElementById('dislike-remarks-box').showModal();
+    }
+
+    async function confirmDislikeSubmit() {
+        if (!_pendingDislike || !_pendingDislike.payload) {
+            return;
+        }
+        _pendingDislike.payload.remarks = document.getElementById('dislike-remarks-text').value;
+        await sendFeedback(_pendingDislike.payload);
+
+        if (_pendingDislike.box) {
+            _pendingDislike.box.querySelectorAll('button').forEach(b => b.disabled = true);
+        }
+
+        document.getElementById('dislike-remarks-box').close();
+        _pendingDislike = null;
+    }
+
     // ==========================================
     // USER MENU
     // ==========================================
@@ -1267,6 +1355,7 @@
         }
 
         const currentSessionId = 1;
+        lastUserQuestion = message;
 
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         renderMessage('You', `<span style="color: #E2E8F0;">${message}</span>`, '👤', time, false);
@@ -1367,7 +1456,12 @@
                     }
 
                     finalOutput += `</div>`;
-                    renderMessage('Saarthi AI', finalOutput, 'S', time, true);
+                    renderMessage('Saarthi AI', finalOutput, 'S', time, true, {
+                        question: lastUserQuestion,
+                        answer: ui.answer || '',
+                        sql_query: ui.sql || null,
+                        router_decision: ui.router_decision || null
+                    });
                 }
             } catch (error) {
                 console.error("Fetch Error:", error);
@@ -1376,8 +1470,18 @@
         });
     }
 
-    function renderMessage(author, text, avatar, time, isAI) {
+    function renderMessage(author, text, avatar, time, isAI, meta = null) {
         const aiStyle = isAI ? 'style="background: #4a90e2;"' : '';
+        let feedbackHtml = '';
+        if (isAI && selfLearningModeEnabled && meta) {
+            feedbackHtml = `
+                <div class="feedback-buttons" data-question="${escapeAttr(meta.question)}" data-answer="${escapeAttr(meta.answer)}" data-sql="${escapeAttr(meta.sql_query)}" data-router="${escapeAttr(meta.router_decision)}" style="margin-top: 10px; display: flex; gap: 10px;">
+                    <button type="button" onclick="submitFeedback(this, 'like')" style="cursor:pointer; background: #1f2937; color: white; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px;">👍</button>
+                    <button type="button" onclick="submitFeedback(this, 'dislike')" style="cursor:pointer; background: #1f2937; color: white; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px;">👎</button>
+                </div>
+            `;
+        }
+
         const html = `
             <div class="message" style="margin-bottom: 20px; display: flex; gap: 12px;">
                 <div class="message-avatar" ${aiStyle} style="width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; flex-shrink: 0;">${avatar}</div>
@@ -1387,6 +1491,7 @@
                         <span class="message-time" style="font-size: 11px; color: #888;">${time}</span>
                     </div>
                     <div class="message-text" style="font-size: 15px; line-height: 1.5; color: #444;">${text}</div>
+                    ${feedbackHtml}
                 </div>
             </div>`;
         chatContainer.insertAdjacentHTML('beforeend', html);
@@ -1395,6 +1500,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+        loadSelfLearningMode();
+
         const savedHistory = localStorage.getItem('saarthi_chat_history');
         if (savedHistory && chatContainer) {
             chatContainer.innerHTML = savedHistory;

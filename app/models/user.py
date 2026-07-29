@@ -12,6 +12,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     name = db.Column(db.String(100), nullable=False)
+    company_name = db.Column(db.String(150), nullable=True, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), default='viewer')  # admin, editor, viewer, analyst
     status = db.Column(db.String(20), default='active')  # active, inactive, suspended

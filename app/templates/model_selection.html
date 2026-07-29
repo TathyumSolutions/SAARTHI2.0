@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}Model Selection - Saarthi{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .model-selection-container {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .model-section {
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 16px;
+    }
+
+    .model-section h3 {
+        margin-bottom: 12px;
+        color: var(--accent-green);
+        font-size: 16px;
+    }
+
+    .section-desc {
+        margin-bottom: 12px;
+        color: var(--text-secondary);
+        font-size: 13px;
+    }
+
+    .form-label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    .form-select {
+        width: 100%;
+        background: var(--dark-bg);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 10px;
+        font-size: 14px;
+    }
+
+    .recommended-row {
+        display: flex;
+        gap: 28px;
+        flex-wrap: wrap;
+    }
+
+    .recommended-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+    }
+
+    .grid-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+    }
+
+    .grid-table th,
+    .grid-table td {
+        border-bottom: 1px solid var(--border-color);
+        padding: 10px;
+        text-align: left;
+        vertical-align: middle;
+    }
+
+    .grid-table th {
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    .save-wrap {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .btn {
+        padding: 9px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    .btn-primary {
+        background: var(--primary-blue);
+        color: #fff;
+    }
+
+    .status {
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="model-selection-container">
+    <h2 style="margin-bottom: 14px;">Model Selection</h2>
+
+    <div class="model-section">
+        <h3>Main Model Selector</h3>
+        <div class="section-desc">Choose the default model used for pipeline steps that do not have specific overrides.</div>
+        <label class="form-label" for="mainModelSelect">Main model</label>
+        <select id="mainModelSelect" class="form-select"></select>
+    </div>
+
+    <div class="model-section">
+        <h3>Recommended Setting</h3>
+        <div class="section-desc">Pick one preset to auto-fill the main model and all step rows.</div>
+        <div class="recommended-row">
+            <label class="recommended-item">
+                <input type="checkbox" id="presetOpenSource" />
+                <span>Recommended for Open-Source Models</span>
+            </label>
+            <label class="recommended-item">
+                <input type="checkbox" id="presetPaidApi" />
+                <span>Recommended for Paid API LLMs</span>
+            </label>
+        </div>
+    </div>
+
+    <div class="model-section">
+        <h3>Detailed Grid</h3>
+        <div class="section-desc">If a row is set to Use Global Default, it follows the main model. Any explicit row selection becomes a persistent override.</div>
+        <table class="grid-table">
+            <thead>
+                <tr>
+                    <th style="width: 35%;">Step</th>
+                    <th>Model</th>
+                </tr>
+            </thead>
+            <tbody id="stepGridBody"></tbody>
+        </table>
+    </div>
+
+    <div class="save-wrap">
+        <span id="saveStatus" class="status"></span>
+        <button id="saveBtn" type="button" class="btn btn-primary">Save</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const state = {
+        models: [],
+        steps: [],
+        globalConfig: null,
+    };
+
+    function optionLabel(modelObj) {
+        const provider = modelObj.provider ? ` [${modelObj.provider}]` : '';
+        return `${modelObj.model}${provider}`;
+    }
+
+    function populateModelOptions(selectEl, includeGlobalOption = false) {
+        selectEl.innerHTML = '';
+
+        if (includeGlobalOption) {
+            const globalOpt = document.createElement('option');
+            globalOpt.value = '';
+            globalOpt.textContent = `Use Global Default (global -> ${document.getElementById('mainModelSelect').value || 'not selected'})`;
+            selectEl.appendChild(globalOpt);
+        }
+
+        state.models.forEach(modelObj => {
+            const opt = document.createElement('option');
+            opt.value = modelObj.model;
+            opt.textContent = optionLabel(modelObj);
+            selectEl.appendChild(opt);
+        });
+    }
+
+    function rebuildStepGrid(stepOverrides = {}) {
+        const body = document.getElementById('stepGridBody');
+        body.innerHTML = '';
+
+        state.steps.forEach(step => {
+            const tr = document.createElement('tr');
+
+            const tdStep = document.createElement('td');
+            tdStep.textContent = step.label;
+
+            const tdModel = document.createElement('td');
+            const select = document.createElement('select');
+            select.className = 'form-select step-model-select';
+            select.dataset.stepKey = step.key;
+
+            populateModelOptions(select, true);
+
+            const override = stepOverrides[step.key] || '';
+            select.value = override;
+
+            tdModel.appendChild(select);
+            tr.appendChild(tdStep);
+            tr.appendChild(tdModel);
+            body.appendChild(tr);
+        });
+    }
+
+    function currentStepOverrides() {
+        const overrides = {};
+        document.querySelectorAll('.step-model-select').forEach(el => {
+            if (el.value) {
+                overrides[el.dataset.stepKey] = el.value;
+            }
+        });
+        return overrides;
+    }
+
+    async function loadOptionsAndConfig() {
+        const optionsRes = await fetch('/api/model-config/global-selection/options');
+        const optionsData = await optionsRes.json();
+
+        state.models = optionsData.models || [];
+        state.steps = optionsData.steps || [];
+
+        const mainSelect = document.getElementById('mainModelSelect');
+        populateModelOptions(mainSelect, false);
+
+        const configRes = await fetch('/api/model-config/global-selection');
+        const config = await configRes.json();
+        state.globalConfig = config;
+
+        if (config && config.model) {
+            mainSelect.value = config.model;
+        } else if (state.models.length) {
+            mainSelect.value = state.models[0].model;
+        }
+
+        const stepOverrides = ((config && config.settings) ? (config.settings.step_overrides || {}) : {});
+        rebuildStepGrid(stepOverrides);
+    }
+
+    async function applyPreset(presetKey) {
+        const res = await fetch(`/api/model-config/global-selection/preset/${presetKey}`);
+        const payload = await res.json();
+
+        const status = document.getElementById('saveStatus');
+        if (!payload.configured) {
+            status.textContent = payload.message || 'Preset is not configured.';
+            status.style.color = '#F48771';
+            return;
+        }
+
+        const mainSelect = document.getElementById('mainModelSelect');
+        mainSelect.value = payload.main_model;
+
+        rebuildStepGrid(payload.step_overrides || {});
+
+        status.textContent = `${payload.label} applied.`;
+        status.style.color = 'var(--accent-green)';
+    }
+
+    async function saveSelection() {
+        const mainModel = document.getElementById('mainModelSelect').value;
+        if (!mainModel) {
+            const status = document.getElementById('saveStatus');
+            status.textContent = 'Select a main model first.';
+            status.style.color = '#F48771';
+            return;
+        }
+
+        const selectedModelObj = state.models.find(m => m.model === mainModel) || {};
+        const payload = {
+            main_model: mainModel,
+            provider: selectedModelObj.provider || '',
+            step_overrides: currentStepOverrides()
+        };
+
+        const status = document.getElementById('saveStatus');
+        status.textContent = 'Saving...';
+
+        const res = await fetch('/api/model-config/global-selection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            status.textContent = `Failed: ${errorData.error || `HTTP ${res.status}`}`;
+            status.style.color = '#F48771';
+            return;
+        }
+
+        status.textContent = 'Saved successfully.';
+        status.style.color = 'var(--accent-green)';
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadOptionsAndConfig();
+
+        document.getElementById('mainModelSelect').addEventListener('change', () => {
+            const existingOverrides = currentStepOverrides();
+            rebuildStepGrid(existingOverrides);
+        });
+
+        document.getElementById('presetOpenSource').addEventListener('change', async (e) => {
+            if (e.target.checked) {
+                document.getElementById('presetPaidApi').checked = false;
+                await applyPreset('open_source');
+            }
+        });
+
+        document.getElementById('presetPaidApi').addEventListener('change', async (e) => {
+            if (e.target.checked) {
+                document.getElementById('presetOpenSource').checked = false;
+                await applyPreset('paid_api');
+            }
+        });
+
+        document.getElementById('saveBtn').addEventListener('click', saveSelection);
+    });
+</script>
+{% endblock %}

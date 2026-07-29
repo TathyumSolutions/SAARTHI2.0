@@ -2,6 +2,2482 @@
   "routing_menu": {
     "instructions": "Analyze the user query carefully. Select ONE or MORE datasources from the list below. Return ONLY a valid JSON array like: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"DB\", \"FILES\"]",
     "datasources": {
+      "DB": {
+        "description": "Use when query needs structured data, row counts, calculations, filters, aggregations, or specific column values from business database tables.",
+        "trigger_keywords": [
+          "how many",
+          "list",
+          "show",
+          "count",
+          "total",
+          "sum",
+          "average",
+          "top",
+          "find",
+          "fetch",
+          "records",
+          "entries"
+        ],
+        "example_queries": [
+          "Show top 5 materials",
+          "How many customers are in Germany?",
+          "Total invoice amount for last month",
+          "List all sales orders"
+        ],
+        "tables": {
+          "activities": {
+            "description": "Table storing activities records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "user_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                },
+                {
+                  "column": "workspace_id",
+                  "references_table": "workspaces",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "user_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "workspace_id",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "type",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "action",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "details",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "app_users": {
+            "description": "Table storing app_users records.",
+            "row_count": 1,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  1
+                ]
+              },
+              {
+                "name": "email",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "admin@saarthi.ai"
+                ]
+              },
+              {
+                "name": "name",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "admin"
+                ]
+              },
+              {
+                "name": "password_hash",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "scrypt:32768:8:1$dummyhash"
+                ]
+              },
+              {
+                "name": "role",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "viewer"
+                ]
+              },
+              {
+                "name": "status",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "active"
+                ]
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "2026-06-13 12:49:32.377807"
+                ]
+              },
+              {
+                "name": "updated_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "2026-06-13 12:49:32.377817"
+                ]
+              },
+              {
+                "name": "last_login",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": 1,
+                "sample_values": []
+              }
+            ]
+          },
+          "audit_logs": {
+            "description": "Table storing audit_logs records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "user_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "user_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "action",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "resource_type",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "resource_id",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "details",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "ip_address",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "bkpf": {
+            "description": "Table storing bkpf records.",
+            "row_count": 2000,
+            "constraints": {
+              "primary_key": [
+                "document_number"
+              ],
+              "foreign_keys": [],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "document_number",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 2000,
+                "null_count": 0,
+                "sample_values": [
+                  "D0000001",
+                  "D0000002",
+                  "D0000003",
+                  "D0000004",
+                  "D0000005"
+                ]
+              },
+              {
+                "name": "company_code",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 4,
+                "null_count": 0,
+                "sample_values": [
+                  "1000",
+                  "4000",
+                  "2000",
+                  "3000",
+                  "4000"
+                ]
+              },
+              {
+                "name": "fiscal_year",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  2024,
+                  2024,
+                  2024,
+                  2024,
+                  2024
+                ]
+              },
+              {
+                "name": "document_type",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 3,
+                "null_count": 0,
+                "sample_values": [
+                  "SA",
+                  "KR",
+                  "KR",
+                  "SA",
+                  "SA"
+                ]
+              },
+              {
+                "name": "document_date",
+                "data_type": "date",
+                "nullable": true,
+                "unique_values": 365,
+                "null_count": 0,
+                "sample_values": [
+                  "2025-12-09",
+                  "2026-02-07",
+                  "2026-05-02",
+                  "2026-03-03",
+                  "2026-03-07"
+                ]
+              },
+              {
+                "name": "posting_date",
+                "data_type": "date",
+                "nullable": true,
+                "unique_values": 366,
+                "null_count": 0,
+                "sample_values": [
+                  "2025-12-12",
+                  "2026-02-08",
+                  "2026-05-07",
+                  "2026-03-04",
+                  "2026-03-10"
+                ]
+              },
+              {
+                "name": "currency",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 3,
+                "null_count": 0,
+                "sample_values": [
+                  "GBP",
+                  "GBP",
+                  "EUR",
+                  "GBP",
+                  "USD"
+                ]
+              },
+              {
+                "name": "reference",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 2000,
+                "null_count": 0,
+                "sample_values": [
+                  "27eaf665",
+                  "41a9edd3",
+                  "b993b65f",
+                  "24b37794",
+                  "a2fe9cb4"
+                ]
+              }
+            ]
+          },
+          "bseg": {
+            "description": "Table storing bseg records.",
+            "row_count": 6916,
+            "constraints": {
+              "primary_key": [
+                "document_number",
+                "item_number"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "document_number",
+                  "references_table": "bkpf",
+                  "references_column": "document_number"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "document_number",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 2000,
+                "null_count": 0,
+                "sample_values": [
+                  "D0000001",
+                  "D0000001",
+                  "D0000001",
+                  "D0000001",
+                  "D0000001"
+                ]
+              },
+              {
+                "name": "item_number",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 5,
+                "null_count": 0,
+                "sample_values": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              },
+              {
+                "name": "posting_key",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 4,
+                "null_count": 0,
+                "sample_values": [
+                  "50",
+                  "50",
+                  "50",
+                  "01",
+                  "01"
+                ]
+              },
+              {
+                "name": "account_type",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 3,
+                "null_count": 0,
+                "sample_values": [
+                  "D",
+                  "D",
+                  "D",
+                  "D",
+                  "S"
+                ]
+              },
+              {
+                "name": "account_number",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 1287,
+                "null_count": 0,
+                "sample_values": [
+                  "V0043",
+                  "V0277",
+                  "V0191",
+                  "V0195",
+                  "0000100346"
+                ]
+              },
+              {
+                "name": "amount",
+                "data_type": "numeric",
+                "nullable": true,
+                "unique_values": 6892,
+                "null_count": 0,
+                "sample_values": [
+                  "783.44",
+                  "5059.48",
+                  "5096.2",
+                  "6127.61",
+                  "7551.21"
+                ]
+              },
+              {
+                "name": "tax_code",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 3,
+                "null_count": 0,
+                "sample_values": [
+                  "C3",
+                  "A1",
+                  "A1",
+                  "B2",
+                  "B2"
+                ]
+              },
+              {
+                "name": "cost_center",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 900,
+                "null_count": 0,
+                "sample_values": [
+                  "CC276",
+                  "CC380",
+                  "CC518",
+                  "CC342",
+                  "CC343"
+                ]
+              },
+              {
+                "name": "profit_center",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 900,
+                "null_count": 0,
+                "sample_values": [
+                  "PC757",
+                  "PC118",
+                  "PC316",
+                  "PC230",
+                  "PC585"
+                ]
+              },
+              {
+                "name": "text",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 6916,
+                "null_count": 0,
+                "sample_values": [
+                  "Out perform election two.",
+                  "Report top finally wait president trial important.",
+                  "Indeed including everything.",
+                  "Stage major outside phone house.",
+                  "Can ready audience boy city social at."
+                ]
+              }
+            ]
+          },
+          "charts": {
+            "description": "Table storing charts records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "workspace_id",
+                  "references_table": "workspaces",
+                  "references_column": "id"
+                },
+                {
+                  "column": "user_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "name",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "type",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "data",
+                "data_type": "json",
+                "nullable": false,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "config",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "workspace_id",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "user_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "updated_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "chat_messages": {
+            "description": "Table storing chat_messages records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "session_id",
+                  "references_table": "chat_sessions",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "role",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "content",
+                "data_type": "text",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "query_result",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "session_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "chat_sessions": {
+            "description": "Table storing chat_sessions records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "user_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                },
+                {
+                  "column": "workspace_id",
+                  "references_table": "workspaces",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "title",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "mode",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "user_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "workspace_id",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "updated_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "database_connections": {
+            "description": "Table storing database_connections records.",
+            "row_count": 1,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "workspace_id",
+                  "references_table": "workspaces",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  3
+                ]
+              },
+              {
+                "name": "name",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "chiya"
+                ]
+              },
+              {
+                "name": "type",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "PostgreSQL"
+                ]
+              },
+              {
+                "name": "host",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "host.docker.internal"
+                ]
+              },
+              {
+                "name": "port",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  5432
+                ]
+              },
+              {
+                "name": "database",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "saarthi_db"
+                ]
+              },
+              {
+                "name": "username",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "saarthi"
+                ]
+              },
+              {
+                "name": "password",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "password"
+                ]
+              },
+              {
+                "name": "connection_string",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": 1,
+                "sample_values": []
+              },
+              {
+                "name": "config",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "status",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "connected"
+                ]
+              },
+              {
+                "name": "workspace_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  1
+                ]
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "2026-07-09 18:38:10.834971"
+                ]
+              },
+              {
+                "name": "updated_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "2026-07-09 18:38:10.834980"
+                ]
+              },
+              {
+                "name": "last_tested",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": 1,
+                "sample_values": []
+              }
+            ]
+          },
+          "datasources": {
+            "description": "Table storing datasources records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "workspace_id",
+                  "references_table": "workspaces",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "name",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "type",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "config",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "status",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "workspace_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "updated_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "last_sync",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "kna1": {
+            "description": "Table storing kna1 records.",
+            "row_count": 500,
+            "constraints": {
+              "primary_key": [
+                "customer_id"
+              ],
+              "foreign_keys": [],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "customer_id",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 500,
+                "null_count": 0,
+                "sample_values": [
+                  "C0001",
+                  "C0002",
+                  "C0003",
+                  "C0004",
+                  "C0005"
+                ]
+              },
+              {
+                "name": "name",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 489,
+                "null_count": 0,
+                "sample_values": [
+                  "Rodriguez, Figueroa and Sanchez",
+                  "Henderson, Johnson and Robinson",
+                  "Cole LLC",
+                  "Lewis LLC",
+                  "Roman-Blair"
+                ]
+              },
+              {
+                "name": "country",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 183,
+                "null_count": 0,
+                "sample_values": [
+                  "CU",
+                  "SD",
+                  "AF",
+                  "CA",
+                  "SO"
+                ]
+              },
+              {
+                "name": "city",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 495,
+                "null_count": 0,
+                "sample_values": [
+                  "Lake Joyside",
+                  "New Jamesside",
+                  "Lake Roberto",
+                  "South Colinstad",
+                  "South Christianport"
+                ]
+              },
+              {
+                "name": "postal_code",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 498,
+                "null_count": 0,
+                "sample_values": [
+                  "11896",
+                  "55488",
+                  "36922",
+                  "79632",
+                  "82898"
+                ]
+              }
+            ]
+          },
+          "lfa1": {
+            "description": "Table storing lfa1 records.",
+            "row_count": 300,
+            "constraints": {
+              "primary_key": [
+                "vendor_id"
+              ],
+              "foreign_keys": [],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "vendor_id",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 300,
+                "null_count": 0,
+                "sample_values": [
+                  "V0001",
+                  "V0002",
+                  "V0003",
+                  "V0004",
+                  "V0005"
+                ]
+              },
+              {
+                "name": "name",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 299,
+                "null_count": 0,
+                "sample_values": [
+                  "Norman, Kent and Holt",
+                  "Andrade, Gordon and Cruz",
+                  "Chavez-Anderson",
+                  "Doyle, Spencer and Robinson",
+                  "Hester, Thompson and Daniels"
+                ]
+              },
+              {
+                "name": "country",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 149,
+                "null_count": 0,
+                "sample_values": [
+                  "EC",
+                  "UZ",
+                  "NG",
+                  "GE",
+                  "DZ"
+                ]
+              },
+              {
+                "name": "city",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 295,
+                "null_count": 0,
+                "sample_values": [
+                  "North Paul",
+                  "West Raymond",
+                  "Meganside",
+                  "Glendaberg",
+                  "Jenniferstad"
+                ]
+              },
+              {
+                "name": "postal_code",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 300,
+                "null_count": 0,
+                "sample_values": [
+                  "79215",
+                  "45440",
+                  "41645",
+                  "93614",
+                  "74200"
+                ]
+              }
+            ]
+          },
+          "likp": {
+            "description": "Table storing likp records.",
+            "row_count": 5000,
+            "constraints": {
+              "primary_key": [
+                "delivery_number"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "sales_document",
+                  "references_table": "vbak",
+                  "references_column": "sales_document"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "delivery_number",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 5000,
+                "null_count": 0,
+                "sample_values": [
+                  "DL000001",
+                  "DL000002",
+                  "DL000003",
+                  "DL000004",
+                  "DL000005"
+                ]
+              },
+              {
+                "name": "sales_document",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 5000,
+                "null_count": 0,
+                "sample_values": [
+                  "SD000001",
+                  "SD000002",
+                  "SD000003",
+                  "SD000004",
+                  "SD000005"
+                ]
+              },
+              {
+                "name": "delivery_date",
+                "data_type": "date",
+                "nullable": true,
+                "unique_values": 735,
+                "null_count": 0,
+                "sample_values": [
+                  "2026-05-10",
+                  "2025-10-24",
+                  "2025-04-05",
+                  "2026-06-16",
+                  "2026-02-28"
+                ]
+              }
+            ]
+          },
+          "lips": {
+            "description": "Table storing lips records.",
+            "row_count": 15037,
+            "constraints": {
+              "primary_key": [
+                "delivery_number",
+                "item_number"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "delivery_number",
+                  "references_table": "likp",
+                  "references_column": "delivery_number"
+                },
+                {
+                  "column": "material_id",
+                  "references_table": "mara",
+                  "references_column": "material_id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "delivery_number",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 5000,
+                "null_count": 0,
+                "sample_values": [
+                  "DL000001",
+                  "DL000001",
+                  "DL000001",
+                  "DL000001",
+                  "DL000001"
+                ]
+              },
+              {
+                "name": "item_number",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 5,
+                "null_count": 0,
+                "sample_values": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              },
+              {
+                "name": "material_id",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 1000,
+                "null_count": 0,
+                "sample_values": [
+                  "M00565",
+                  "M00168",
+                  "M00265",
+                  "M00706",
+                  "M00029"
+                ]
+              },
+              {
+                "name": "quantity",
+                "data_type": "numeric",
+                "nullable": true,
+                "unique_values": 7769,
+                "null_count": 0,
+                "sample_values": [
+                  "35.63",
+                  "83.93",
+                  "75.15",
+                  "9.95",
+                  "39.27"
+                ]
+              }
+            ]
+          },
+          "mara": {
+            "description": "Table storing mara records.",
+            "row_count": 1000,
+            "constraints": {
+              "primary_key": [
+                "material_id"
+              ],
+              "foreign_keys": [],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "material_id",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 1000,
+                "null_count": 0,
+                "sample_values": [
+                  "M00001",
+                  "M00002",
+                  "M00003",
+                  "M00004",
+                  "M00005"
+                ]
+              },
+              {
+                "name": "description",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 631,
+                "null_count": 0,
+                "sample_values": [
+                  "Fast",
+                  "Century",
+                  "Bring",
+                  "Together",
+                  "Make"
+                ]
+              },
+              {
+                "name": "base_unit",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 4,
+                "null_count": 0,
+                "sample_values": [
+                  "PC",
+                  "EA",
+                  "KG",
+                  "PC",
+                  "L"
+                ]
+              },
+              {
+                "name": "material_group",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 4,
+                "null_count": 0,
+                "sample_values": [
+                  "1000",
+                  "2000",
+                  "2000",
+                  "1000",
+                  "1000"
+                ]
+              }
+            ]
+          },
+          "model_configurations": {
+            "description": "Table storing model_configurations records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "workspace_id",
+                  "references_table": "workspaces",
+                  "references_column": "id"
+                },
+                {
+                  "column": "user_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "name",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "model",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "provider",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "settings",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "workspace_id",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "user_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "updated_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "queries": {
+            "description": "Table storing queries records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "user_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                },
+                {
+                  "column": "database_id",
+                  "references_table": "database_connections",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "natural_language_query",
+                "data_type": "text",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "sql_query",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "results",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "status",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "error_message",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "execution_time_ms",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "user_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "database_id",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "reports": {
+            "description": "Table storing reports records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "workspace_id",
+                  "references_table": "workspaces",
+                  "references_column": "id"
+                },
+                {
+                  "column": "user_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "name",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "type",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "content",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "config",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "workspace_id",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "user_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "last_generated",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "response_feedback": {
+            "description": "Table storing response_feedback records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "user_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "user_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "company_name",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "question",
+                "data_type": "text",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "answer",
+                "data_type": "text",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "sql_query",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "router_decision",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "feedback_type",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "remarks",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "metamind_snapshot",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "saved_queries": {
+            "description": "Table storing saved_queries records.",
+            "row_count": 0,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "user_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                },
+                {
+                  "column": "workspace_id",
+                  "references_table": "workspaces",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "name",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "description",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "natural_language_query",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "sql_query",
+                "data_type": "text",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "user_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "workspace_id",
+                "data_type": "integer",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              },
+              {
+                "name": "updated_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 0,
+                "null_count": null,
+                "sample_values": []
+              }
+            ]
+          },
+          "ska1": {
+            "description": "Table storing ska1 records.",
+            "row_count": 500,
+            "constraints": {
+              "primary_key": [
+                "gl_account"
+              ],
+              "foreign_keys": [],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "gl_account",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 500,
+                "null_count": 0,
+                "sample_values": [
+                  "0000100000",
+                  "0000100001",
+                  "0000100002",
+                  "0000100003",
+                  "0000100004"
+                ]
+              },
+              {
+                "name": "account_name",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 499,
+                "null_count": 0,
+                "sample_values": [
+                  "Innovate Holistic Web Services",
+                  "Engage Collaborative Info-Mediaries",
+                  "Engage Granular Mindshare",
+                  "Streamline Impactful Portals",
+                  "Synthesize Enterprise E-Business"
+                ]
+              },
+              {
+                "name": "account_group",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 3,
+                "null_count": 0,
+                "sample_values": [
+                  "1000",
+                  "3000",
+                  "2000",
+                  "1000",
+                  "1000"
+                ]
+              }
+            ]
+          },
+          "skb1": {
+            "description": "Table storing skb1 records.",
+            "row_count": 500,
+            "constraints": {
+              "primary_key": [
+                "gl_account",
+                "company_code"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "gl_account",
+                  "references_table": "ska1",
+                  "references_column": "gl_account"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "gl_account",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 500,
+                "null_count": 0,
+                "sample_values": [
+                  "0000100000",
+                  "0000100001",
+                  "0000100002",
+                  "0000100003",
+                  "0000100004"
+                ]
+              },
+              {
+                "name": "company_code",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 4,
+                "null_count": 0,
+                "sample_values": [
+                  "3000",
+                  "4000",
+                  "4000",
+                  "4000",
+                  "4000"
+                ]
+              },
+              {
+                "name": "currency",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 3,
+                "null_count": 0,
+                "sample_values": [
+                  "EUR",
+                  "USD",
+                  "EUR",
+                  "USD",
+                  "GBP"
+                ]
+              }
+            ]
+          },
+          "vbak": {
+            "description": "Table storing vbak records.",
+            "row_count": 5000,
+            "constraints": {
+              "primary_key": [
+                "sales_document"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "customer_id",
+                  "references_table": "kna1",
+                  "references_column": "customer_id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "sales_document",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 5000,
+                "null_count": 0,
+                "sample_values": [
+                  "SD000001",
+                  "SD000002",
+                  "SD000003",
+                  "SD000004",
+                  "SD000005"
+                ]
+              },
+              {
+                "name": "customer_id",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 500,
+                "null_count": 0,
+                "sample_values": [
+                  "C0189",
+                  "C0011",
+                  "C0483",
+                  "C0153",
+                  "C0215"
+                ]
+              },
+              {
+                "name": "document_date",
+                "data_type": "date",
+                "nullable": true,
+                "unique_values": 730,
+                "null_count": 0,
+                "sample_values": [
+                  "2026-04-30",
+                  "2025-10-21",
+                  "2025-03-31",
+                  "2026-06-11",
+                  "2026-02-18"
+                ]
+              },
+              {
+                "name": "total_amount",
+                "data_type": "numeric",
+                "nullable": true,
+                "unique_values": 4999,
+                "null_count": 0,
+                "sample_values": [
+                  "41351.81",
+                  "43366.87",
+                  "15967.53",
+                  "34536.24",
+                  "20825.35"
+                ]
+              }
+            ]
+          },
+          "vbap": {
+            "description": "Table storing vbap records.",
+            "row_count": 15037,
+            "constraints": {
+              "primary_key": [
+                "sales_document",
+                "item_number"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "sales_document",
+                  "references_table": "vbak",
+                  "references_column": "sales_document"
+                },
+                {
+                  "column": "material_id",
+                  "references_table": "mara",
+                  "references_column": "material_id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "sales_document",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 5000,
+                "null_count": 0,
+                "sample_values": [
+                  "SD000001",
+                  "SD000001",
+                  "SD000001",
+                  "SD000001",
+                  "SD000001"
+                ]
+              },
+              {
+                "name": "item_number",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 5,
+                "null_count": 0,
+                "sample_values": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              },
+              {
+                "name": "material_id",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 1000,
+                "null_count": 0,
+                "sample_values": [
+                  "M00407",
+                  "M00127",
+                  "M00248",
+                  "M00609",
+                  "M00984"
+                ]
+              },
+              {
+                "name": "quantity",
+                "data_type": "numeric",
+                "nullable": true,
+                "unique_values": 7756,
+                "null_count": 0,
+                "sample_values": [
+                  "63.91",
+                  "68.44",
+                  "37.87",
+                  "45.16",
+                  "87.18"
+                ]
+              }
+            ]
+          },
+          "vbrk": {
+            "description": "Table storing vbrk records.",
+            "row_count": 5000,
+            "constraints": {
+              "primary_key": [
+                "billing_number"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "sales_document",
+                  "references_table": "vbak",
+                  "references_column": "sales_document"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "billing_number",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 5000,
+                "null_count": 0,
+                "sample_values": [
+                  "BL000001",
+                  "BL000002",
+                  "BL000003",
+                  "BL000004",
+                  "BL000005"
+                ]
+              },
+              {
+                "name": "sales_document",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 5000,
+                "null_count": 0,
+                "sample_values": [
+                  "SD000001",
+                  "SD000002",
+                  "SD000003",
+                  "SD000004",
+                  "SD000005"
+                ]
+              },
+              {
+                "name": "billing_date",
+                "data_type": "date",
+                "nullable": true,
+                "unique_values": 741,
+                "null_count": 0,
+                "sample_values": [
+                  "2026-05-13",
+                  "2025-10-28",
+                  "2025-04-16",
+                  "2026-06-23",
+                  "2026-03-12"
+                ]
+              },
+              {
+                "name": "total_amount",
+                "data_type": "numeric",
+                "nullable": true,
+                "unique_values": 4999,
+                "null_count": 0,
+                "sample_values": [
+                  "41351.81",
+                  "43366.87",
+                  "15967.53",
+                  "34536.24",
+                  "20825.35"
+                ]
+              }
+            ]
+          },
+          "vbrp": {
+            "description": "Table storing vbrp records.",
+            "row_count": 15037,
+            "constraints": {
+              "primary_key": [
+                "billing_number",
+                "item_number"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "billing_number",
+                  "references_table": "vbrk",
+                  "references_column": "billing_number"
+                },
+                {
+                  "column": "material_id",
+                  "references_table": "mara",
+                  "references_column": "material_id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "billing_number",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 5000,
+                "null_count": 0,
+                "sample_values": [
+                  "BL000001",
+                  "BL000001",
+                  "BL000001",
+                  "BL000001",
+                  "BL000001"
+                ]
+              },
+              {
+                "name": "item_number",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 5,
+                "null_count": 0,
+                "sample_values": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              },
+              {
+                "name": "material_id",
+                "data_type": "character varying",
+                "nullable": true,
+                "unique_values": 1000,
+                "null_count": 0,
+                "sample_values": [
+                  "M00875",
+                  "M00989",
+                  "M00227",
+                  "M00694",
+                  "M00668"
+                ]
+              },
+              {
+                "name": "quantity",
+                "data_type": "numeric",
+                "nullable": true,
+                "unique_values": 7703,
+                "null_count": 0,
+                "sample_values": [
+                  "57.65",
+                  "22.22",
+                  "65.09",
+                  "21.47",
+                  "41.54"
+                ]
+              }
+            ]
+          },
+          "workspaces": {
+            "description": "Table storing workspaces records.",
+            "row_count": 1,
+            "constraints": {
+              "primary_key": [
+                "id"
+              ],
+              "foreign_keys": [
+                {
+                  "column": "owner_id",
+                  "references_table": "app_users",
+                  "references_column": "id"
+                }
+              ],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  1
+                ]
+              },
+              {
+                "name": "name",
+                "data_type": "character varying",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "Default Workspace"
+                ]
+              },
+              {
+                "name": "description",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "Default workspace for database connections"
+                ]
+              },
+              {
+                "name": "owner_id",
+                "data_type": "integer",
+                "nullable": false,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  1
+                ]
+              },
+              {
+                "name": "settings",
+                "data_type": "json",
+                "nullable": true,
+                "unique_values": null,
+                "null_count": null,
+                "sample_values": [],
+                "profiling_note": "distinct count not supported for json/jsonb columns"
+              },
+              {
+                "name": "created_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "2026-06-13 12:49:32.403637"
+                ]
+              },
+              {
+                "name": "updated_at",
+                "data_type": "timestamp without time zone",
+                "nullable": true,
+                "unique_values": 1,
+                "null_count": 0,
+                "sample_values": [
+                  "2026-06-13 12:49:32.403644"
+                ]
+              }
+            ]
+          }
+        }
+      },
       "FILES": {
         "description": "Use when query asks for explanations, policies, summaries, company information, documentation content, or any textual knowledge stored in uploaded documents.",
         "trigger_keywords": [
@@ -26,7 +2502,7 @@
         ],
         "vector_store_info": {
           "collection": "saarthi_unstructured",
-          "points_count": 9
+          "points_count": 16
         }
       },
       "API": {
@@ -68,6 +2544,6 @@
       "rule_6": "When in doubt between DB and FILES -> prefer FILES",
       "output_format": "Return ONLY a JSON array. Example: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"DB\", \"FILES\"]"
     },
-    "generated_at": "2026-07-09T12:27:44.075230Z"
+    "generated_at": "2026-07-28T18:32:13.644389Z"
   }
 }

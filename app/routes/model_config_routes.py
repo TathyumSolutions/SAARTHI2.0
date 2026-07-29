@@ -3,12 +3,97 @@ Model Configuration API Routes
 Handles LLM model settings, fine-tuning, and custom model management
 """
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from app import db                                       # CODE CHANGE: Imported database instance
 from app.models.model_config import ModelConfiguration
+from app.services.model_selection_service import (
+    PIPELINE_STEPS,
+    RECOMMENDED_PRESET_DEFINITIONS,
+    get_available_models,
+    get_global_default_config,
+    get_recommended_preset_payload,
+)
 
 
 bp = Blueprint('model_config', __name__, url_prefix='/api/model-config')
+
+
+def _resolve_user_id() -> int:
+    try:
+        verify_jwt_in_request(optional=True)
+        identity = get_jwt_identity()
+        if identity is None:
+            return 1
+        if isinstance(identity, dict):
+            candidate = identity.get('id') or identity.get('user_id')
+            return int(candidate) if candidate else 1
+        return int(identity)
+    except Exception:
+        return 1
+
+
+@bp.route('/global-selection', methods=['GET'])
+def get_global_model_selection():
+    user_id = _resolve_user_id()
+    config = get_global_default_config(user_id=user_id)
+    return jsonify(config.to_dict() if config else {}), 200
+
+
+@bp.route('/global-selection', methods=['POST'])
+def save_global_model_selection():
+    user_id = _resolve_user_id()
+    data = request.get_json() or {}
+
+    main_model = data.get('main_model')
+    if not main_model:
+        return jsonify({'error': 'main_model is required'}), 400
+
+    step_overrides = data.get('step_overrides', {})
+    if not isinstance(step_overrides, dict):
+        return jsonify({'error': 'step_overrides must be an object'}), 400
+
+    config = ModelConfiguration.query.filter_by(name='global_default', user_id=user_id).first()
+    if not config:
+        config = ModelConfiguration(
+            name='global_default',
+            user_id=user_id,
+            model=main_model,
+            provider=data.get('provider', ''),
+            settings={},
+        )
+
+    config.model = main_model
+    config.provider = data.get('provider', config.provider or '')
+    config.settings = {'step_overrides': step_overrides}
+
+    db.session.add(config)
+    db.session.commit()
+    return jsonify({'status': 'success'}), 200
+
+
+@bp.route('/global-selection/options', methods=['GET'])
+def get_global_selection_options():
+    user_id = _resolve_user_id()
+    return jsonify(
+        {
+            'models': get_available_models(user_id=user_id),
+            'steps': PIPELINE_STEPS,
+            'presets': [
+                {
+                    'key': value['key'],
+                    'label': value['label'],
+                }
+                for value in RECOMMENDED_PRESET_DEFINITIONS.values()
+            ],
+        }
+    ), 200
+
+
+@bp.route('/global-selection/preset/<string:preset_key>', methods=['GET'])
+def get_global_selection_preset(preset_key):
+    user_id = _resolve_user_id()
+    payload = get_recommended_preset_payload(preset_key=preset_key, user_id=user_id)
+    return jsonify(payload), 200
 
 @bp.route('/configurations', methods=['GET'])
 #@jwt_required()

@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, render_template
+from flask import Blueprint, jsonify, request
 import yaml
 import os
 
@@ -17,11 +17,6 @@ def _deep_merge(base, updates):
         else:
             base[key] = value
     return base
-
-
-@bp.route('/settings')
-def settings_page():
-    return render_template('settings.html')
 
 
 @bp.route('/api/settings/rag-config', methods=['GET'])

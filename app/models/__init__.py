@@ -10,6 +10,7 @@ from .chat import ChatSession, ChatMessage
 from .analytics import Chart, Report
 from .model_config import ModelConfiguration
 from .audit import AuditLog, Activity
+from .feedback import ResponseFeedback
 
 __all__ = [
     'User',
@@ -24,5 +25,6 @@ __all__ = [
     'Report',
     'ModelConfiguration',
     'AuditLog',
-    'Activity'
+    'Activity',
+    'ResponseFeedback'
 ]

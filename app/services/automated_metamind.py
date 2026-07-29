@@ -29,23 +29,23 @@ except ImportError:
 
 
 # ============================================================
-# CONFIG - Hardcoded to match your active Docker services
+# CONFIG - Environment-driven DB credentials
 # ============================================================
 
 DB_CONFIG = {
-    "host": "db",
-    "port": "5432",
-    "dbname": "databrige_db",
-    "user": "saarthi",
-    "password": "password",
+    "host": os.getenv("DATABRIDGE_DB_HOST", os.getenv("PGHOST", "db")),
+    "port": os.getenv("DATABRIDGE_DB_PORT", os.getenv("PGPORT", "5432")),
+    "dbname": os.getenv("DATABRIDGE_DB_NAME", os.getenv("PGDATABASE", "saarthi_db")),
+    "user": os.getenv("DATABRIDGE_DB_USER", os.getenv("PGUSER", "saarthi")),
+    "password": os.getenv("DATABRIDGE_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
 }
 
 API_DB_CONFIG = {
-    "host": "db",
-    "port": "5432",
-    "dbname": "saarthi_api_db",
-    "user": "saarthi",
-    "password": "password",
+    "host": os.getenv("API_DB_HOST", os.getenv("PGHOST", "db")),
+    "port": os.getenv("API_DB_PORT", os.getenv("PGPORT", "5432")),
+    "dbname": os.getenv("API_DB_NAME", "saarthi_api_db"),
+    "user": os.getenv("API_DB_USER", os.getenv("PGUSER", "saarthi")),
+    "password": os.getenv("API_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
 }
 
 QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
@@ -69,6 +69,26 @@ HASH_PATH = os.path.join(BASE_DIR, ".router_config_hash")
 MAX_ROWS_FOR_COLUMN_PROFILING = 100_000
 
 
+def _safe_fetchone(cur, conn, query, params=None, context="query"):
+    try:
+        cur.execute(query, params)
+        return cur.fetchone()
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ [DB] Could not run {context}: {e}")
+        return None
+
+
+def _safe_fetchall(cur, conn, query, params=None, context="query"):
+    try:
+        cur.execute(query, params)
+        return cur.fetchall()
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ [DB] Could not run {context}: {e}")
+        return []
+
+
 def introspect_databridge_db():
     """
     Connects to databrige_db and pulls every table + column + simple
@@ -87,45 +107,58 @@ def introspect_databridge_db():
     tables_out = {}
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
+            table_rows = _safe_fetchall(
+                cur,
+                conn,
+                """
                 SELECT table_name
                 FROM information_schema.tables
                 WHERE table_schema = 'public'
                   AND table_type = 'BASE TABLE'
                 ORDER BY table_name;
-            """)
-            table_rows = cur.fetchall()
+                """,
+                context="table list query",
+            )
 
             for row in table_rows:
                 table_name = row["table_name"]
 
-                cur.execute("""
+                comment_row = _safe_fetchone(
+                    cur,
+                    conn,
+                    """
                     SELECT obj_description(
                         (quote_ident(%s))::regclass, 'pg_class'
                     ) AS comment;
-                """, (table_name,))
-                comment_row = cur.fetchone()
+                    """,
+                    (table_name,),
+                    context=f"table comment query for {table_name}",
+                )
                 description = (comment_row["comment"] if comment_row and comment_row["comment"]
                                else f"Table storing {table_name} records.")
 
-                try:
-                    cur.execute(
-                        sql.SQL("SELECT COUNT(*) AS cnt FROM {};").format(sql.Identifier(table_name))
-                    )
-                    row_count = cur.fetchone()["cnt"]
-                except Exception as e:
-                    print(f"⚠️ [DB] Could not count rows for {table_name}: {e}")
-                    row_count = None
+                row_count_row = _safe_fetchone(
+                    cur,
+                    conn,
+                    sql.SQL("SELECT COUNT(*) AS cnt FROM {};").format(sql.Identifier(table_name)),
+                    context=f"row count for {table_name}",
+                )
+                row_count = row_count_row["cnt"] if row_count_row else None
 
-                constraints = _get_table_constraints(cur, table_name)
+                constraints = _get_table_constraints(cur, conn, table_name)
 
-                cur.execute("""
+                col_rows = _safe_fetchall(
+                    cur,
+                    conn,
+                    """
                     SELECT column_name, data_type, is_nullable
                     FROM information_schema.columns
                     WHERE table_schema = 'public' AND table_name = %s
                     ORDER BY ordinal_position;
-                """, (table_name,))
-                col_rows = cur.fetchall()
+                    """,
+                    (table_name,),
+                    context=f"column metadata for {table_name}",
+                )
 
                 columns = []
                 should_profile = isinstance(row_count, int) and row_count is not None and row_count <= MAX_ROWS_FOR_COLUMN_PROFILING
@@ -137,58 +170,75 @@ def introspect_databridge_db():
                     col_name = col["column_name"]
                     col_type = col["data_type"]
                     nullable = col["is_nullable"] == "YES"
+                    type_normalized = (col_type or "").lower()
 
-                    if should_profile:
-                        try:
-                            cur.execute(
-                                sql.SQL(
-                                    "SELECT COUNT(DISTINCT {}) AS unique_values, "
-                                    "SUM(CASE WHEN {} IS NULL THEN 1 ELSE 0 END) AS null_count "
-                                    "FROM {};"
-                                ).format(
-                                    sql.Identifier(col_name),
-                                    sql.Identifier(col_name),
-                                    sql.Identifier(table_name),
-                                )
-                            )
-                            profile_row = cur.fetchone()
+                    if type_normalized in {"json", "jsonb"}:
+                        unique_values = None
+                        null_count = None
+                        sample_values = []
+                        profiling_note = "distinct count not supported for json/jsonb columns"
+                    elif should_profile:
+                        profiling_note = None
+                        profile_row = _safe_fetchone(
+                            cur,
+                            conn,
+                            sql.SQL(
+                                "SELECT COUNT(DISTINCT {}) AS unique_values, "
+                                "SUM(CASE WHEN {} IS NULL THEN 1 ELSE 0 END) AS null_count "
+                                "FROM {};"
+                            ).format(
+                                sql.Identifier(col_name),
+                                sql.Identifier(col_name),
+                                sql.Identifier(table_name),
+                            ),
+                            context=f"profiling count for {table_name}.{col_name}",
+                        )
+
+                        if profile_row:
                             unique_values = profile_row["unique_values"]
                             null_count = profile_row["null_count"]
-
-                            cur.execute(
-                                sql.SQL("SELECT {} FROM {} WHERE {} IS NOT NULL LIMIT 5;").format(
-                                    sql.Identifier(col_name),
-                                    sql.Identifier(table_name),
-                                    sql.Identifier(col_name),
-                                )
-                            )
-                            sample_rows = cur.fetchall()
-                            sample_values = []
-                            for sample_row in sample_rows:
-                                value = sample_row.get(col_name)
-                                if value is None:
-                                    continue
-                                if not isinstance(value, (str, int, float, bool)):
-                                    value = str(value)
-                                sample_values.append(value)
-                        except Exception as e:
-                            print(f"⚠️ [DB] Could not profile column {table_name}.{col_name}: {e}")
+                        else:
                             unique_values = None
                             null_count = None
-                            sample_values = []
+
+                        sample_rows = _safe_fetchall(
+                            cur,
+                            conn,
+                            sql.SQL("SELECT {} FROM {} WHERE {} IS NOT NULL LIMIT 5;").format(
+                                sql.Identifier(col_name),
+                                sql.Identifier(table_name),
+                                sql.Identifier(col_name),
+                            ),
+                            context=f"sample query for {table_name}.{col_name}",
+                        )
+
+                        sample_values = []
+                        for sample_row in sample_rows:
+                            value = sample_row.get(col_name)
+                            if value is None:
+                                continue
+                            if not isinstance(value, (str, int, float, bool)):
+                                value = str(value)
+                            sample_values.append(value)
                     else:
                         unique_values = None
                         null_count = None
                         sample_values = []
+                        profiling_note = None
 
-                    columns.append({
+                    column_entry = {
                         "name": col_name,
                         "data_type": col_type,
                         "nullable": nullable,
                         "unique_values": unique_values,
                         "null_count": null_count,
                         "sample_values": sample_values,
-                    })
+                    }
+
+                    if profiling_note:
+                        column_entry["profiling_note"] = profiling_note
+
+                    columns.append(column_entry)
 
                 tables_out[table_name] = {
                     "description": description,
@@ -211,7 +261,7 @@ def introspect_databridge_db():
     return tables_out
 
 
-def _get_table_constraints(cur, table_name):
+def _get_table_constraints(cur, conn, table_name):
     """
     Returns primary key, foreign key, and unique constraint info for one
     table, using Postgres's own information_schema (same trusted catalog
@@ -220,7 +270,10 @@ def _get_table_constraints(cur, table_name):
     constraints = {"primary_key": [], "foreign_keys": [], "unique_columns": []}
 
     try:
-        cur.execute("""
+        primary_rows = _safe_fetchall(
+            cur,
+            conn,
+            """
             SELECT kcu.column_name
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage kcu
@@ -228,10 +281,16 @@ def _get_table_constraints(cur, table_name):
              AND tc.table_schema = kcu.table_schema
             WHERE tc.constraint_type = 'PRIMARY KEY'
               AND tc.table_name = %s AND tc.table_schema = 'public';
-        """, (table_name,))
-        constraints["primary_key"] = [r["column_name"] for r in cur.fetchall()]
+            """,
+            (table_name,),
+            context=f"primary key lookup for {table_name}",
+        )
+        constraints["primary_key"] = [r["column_name"] for r in primary_rows]
 
-        cur.execute("""
+        foreign_rows = _safe_fetchall(
+            cur,
+            conn,
+            """
             SELECT
                 kcu.column_name AS column,
                 ccu.table_name AS references_table,
@@ -245,17 +304,23 @@ def _get_table_constraints(cur, table_name):
              AND tc.table_schema = ccu.table_schema
             WHERE tc.constraint_type = 'FOREIGN KEY'
               AND tc.table_name = %s AND tc.table_schema = 'public';
-        """, (table_name,))
+            """,
+            (table_name,),
+            context=f"foreign key lookup for {table_name}",
+        )
         constraints["foreign_keys"] = [
             {
                 "column": r["column"],
                 "references_table": r["references_table"],
                 "references_column": r["references_column"],
             }
-            for r in cur.fetchall()
+            for r in foreign_rows
         ]
 
-        cur.execute("""
+        unique_rows = _safe_fetchall(
+            cur,
+            conn,
+            """
             SELECT kcu.column_name
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage kcu
@@ -263,8 +328,11 @@ def _get_table_constraints(cur, table_name):
              AND tc.table_schema = kcu.table_schema
             WHERE tc.constraint_type = 'UNIQUE'
               AND tc.table_name = %s AND tc.table_schema = 'public';
-        """, (table_name,))
-        constraints["unique_columns"] = [r["column_name"] for r in cur.fetchall()]
+            """,
+            (table_name,),
+            context=f"unique constraint lookup for {table_name}",
+        )
+        constraints["unique_columns"] = [r["column_name"] for r in unique_rows]
 
     except Exception as e:
         print(f"⚠️ [DB] Could not fetch constraints for {table_name}: {e}")
