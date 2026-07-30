@@ -429,6 +429,183 @@
                 btn.classList.toggle('active', shouldBeActive);
             });
         });
+
+        // ==========================================
+        // CHAT SESSION HISTORY (sidebar "New Chat" / "Recents")
+        // Lives here, not in index.html's own script, so it works the same
+        // way on every page that extends base.html - not just the chat
+        // page. Pages with no .chat-container of their own (i.e. anything
+        // other than /index) hand off to /index via a sessionStorage flag
+        // that index.html picks up on load, instead of silently doing
+        // nothing.
+        // ==========================================
+        let chatSessions = [];
+        let currentSessionId = 'session_' + Date.now();
+
+        function _getChatContainerEl() {
+            return document.querySelector('.chat-container') || document.getElementById('chatContainer');
+        }
+
+        async function fetchSavedSessions() {
+            try {
+                const response = await fetch('/api/chat/sessions');
+                const data = await response.json();
+                if (data.sessions) {
+                    chatSessions = data.sessions.map(function (s) {
+                        return { id: s.session_id, title: s.title, html: s.chat_history || '' };
+                    });
+                    renderAuditTrailList();
+                }
+            } catch (err) {
+                console.error("❌ Failed to pull audit trail records from server:", err);
+            }
+        }
+
+        async function saveActiveChatToHistory() {
+            const chatContainerEl = _getChatContainerEl();
+            if (!chatContainerEl || !chatContainerEl.innerHTML.trim()) return;
+
+            const firstMsg = chatContainerEl.querySelector('.message-text');
+            let title = firstMsg ? firstMsg.textContent.substring(0, 20) + '...' : 'Conversation ' + (chatSessions.length + 1);
+
+            try {
+                await fetch('/api/chat/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: currentSessionId,
+                        title: title,
+                        chat_history: chatContainerEl.innerHTML
+                    })
+                });
+
+                await fetchSavedSessions();
+            } catch (err) {
+                console.error("❌ Error saving chat session to database:", err);
+            }
+        }
+
+        function renderAuditTrailList() {
+            const listContainer = document.getElementById('audit-trail-list');
+            if (!listContainer) return;
+
+            if (chatSessions.length === 0) {
+                listContainer.innerHTML = '<div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">No previous chats found</div>';
+                return;
+            }
+
+            listContainer.innerHTML = '';
+
+            chatSessions.forEach(function (session) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'sub-item';
+                wrapper.style.cssText = "display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 4px 6px;";
+
+                const textSpan = document.createElement('span');
+                textSpan.textContent = `💬 ${session.title}`;
+                textSpan.style.flexGrow = "1";
+
+                if (session.id === currentSessionId) {
+                    textSpan.style.color = 'var(--primary-blue, #3b82f6)';
+                    textSpan.style.fontWeight = '600';
+                }
+
+                textSpan.addEventListener('click', async function () {
+                    if (session.id === currentSessionId) return;
+
+                    const chatContainerEl = _getChatContainerEl();
+                    if (!chatContainerEl) {
+                        // No chat panel on this page - hand off to /index,
+                        // which will load this session once it arrives.
+                        sessionStorage.setItem('saarthi_pending_session_id', session.id);
+                        window.location.href = '/index';
+                        return;
+                    }
+
+                    // Checkpoint whatever is currently on screen - under the
+                    // OLD session id - before switching away from it, so
+                    // browsing Recents never silently discards an unsaved
+                    // conversation.
+                    await saveActiveChatToHistory();
+
+                    currentSessionId = session.id;
+
+                    try {
+                        const res = await fetch(`/api/chat/sessions/${session.id}`);
+                        const data = await res.json();
+                        if (data.session) {
+                            chatContainerEl.innerHTML = data.session.chat_history || '';
+                            chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
+                            localStorage.setItem('saarthi_chat_history', data.session.chat_history || '');
+                        }
+                    } catch (err) {
+                        console.error("Error loading chat from database:", err);
+                    }
+                    renderAuditTrailList();
+                });
+
+                const deleteBtn = document.createElement('span');
+                deleteBtn.innerHTML = '🗑️';
+                deleteBtn.style.cssText = "opacity: 0.4; margin-left: 8px; transition: opacity 0.2s; cursor: pointer;";
+                deleteBtn.onmouseover = function () { deleteBtn.style.opacity = "1"; };
+                deleteBtn.onmouseout = function () { deleteBtn.style.opacity = "0.4"; };
+
+                deleteBtn.addEventListener('click', async function (e) {
+                    e.stopPropagation();
+                    if (confirm("Are you sure you want to delete this chat session permanently?")) {
+                        try {
+                            await fetch(`/api/chat/sessions/${session.id}`, { method: 'DELETE' });
+
+                            if (currentSessionId === session.id) {
+                                const chatContainerEl = _getChatContainerEl();
+                                if (chatContainerEl) chatContainerEl.innerHTML = '';
+                                currentSessionId = 'session_' + Date.now();
+                            }
+                            await fetchSavedSessions();
+                        } catch (err) {
+                            console.error("Failed to delete session record:", err);
+                        }
+                    }
+                });
+
+                wrapper.appendChild(textSpan);
+                wrapper.appendChild(deleteBtn);
+                listContainer.appendChild(wrapper);
+            });
+        }
+
+        async function startNewChat() {
+            const chatContainerEl = _getChatContainerEl();
+            if (!chatContainerEl) {
+                // No chat panel on this page - hop over to /index for a
+                // blank one instead of doing nothing.
+                sessionStorage.setItem('saarthi_force_new_chat', '1');
+                window.location.href = '/index';
+                return;
+            }
+
+            await saveActiveChatToHistory();
+
+            chatContainerEl.innerHTML = '';
+
+            const thoughtChainEl = document.querySelector('.thought-chain') || document.getElementById('thoughtChain');
+            if (thoughtChainEl) {
+                thoughtChainEl.innerHTML = '';
+            }
+
+            currentSessionId = 'session_' + Date.now();
+            renderAuditTrailList();
+            console.log("🆕 Switched to a brand new conversation channel.");
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const newChatButton = document.getElementById('new-chat-btn');
+            if (newChatButton) {
+                newChatButton.addEventListener('click', startNewChat);
+            }
+
+            fetchSavedSessions();
+        });
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
