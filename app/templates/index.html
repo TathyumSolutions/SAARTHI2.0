@@ -591,8 +591,8 @@
         <div style="min-width: 140px;">
             <div class="llm-section-header">LLM - Standard API</div>
             <select id="standard-llm-dropdown" class="llm-dropdown" style="width: 220px;">
-                <option value="" disabled selected>Select Cloud Model...</option>
-                <option value="gpt-4o">GPT-4o</option>
+                <option value="" disabled>Select Cloud Model...</option>
+                <option value="gpt-4o" selected>GPT-4o</option>
                 <option value="gpt-4o-mini">GPT-4o Mini</option>
                 <option value="gpt-4-turbo">GPT-4 Turbo</option>
                 <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
@@ -886,7 +886,15 @@
         const standardDropdown = document.getElementById("standard-llm-dropdown");
         const opensourceDropdown = document.getElementById("opensource-llm-dropdown");
 
-        window.activeBackendModelName = "";
+        // Honor a previously chosen model if one was saved; otherwise fall
+        // back to whichever option is marked `selected` in the Standard API
+        // dropdown so a model is always active without the user having to
+        // touch the dropdown first.
+        const savedActiveModel = localStorage.getItem('saarthi_active_model');
+        window.activeBackendModelName = savedActiveModel || (standardDropdown ? standardDropdown.value : "");
+        if (window.activeBackendModelName) {
+            localStorage.setItem('saarthi_active_model', window.activeBackendModelName);
+        }
 
         if (standardDropdown && opensourceDropdown) {
             standardDropdown.addEventListener("change", function () {
