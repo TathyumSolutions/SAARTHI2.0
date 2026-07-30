@@ -1,5 +1,5 @@
 """
-Smart Router Service (v2 â€” tool-calling / agentic)
+Smart Router Service (v2 — tool-calling / agentic)
 ====================================================
 
 Why this file was rewritten:
@@ -8,14 +8,14 @@ The old version (`RouterService.get_smart_response`, pre-rewrite) picked a
 track using `.with_structured_output(RouterDecisionSchema)` against a fixed
 list of 4 categories (DB, FILES, API, GENERAL). That's why a question like
 "do you have a DB connection?" got force-fit into "DB" and triggered the
-full 8-agent LangGraph pipeline â€” there was no category for questions about
+full 8-agent LangGraph pipeline — there was no category for questions about
 the system's own configuration, only categories for actual data questions.
 
 This version replaces that fixed classifier with real tool-calling
 (`bind_tools`, the same pattern already used in api_services.py for the API
-track). The model is handed a small toolbox â€” one of which,
+track). The model is handed a small toolbox — one of which,
 `check_data_source_status`, answers configuration questions directly from
-`metamind_router_config.json` with no further agent calls at all â€” and picks
+`metamind_router_config.json` with no further agent calls at all — and picks
 whichever tool(s) actually fit the question. Adding a new capability later
 means registering a new tool, not editing a classification prompt and hoping
 the model respects a new rule buried in a paragraph.
@@ -23,7 +23,7 @@ the model respects a new rule buried in a paragraph.
 The model is also now given real conversation context: the current query,
 recent chat history, and the router config, assembled with a token budget so
 none of it silently blows past the model's context window. The current
-query is never trimmed â€” if something has to give, it's the oldest chat
+query is never trimmed — if something has to give, it's the oldest chat
 history first, then the router config.
 """
 
@@ -73,7 +73,7 @@ _GENERAL_CONFIG_PATH = os.path.join(_SERVICE_DIR, "general_knowledge_config.json
 _ROUTER_CONFIG_PATH = os.path.join(_SERVICE_DIR, "metamind_router_config.json")
 
 # Router-context token budget. gpt-4o-mini's real window is much larger than
-# this â€” this cap exists to keep every routing call cheap and fast, not
+# this — this cap exists to keep every routing call cheap and fast, not
 # because the model can't technically fit more. Raise it if you find the
 # router genuinely needs more history to make good decisions.
 ROUTER_CONTEXT_TOKEN_BUDGET = 6000
@@ -114,9 +114,9 @@ def _flatten_patterns(cfg_section: dict) -> list[str]:
 
 def classify_query_heuristic(user_query: str) -> str | None:
     """
-    Layer 1 â€” free keyword check for greetings/small talk/date-time questions.
+    Layer 1 — free keyword check for greetings/small talk/date-time questions.
     Unrelated to the DB-misrouting bug (its patterns never matched status
-    questions in the first place) â€” kept as-is, it's a real cost saver.
+    questions in the first place) — kept as-is, it's a real cost saver.
     """
     cfg = _load_general_config().get("general_knowledge_routing", {})
     q = user_query.lower().strip()
@@ -130,7 +130,7 @@ def classify_query_heuristic(user_query: str) -> str | None:
 # ROUTER CONFIG LOADING + TRIMMING
 # ============================================================
 def _load_router_config() -> dict:
-    """Always reads fresh from disk â€” freshness of this file is handled by
+    """Always reads fresh from disk — freshness of this file is handled by
     generate_router_config() elsewhere; this function just reflects whatever
     is currently on disk at call time."""
     with open(_ROUTER_CONFIG_PATH, "r") as f:
@@ -139,7 +139,7 @@ def _load_router_config() -> dict:
 
 def _trim_router_config(config: dict, max_tables: int, max_cols: int,
                          max_tools: int, max_examples: int) -> dict:
-    """Returns a shallow, trimmed copy for prompt display only â€” never
+    """Returns a shallow, trimmed copy for prompt display only — never
     written back to disk. Caps list/dict sizes so the config can't blow the
     token budget on a schema with hundreds of tables or tools."""
     menu = config.get("routing_menu", {})
@@ -192,7 +192,7 @@ def _fit_router_config_to_budget(config: dict, token_budget: int) -> str:
         last_str = s
         if _count_tokens(s) <= token_budget:
             return s
-    # Still too big â€” hard truncate.
+    # Still too big — hard truncate.
     approx_chars = max(token_budget * 4, 200)
     return last_str[:approx_chars] + "\n...(truncated to fit context budget)"
 
@@ -289,9 +289,9 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
     """
     Assembles the message list for the routing LLM call under a fixed token
     budget. Priority order when something has to be cut:
-      1. current query        â€” never trimmed
-      2. recent chat history  â€” oldest turns dropped first
-      3. router config JSON   â€” capped, then hard-truncated if still too big
+      1. current query        — never trimmed
+      2. recent chat history  — oldest turns dropped first
+      3. router config JSON   — capped, then hard-truncated if still too big
     """
     query_tokens = _count_tokens(user_query)
     remaining = max(ROUTER_CONTEXT_TOKEN_BUDGET - query_tokens - 400, _MIN_CONFIG_BUDGET)  # 400 ~ instructions/tool schema overhead
@@ -318,7 +318,7 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
 
     system_prompt = f"""You are the enterprise orchestration router for Saarthi AI.
 
-CURRENT QUESTION (this is what you are answering â€” always prioritize this):
+CURRENT QUESTION (this is what you are answering — always prioritize this):
 {user_query}
 
 Decide which tool(s), if any, are needed to answer it. You may call more than
@@ -326,9 +326,9 @@ one tool if the question genuinely needs context from multiple sources.
 
 TOOLS AVAILABLE:
 - check_data_source_status: ONLY for questions about the system's own setup
-  or configuration â€” "do you have a DB connection?", "are any documents
+  or configuration — "do you have a DB connection?", "are any documents
   uploaded?", "what data sources are available?", "is X connected?". This
-  never touches real data and never runs other agents â€” use it whenever the
+  never touches real data and never runs other agents — use it whenever the
   question is about availability/configuration rather than about the data
   itself.
 - query_database: for questions needing real rows/counts/sums/filters from
@@ -356,7 +356,7 @@ wrong one.
 LIVE REGISTERED TOOLS FOR THE 'API' TRACK:
 {live_tools_summary}
 
-CURRENT DATA SOURCE CONFIGURATION (router_metamind.json â€” may be trimmed for length):
+CURRENT DATA SOURCE CONFIGURATION (router_metamind.json — may be trimmed for length):
 {config_str}
 """
     if company_feedback_context:
@@ -377,7 +377,7 @@ CURRENT DATA SOURCE CONFIGURATION (router_metamind.json â€” may be trimmed 
 
 # ============================================================
 # TOOL SCHEMAS
-# (bodies are placeholders â€” bind_tools only needs these for their name,
+# (bodies are placeholders — bind_tools only needs these for their name,
 #  description, and argument schema; actual execution happens in
 #  TOOL_DISPATCH below, where real closures like model_name/session_id
 #  are available.)
@@ -385,7 +385,7 @@ CURRENT DATA SOURCE CONFIGURATION (router_metamind.json â€” may be trimmed 
 @tool
 def check_data_source_status(track: Literal["DB", "FILES", "API", "ANY"]) -> str:
     """Answer a question about whether a data source is configured/available
-    (e.g. 'do you have a DB connection?'). Reads configuration only â€” never
+    (e.g. 'do you have a DB connection?'). Reads configuration only — never
     runs the DB, FILES, or API agent pipelines."""
     raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
 
@@ -427,7 +427,7 @@ _ALL_TOOLS = [
 
 
 # ============================================================
-# STATUS CHECK â€” the fix for the misrouting bug
+# STATUS CHECK — the fix for the misrouting bug
 # ============================================================
 def _answer_status_check(args: dict, router_config: dict) -> dict:
     menu = router_config.get("routing_menu", {}).get("datasources", {})
@@ -450,14 +450,14 @@ def _answer_status_check(args: dict, router_config: dict) -> dict:
             "FILES": f"{files_info.get('points_count', 0)} document chunk(s) indexed." if available["FILES"] else "No documents uploaded yet.",
             "API": f"{len(api_tools)} tool(s) registered." if available["API"] else "No external tools registered.",
         }[track]
-        answer = f"{yes_no} â€” {detail}"
+        answer = f"{yes_no} — {detail}"
     else:
         parts = [f"{k}: {'available' if v else 'not available'}" for k, v in available.items()]
-        answer = "Current data source status â€” " + ", ".join(parts) + "."
+        answer = "Current data source status — " + ", ".join(parts) + "."
 
     return {
         "answer": answer,
-        "steps": ["Checked data source configuration directly (metamind_router_config.json) â€” no agents were run."],
+        "steps": ["Checked data source configuration directly (metamind_router_config.json) — no agents were run."],
         "sql": None, "table": [], "chart": {}, "insights": [],
     }
 
@@ -650,7 +650,7 @@ class RouterService:
             tool_calls = getattr(response, "tool_calls", None) or []
             print(f"ðŸ§  Router selected tools: {[c['name'] for c in tool_calls]}")
 
-            # No tool needed â€” model judged it answerable directly.
+            # No tool needed — model judged it answerable directly.
             if not tool_calls:
                 _push_router_event(
                     session_id,
@@ -723,7 +723,7 @@ class RouterService:
                     "steps": ["No dispatchable tool matched the router's selection."],
                 }
 
-            # Single tool selected â€” return its result directly, unmodified.
+            # Single tool selected — return its result directly, unmodified.
             if len(results) == 1:
                 tool_name, result = results[0]
                 router_map = {
