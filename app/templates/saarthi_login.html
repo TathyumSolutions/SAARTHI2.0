@@ -513,11 +513,11 @@
       flex: 0 0 46%;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      justify-content: flex-start;
       align-items: center;
-      padding: 48px 40px;
+      padding: 32px 40px;
       min-width: 380px;
-      overflow-y: auto;
+      overflow: hidden;
       overflow-x: hidden;
       scrollbar-width: thin;
       scrollbar-color: var(--border) transparent;
@@ -525,6 +525,10 @@
 
     .form-wrap {
       width: 100%; max-width: 400px;
+      max-height: calc(100vh - 64px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 6px;
       animation: fadeUp 0.7s ease 0.15s forwards;
       opacity: 0;
     }
