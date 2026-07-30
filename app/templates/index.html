@@ -1868,6 +1868,14 @@
             }
 
             textSpan.addEventListener('click', async () => {
+                if (session.id === currentSessionId) return;
+
+                // Checkpoint whatever is currently on screen - under the
+                // OLD session id - before switching away from it, so
+                // browsing Recents never silently discards an unsaved
+                // conversation.
+                await saveActiveChatToHistory();
+
                 currentSessionId = session.id;
 
                 try {
@@ -1876,10 +1884,10 @@
                     if (data.session) {
                         const chatContainerEl = document.querySelector('.chat-container') || document.getElementById('chatContainer');
                         if (chatContainerEl) {
-                            chatContainerEl.innerHTML = data.session.chat_history;
+                            chatContainerEl.innerHTML = data.session.chat_history || '';
                             chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
 
-                            localStorage.setItem('saarthi_chat_history', data.session.chat_history);
+                            localStorage.setItem('saarthi_chat_history', data.session.chat_history || '');
                         }
                     }
                 } catch (err) {

@@ -32,14 +32,15 @@ def test_connection():
         # Perform a live mock request with a short timeout
         response = requests.request(method=method, url=full_url, timeout=5)
         return jsonify({
-            "status": "success", 
+            "status": "success",
             "code": response.status_code,
-            "message": f"Connected successfully! Endpoint returned status {response.status_code}"
+            "message": "Connection test succeeded."
         })
     except Exception as e:
+        print(f"❌ Test connection failed for '{full_url}': {e}")
         return jsonify({
-            "status": "error", 
-            "message": f"Could not reach endpoint: {str(e)}"
+            "status": "error",
+            "message": "Connection test failed. Please check the URL and try again."
         })
 
 @bp.route('/api_connectors/save_tool', methods=['POST'])
@@ -93,15 +94,15 @@ def save_tool():
         
         print(f"🔥 Successfully written tool to registry: {integration_name} -> {base_url}{endpoint}")
         return jsonify({
-            "status": "success", 
-            "message": f"Tool '{integration_name}' successfully registered and saved to Saarthi Core Tool Registry!"
+            "status": "success",
+            "message": f"'{integration_name}' was saved successfully."
         })
 
     except Exception as e:
         print(f"❌ Error inserting tool record: {e}")
         return jsonify({
             "status": "error",
-            "message": f"Database storage failure: {str(e)}"
+            "message": "Something went wrong while saving this tool. Please try again."
         }), 500
 
 @bp.route('/api_connectors/delete_tool/<string:integration_name>', methods=['DELETE'])
@@ -126,16 +127,16 @@ def delete_tool(integration_name):
         
         print(f"🗑️ Successfully deleted tool from registry: {integration_name}")
         return jsonify({
-            "status": "success", 
-            "message": f"Tool '{integration_name}' successfully removed from Saarthi Core Registry!"
+            "status": "success",
+            "message": f"'{integration_name}' was removed successfully."
         })
 
     except Exception as e:
         print(f"❌ Error deleting tool record: {e}")
         return jsonify({
             "status": "error",
-            "message": f"Database execution failure: {str(e)}"
-        }), 500    
+            "message": "Something went wrong while removing this tool. Please try again."
+        }), 500
     
 @bp.route('/api_connectors/get_tools', methods=['GET'])
 def get_tools():
@@ -183,7 +184,7 @@ def get_tools():
         print(f"❌ Error fetching tool records: {e}")
         return jsonify({
             "status": "error",
-            "message": f"Database read transaction failure: {str(e)}"
+            "message": "Could not load your tools. Please refresh and try again."
         }), 500
 
 
@@ -207,17 +208,18 @@ def process_tool(integration_name):
         conn.close()
 
         if not exists:
-            return jsonify({"status": "error", "message": "Tool not found"}), 404
+            return jsonify({"status": "error", "message": "This tool could not be found."}), 404
 
         from app.services.automated_metamind import generate_router_config
         try:
             generate_router_config(force=True)
-            return jsonify({"status": "success", "message": "Router config updated"})
+            return jsonify({"status": "success", "message": "Tool is now active and ready to use."})
         except Exception as e:
-            return jsonify({"status": "error", "message": str(e)}), 500
+            print(f"❌ Error regenerating router config for '{integration_name}': {e}")
+            return jsonify({"status": "error", "message": "Something went wrong while activating this tool. Please try again."}), 500
     except Exception as e:
         print(f"❌ Error processing tool '{integration_name}': {e}")
-        return jsonify({"status": "error", "message": f"Process action failed: {str(e)}"}), 500
+        return jsonify({"status": "error", "message": "Something went wrong while activating this tool. Please try again."}), 500
 
     # Connect your DB execution helper here (e.g., db.execute or models.save)
     #print(f"Saving new tool to registry: {integration_name} -> {base_url}{endpoint}")

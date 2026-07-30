@@ -223,11 +223,11 @@
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
-                showStatusNotification(`✅ Tested Successfully! Endpoint returned status ${data.code}`, true);
+                showStatusNotification(`✅ ${data.message}`, true);
             } else {
-                showStatusNotification(`❌ Connection Failed: ${data.message}`, false);
+                showStatusNotification(`❌ ${data.message}`, false);
             }
-        }).catch(() => showStatusNotification("❌ System route connectivity network processing link error.", false));
+        }).catch(() => showStatusNotification("❌ Something went wrong. Please try again.", false));
     }
 
     function handleSaveApi() {
@@ -252,8 +252,7 @@
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
-                const isEdit = document.getElementById('editMode').value === "true";
-                showStatusNotification(isEdit ? `🎉 Configuration Updated Successfully!` : `🎉 Tool Saved and Registered Successfully!`, true);
+                showStatusNotification(`✅ ${data.message}`, true);
 
                 // Re-cache local context schema records string map
                 toolRegistryCache[payload.integrationName] = {
@@ -270,9 +269,9 @@
                 document.getElementById('activeToolsPanel').style.display = 'block';
                 resetFormState();
             } else {
-                showStatusNotification(`❌ Failed to commit data modifications: ${data.message}`, false);
+                showStatusNotification(`❌ ${data.message}`, false);
             }
-        }).catch(() => showStatusNotification("❌ Processing system error writing changes to repository database.", false));
+        }).catch(() => showStatusNotification("❌ Something went wrong. Please try again.", false));
     }
 
     function handleDeleteApi(integrationName) {
@@ -282,7 +281,7 @@
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
-                showStatusNotification(`🗑️ Removed Successfully! Tool was deleted from the registry database.`, true);
+                showStatusNotification(`✅ ${data.message}`, true);
                 const targetRow = document.getElementById(`row-${integrationName}`);
                 if (targetRow) targetRow.remove();
                 delete toolRegistryCache[integrationName];
@@ -291,9 +290,9 @@
                     document.getElementById('activeToolsPanel').style.display = 'none';
                 }
             } else {
-                showStatusNotification(`❌ Deletion execution system issue: ${data.message}`, false);
+                showStatusNotification(`❌ ${data.message}`, false);
             }
-        }).catch(() => showStatusNotification("❌ Network storage tracking removal failure exception logs.", false));
+        }).catch(() => showStatusNotification("❌ Something went wrong. Please try again.", false));
     }
 
     function handleProcessApi(integrationName, triggerBtn) {
@@ -305,12 +304,12 @@
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
-                showStatusNotification(`✅ ${data.message || 'Router config updated'}`, true);
+                showStatusNotification(`✅ ${data.message}`, true);
             } else {
-                showStatusNotification(`❌ ${data.message || 'Process failed'}`, false);
+                showStatusNotification(`❌ ${data.message}`, false);
             }
         })
-        .catch(() => showStatusNotification('❌ Failed to run process action.', false))
+        .catch(() => showStatusNotification('❌ Something went wrong. Please try again.', false))
         .finally(() => {
             triggerBtn.disabled = false;
             triggerBtn.innerText = originalText;
