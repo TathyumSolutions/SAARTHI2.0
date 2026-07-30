@@ -8,7 +8,9 @@ python-dotenv==1.1.1
 gunicorn
 gevent==24.10.1
 
-# --- unstructured---
+# --- unstructured ---
+pypdf
+unstructured
 
 # --- Database Drivers ---
 psycopg2-binary>=2.9.0

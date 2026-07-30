@@ -256,19 +256,20 @@ def process_unstructured_file(document_code):
             result = llm_service.process_to_embeddings(file_path, document_code=document_code)
             
             if "error" in result:
-                return jsonify({"status": "error", "message": result["error"]}), 500
+                print(f"❌ Error processing document {document_code}: {result['error']}")
+                return jsonify({"status": "error", "message": "Something went wrong while processing this file. Please try again."}), 500
 
             from app.services.automated_metamind import generate_router_config
             try:
                 generate_router_config(force=True)
-                router_sync_message = "Router config updated"
             except Exception as e:
-                return jsonify({"status": "error", "message": str(e)}), 500
+                print(f"❌ Error regenerating router config after processing {document_code}: {e}")
+                return jsonify({"status": "error", "message": "Something went wrong while activating this file. Please try again."}), 500
 
             # 3. Return the results to the Frontend
             return jsonify({
                 "status": "success",
-                "message": router_sync_message,
+                "message": "File processed and added to your knowledge base.",
                 "processing_message": result.get("message"),
                 "data": {
                     "filename": file_info.get('file_name'),
@@ -280,6 +281,7 @@ def process_unstructured_file(document_code):
 
     except Exception as e:
         # Catch-all for system errors
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"❌ Unexpected error processing document {document_code}: {e}")
+        return jsonify({"status": "error", "message": "Something went wrong while processing this file. Please try again."}), 500
 
 # Minimal GET route to keep the blueprint valid

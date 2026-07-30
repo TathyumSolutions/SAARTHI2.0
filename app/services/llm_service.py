@@ -4,9 +4,9 @@ import ssl
 import time
 import re
 from langchain_community.document_loaders import (
-    PyPDFLoader, 
-    Docx2txtLoader, 
-    TextLoader, 
+    PyMuPDFLoader,
+    Docx2txtLoader,
+    TextLoader,
     UnstructuredMarkdownLoader,
     UnstructuredRTFLoader
 )
@@ -423,7 +423,7 @@ class LLMService:
         try:
             # 1. Loader Selection
             if ext == ".pdf":
-                loader = PyPDFLoader(file_path)
+                loader = PyMuPDFLoader(file_path)
             elif ext in [".docx", ".doc"]:
                 loader = Docx2txtLoader(file_path)
             elif ext == ".md":
