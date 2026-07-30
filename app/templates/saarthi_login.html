@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Saarthi — Sign In</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1302,7 +1303,10 @@
           if (response.ok && result.status === "success") {
               // Store the secure JWT access token safely inside browser storage
               localStorage.setItem('saarthi_token', result.access_token);
-              window.location.href = '/index'; 
+              // Start every fresh login on a clean, blank chat instead of
+              // restoring whatever conversation was left over in storage.
+              localStorage.removeItem('saarthi_chat_history');
+              window.location.href = '/index';
           } else {
               alert(result.message || "Invalid credentials.");
           }
