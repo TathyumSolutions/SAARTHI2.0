@@ -546,25 +546,13 @@
 </style>
 {% endblock %}
 
-{% block user_menu %}
-<div class="user-dropdown-container" style="position: relative; display: inline-block;">
-    <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)" style="cursor: pointer;">A</div>
+{% block user_menu_extra %}
+<button type="button" class="user-dropdown-item" onclick="document.getElementById('inst-box').showModal()">
+    📝 Instructions.md
+</button>
+{% endblock %}
 
-    <div class="user-dropdown-menu" id="userDropdownMenu" style="display: none; position: absolute; right: 0; top: 100%; background: transparent; border: 1px solid #22252a; border-radius: 6px; padding: 8px; z-index: 1000; min-width: 140px;">
-        <a href="/settings" style="display: block; cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px; text-decoration: none;">
-            ⚙️ Settings
-        </a>
-        <hr style="border: none; border-top: 1px solid #1F2348; margin: 4px 0;">
-        <button type="button" onclick="document.getElementById('inst-box').showModal()" style="cursor: pointer; background: none; border: none; color: white; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
-            📝 Instructions.md
-        </button>
-        <hr style="border: none; border-top: 1px solid #1F2348; margin: 4px 0;">
-        <button type="button" onclick="handleLogout()" style="cursor: pointer; background: none; border: none; color: #FF5F57; width: 100%; text-align: left; padding: 6px 0; font-size: 14px;">
-            🚪 Log out
-        </button>
-    </div>
-</div>
-
+{% block content %}
 <dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid transparent; width: 400px; background: #292a33; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
     <h3 style="margin-top:0; font-family: sans-serif; color: white;">System Instructions</h3>
     <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; background: #07091e; border: 1px solid #1F2348; border-radius: 4px; font-family: inherit; color: white;" placeholder="Type system rules here..."></textarea>
@@ -582,9 +570,7 @@
         <button onclick="confirmDislikeSubmit()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
     </div>
 </dialog>
-{% endblock %}
 
-{% block content %}
 <!-- LLM Selector Bar -->
 <div class="llm-selector-bar">
     <div class="llm-group">
@@ -793,41 +779,8 @@
         _pendingDislike = null;
     }
 
-    // ==========================================
-    // USER MENU
-    // ==========================================
-    function toggleUserMenu(event) {
-        event.stopPropagation();
-        const menu = document.getElementById('userDropdownMenu');
-        const avatar = document.getElementById('avatarMenuBtn');
-
-        if (menu.style.display === 'none' || menu.style.display === '') {
-            menu.style.display = 'block';
-            avatar.style.setProperty('background-color', 'transparent', 'important');
-            avatar.style.setProperty('border', '1px solid #22252a', 'important');
-        } else {
-            menu.style.display = 'none';
-            avatar.style.removeProperty('background-color');
-            avatar.style.removeProperty('border');
-        }
-    }
-
-    function handleLogout() {
-        localStorage.removeItem('saarthi_token');
-        window.location.href = '/';
-    }
-
-    window.addEventListener('click', function () {
-        const menu = document.getElementById('userDropdownMenu');
-        const avatar = document.getElementById('avatarMenuBtn');
-        if (menu) {
-            menu.style.display = 'none';
-            if (avatar) {
-                avatar.style.removeProperty('background-color');
-                avatar.style.removeProperty('border');
-            }
-        }
-    });
+    // User menu (avatar, dropdown, logout) now lives in base.html so it
+    // works the same on every page, not just this one.
 
     // ==========================================
     // MODAL HELPERS

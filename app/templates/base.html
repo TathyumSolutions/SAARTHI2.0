@@ -126,6 +126,69 @@
             justify-content: center;
             cursor: pointer;
             font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            transition: box-shadow 0.15s ease;
+        }
+
+        .user-profile.active {
+            box-shadow: 0 0 0 2px var(--accent-green);
+        }
+
+        .user-dropdown-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .user-dropdown-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: calc(100% + 8px);
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px;
+            z-index: 1000;
+            min-width: 190px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
+
+        .user-dropdown-name {
+            padding: 6px 10px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            word-break: break-word;
+        }
+
+        .user-dropdown-divider {
+            border: none;
+            border-top: 1px solid var(--border-color);
+            margin: 4px 0;
+        }
+
+        .user-dropdown-item {
+            display: block;
+            box-sizing: border-box;
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            padding: 8px 10px;
+            font-size: 14px;
+            text-decoration: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .user-dropdown-item:hover {
+            background: var(--hover-bg);
+        }
+
+        .user-dropdown-item.danger {
+            color: #FF5F57;
         }
 
         .main-container {
@@ -284,9 +347,16 @@
                 <button class="mode-btn" data-mode="standalone" onclick="window.location.href='/index'">Standalone</button>
                 <button class="mode-btn" data-mode="api" onclick="window.location.href='/api_mode'">API Mode</button>
             </div>
-            {% block user_menu %}
-            <div class="user-profile">U</div>
-            {% endblock %}
+            <div class="user-dropdown-container">
+                <div class="user-profile" id="avatarMenuBtn" onclick="toggleUserMenu(event)">U</div>
+                <div class="user-dropdown-menu" id="userDropdownMenu">
+                    <div class="user-dropdown-name" id="userDropdownName">&nbsp;</div>
+                    <a href="/settings" class="user-dropdown-item">⚙️ Settings</a>
+                    {% block user_menu_extra %}{% endblock %}
+                    <hr class="user-dropdown-divider">
+                    <button type="button" class="user-dropdown-item danger" onclick="handleLogout()">🚪 Log out</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -419,6 +489,69 @@
                     return response;
                 });
         }
+
+        // ==========================================
+        // USER MENU
+        // Was previously only defined inside index.html's own script, so
+        // the avatar rendered on every other page (Settings, API
+        // Integrations, ...) but had no working dropdown at all - clicking
+        // it did nothing. Lives here now so it works the same everywhere.
+        // ==========================================
+        function toggleUserMenu(event) {
+            event.stopPropagation();
+            const menu = document.getElementById('userDropdownMenu');
+            const avatar = document.getElementById('avatarMenuBtn');
+            if (!menu) return;
+            const opening = menu.style.display !== 'block';
+            menu.style.display = opening ? 'block' : 'none';
+            if (avatar) avatar.classList.toggle('active', opening);
+        }
+
+        document.addEventListener('click', function () {
+            const menu = document.getElementById('userDropdownMenu');
+            const avatar = document.getElementById('avatarMenuBtn');
+            if (menu) menu.style.display = 'none';
+            if (avatar) avatar.classList.remove('active');
+        });
+
+        function handleLogout() {
+            localStorage.removeItem('saarthi_token');
+            localStorage.removeItem('saarthi_chat_history');
+            window.location.href = '/';
+        }
+
+        function loadCurrentUserIntoMenu() {
+            const avatar = document.getElementById('avatarMenuBtn');
+            const nameEl = document.getElementById('userDropdownName');
+            authFetch('/api/auth/profile')
+                .then(function (res) { return res && res.ok ? res.json() : null; })
+                .then(function (data) {
+                    const user = data && data.user;
+                    if (!user) return;
+                    const label = (user.name || user.email || '').trim();
+                    if (avatar && label) avatar.textContent = label.charAt(0).toUpperCase();
+                    if (nameEl) nameEl.textContent = user.name || user.email || '';
+                })
+                .catch(function () {});
+        }
+        document.addEventListener('DOMContentLoaded', loadCurrentUserIntoMenu);
+
+        // ==========================================
+        // BACK/FORWARD CACHE GUARD
+        // Pressing the browser's back button can restore a page straight
+        // from bfcache - the exact DOM as it was when you left, with none
+        // of this page's JS re-running - instead of loading it fresh. If
+        // that page was the authenticated app and the user has since
+        // logged out (or their token expired), back would show the stale
+        // authenticated page without ever re-checking. Forcing a real
+        // reload on a bfcache restore makes every auth check on this page
+        // run again, same as a fresh visit.
+        // ==========================================
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        });
 
         // ==========================================
         // SIDEBAR EXPAND / COLLAPSE SUB-ITEMS

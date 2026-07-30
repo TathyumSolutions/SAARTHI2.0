@@ -1212,6 +1212,13 @@
 
   /* Sign In / Sign Up tab switching */
   function switchTab(mode) {
+    // Sign up has more fields than sign in, so filling them out can leave
+    // .right-panel scrolled down; switching back to the shorter sign-in
+    // form without resetting that scroll position leaves the tabs (at the
+    // very top) scrolled out of view - looking like they vanished.
+    const rightPanel = document.querySelector('.right-panel');
+    if (rightPanel) rightPanel.scrollTop = 0;
+
     const wrap = document.getElementById('formWrap');
     const tabSignin = document.getElementById('tabSignin');
     const tabSignup = document.getElementById('tabSignup');
