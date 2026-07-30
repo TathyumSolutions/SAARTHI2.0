@@ -166,18 +166,22 @@
       "FILES": {
         "description": "Use when query asks for explanations, policies, summaries, company information, documentation content, or any textual knowledge stored in uploaded documents.",
         "collection": "saarthi_unstructured",
-        "points_count": 16
+        "points_count": 44
       },
       "API": {
         "description": "Use when query needs real-time data, live statuses, or explicitly matches any available integration capabilities listed in registered_tools below.",
         "registered_tools": [
           {
             "name": "CP",
-            "description": "/v1/bpi/currentprice.json"
+            "description": "CP"
+          },
+          {
+            "name": "Countries",
+            "description": "Country List"
           }
         ]
       }
     },
-    "generated_at": "2026-07-30T11:39:32.584698Z"
+    "generated_at": "2026-07-30T18:27:40.176667Z"
   }
 }

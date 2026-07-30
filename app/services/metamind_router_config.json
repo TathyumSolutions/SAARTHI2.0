@@ -1517,9 +1517,9 @@
         ],
         "vector_store_info": {
           "collection": "saarthi_unstructured",
-          "points_count": 16,
+          "points_count": 44,
           "chunk_type_breakdown": {
-            "text": 16,
+            "text": 44,
             "table": 0,
             "image": 0,
             "other": 0
@@ -1549,9 +1549,15 @@
         "registered_tools": [
           {
             "name": "CP",
-            "description": "/v1/bpi/currentprice.json",
+            "description": "CP",
             "method": "GET",
             "endpoint": "/v1/bpi/currentprice.json"
+          },
+          {
+            "name": "Countries",
+            "description": "Country List",
+            "method": "GET",
+            "endpoint": "/v1/countries"
           }
         ]
       }
@@ -1565,6 +1571,6 @@
       "rule_6": "When in doubt between DB and FILES -> prefer FILES",
       "output_format": "Return ONLY a JSON array. Example: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"DB\", \"FILES\"]"
     },
-    "generated_at": "2026-07-30T11:39:32.584698Z"
+    "generated_at": "2026-07-30T18:27:40.176667Z"
   }
 }
