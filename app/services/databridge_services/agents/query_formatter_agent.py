@@ -483,13 +483,18 @@ class QueryFormatterAgent:
         if sql_query:
             sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
 
-            match = re.search(r"(SELECT|INSERT|UPDATE|DELETE)[\s\S]+", sql_query, re.IGNORECASE)
+            # Only ever extract a SELECT - this used to also match
+            # INSERT/UPDATE/DELETE, meaning the LLM's generated SQL could
+            # get executed even if it was a write statement, with no
+            # blocklist at all for DROP/TRUNCATE/ALTER. This whole path is
+            # supposed to be read-only.
+            match = re.search(r"SELECT[\s\S]+", sql_query, re.IGNORECASE)
             if match:
                 sql_query = match.group(0).strip()
             if ";" in sql_query:
                 sql_query = sql_query.split(";")[0].strip() + ";"
-            sql_query = sql_query.replace("```sql", "").replace("```", "").strip()    
-    
+            sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+
         if not sql_query.strip():
             error_result = {
                 "status": "error",
@@ -500,12 +505,42 @@ class QueryFormatterAgent:
             print("\n[DEBUG] Returning error (empty SQL):", json.dumps(error_result, indent=4))
             return error_result
 
+        # Guardrail: this must be a single, read-only SELECT. Reject
+        # anything else outright rather than trusting the LLM-generated
+        # SQL never contains a destructive statement - defense in depth
+        # against prompt injection or a bad generation, not just the
+        # extraction step above.
+        normalized = sql_query.strip().rstrip(";").strip()
+        is_select_only = bool(re.match(r"(?is)^SELECT\b", normalized))
+        has_write_keyword = bool(re.search(
+            r"(?i)\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|GRANT|REVOKE|CREATE|EXEC|EXECUTE|CALL|MERGE)\b",
+            normalized
+        ))
+        if not is_select_only or has_write_keyword:
+            error_result = {
+                "status": "error",
+                "format": "error",
+                "message": "Only read-only SELECT queries can be run against your database.",
+                "query": sql_query
+            }
+            print("\n[DEBUG] Rejected non-SELECT query:", json.dumps(error_result, indent=4))
+            return error_result
+
+        # Cap result size if the generated query didn't already limit it -
+        # a broad SELECT with no LIMIT could otherwise pull an entire
+        # table into memory and back to the browser.
+        if not re.search(r"(?i)\bLIMIT\s+\d+\b", normalized):
+            sql_query = f"{normalized} LIMIT 1000;"
+
         try:
             db_url = (
                 f"postgresql+psycopg2://{self.db_config['user']}:{self.db_config['password']}@"
                 f"{self.db_config['host']}:{self.db_config['port']}/{self.db_config['dbname']}"
             )
-            engine = create_engine(db_url)
+            # 30s statement_timeout at the Postgres session level - a
+            # runaway query gets killed by the database itself rather than
+            # tying up the request indefinitely.
+            engine = create_engine(db_url, connect_args={"options": "-c statement_timeout=30000"})
             df = pd.read_sql_query(sql_query, engine)
             engine.dispose()
 

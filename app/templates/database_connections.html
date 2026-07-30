@@ -998,7 +998,7 @@
             data: requestData
         });
         
-        fetch(endpoint, {
+        authFetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData)
@@ -1065,7 +1065,7 @@
             formData.append('file', fileInput.files[0]);
             formData.append('workspace_id', 1);
 
-            fetch('/api/databases/excel', { method: 'POST', body: formData })
+            authFetch('/api/databases/excel', { method: 'POST', body: formData })
                 .then(res => res.json())
                 .then(data => {
                     if (data.error) {
@@ -1119,7 +1119,7 @@
             data: connectionData
         });
         
-        fetch(endpoint, {
+        authFetch(endpoint, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(connectionData)
@@ -1281,7 +1281,7 @@
     function loadConnections() {
         console.log('📥 Loading connections...');
         
-        fetch('/api/databases/')
+        authFetch('/api/databases/')
             .then(response => {
                 console.log('📡 Load connections response status:', response.status);
                 return response.json();
@@ -1355,7 +1355,7 @@
    /* function testExistingConnection(connectionId) {
         console.log('🔧 Testing existing connection:', connectionId);
         
-        fetch(`/api/databases/${connectionId}/test`, {
+        authFetch(`/api/databases/${connectionId}/test`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         })
@@ -1398,7 +1398,7 @@
         }
 
         // 4. Perform the actual POST request to the backend
-        fetch(`/api/databases/${connectionId}/test`, {
+        authFetch(`/api/databases/${connectionId}/test`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         })
@@ -1433,7 +1433,7 @@
         console.log('✏️ Editing connection:', connectionId);
         
         // Fetch connection details
-        fetch(`/api/databases/${connectionId}`)
+        authFetch(`/api/databases/${connectionId}`)
             .then(response => response.json())
             .then(data => {
                 const conn = data.database;
@@ -1480,7 +1480,7 @@
         
         console.log('🗑️ Deleting connection:', connectionId);
         
-        fetch(`/api/databases/${connectionId}`, {
+        authFetch(`/api/databases/${connectionId}`, {
             method: 'DELETE'
         })
         .then(response => response.json())
@@ -1653,7 +1653,7 @@
         btn.innerText = "Processing...";
 
         try {
-            const response = await fetch(`/api/databases/${id}/process`, { method: 'POST' });
+            const response = await authFetch(`/api/databases/${id}/process`, { method: 'POST' });
             const result = await response.json();
 
             if (response.ok && result.status === 'success') {

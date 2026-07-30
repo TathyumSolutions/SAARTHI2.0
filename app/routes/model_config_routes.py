@@ -33,6 +33,7 @@ def _resolve_user_id() -> int:
 
 
 @bp.route('/global-selection', methods=['GET'])
+@jwt_required()
 def get_global_model_selection():
     user_id = _resolve_user_id()
     config = get_global_default_config(user_id=user_id)
@@ -40,6 +41,7 @@ def get_global_model_selection():
 
 
 @bp.route('/global-selection', methods=['POST'])
+@jwt_required()
 def save_global_model_selection():
     user_id = _resolve_user_id()
     data = request.get_json() or {}
@@ -72,6 +74,7 @@ def save_global_model_selection():
 
 
 @bp.route('/global-selection/options', methods=['GET'])
+@jwt_required()
 def get_global_selection_options():
     user_id = _resolve_user_id()
     return jsonify(
@@ -90,12 +93,14 @@ def get_global_selection_options():
 
 
 @bp.route('/global-selection/preset/<string:preset_key>', methods=['GET'])
+@jwt_required()
 def get_global_selection_preset(preset_key):
     user_id = _resolve_user_id()
     payload = get_recommended_preset_payload(preset_key=preset_key, user_id=user_id)
     return jsonify(payload), 200
 
 @bp.route('/configurations', methods=['GET'])
+@jwt_required()
 #@jwt_required()
 def get_configurations():
     """
@@ -117,6 +122,7 @@ def get_configurations():
 
 
 @bp.route('/configurations', methods=['POST'])
+@jwt_required()
 #@jwt_required()
 def create_configuration():
     """
@@ -223,6 +229,7 @@ def delete_configuration(config_id):
     return jsonify({"message": f"Configuration '{config.name}' deleted successfully."}), 200
 
 @bp.route('/templates', methods=['GET'])
+@jwt_required()
 def get_configuration_templates():
     """
     Get configuration templates for different use cases
@@ -245,6 +252,7 @@ def get_configuration_templates():
     return jsonify({"templates": templates}), 200
 
 @bp.route('/parameters', methods=['GET'])
+@jwt_required()
 def get_available_parameters():
     """
     Get available configuration parameters

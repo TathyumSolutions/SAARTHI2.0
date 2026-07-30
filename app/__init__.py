@@ -6,6 +6,8 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flasgger import Swagger
 from config.config import config
 import os
@@ -20,6 +22,13 @@ from app.services.auth_db__init__ import init_auth_database
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
+# Rate limits are keyed by client IP, with a generous default so normal
+# use of the app is unaffected - the tighter, per-route limits (login,
+# chat, uploads, outbound tool calls) are what actually matter for abuse
+# and cost control. Falls back to in-memory storage (per-worker, so less
+# effective with multiple gunicorn workers) if Redis isn't reachable
+# rather than failing app startup over it.
+limiter = Limiter(key_func=get_remote_address, default_limits=["200 per minute"])
 
 print("Working on upload folder")
 print("Current file path:", os.path.abspath(__file__))
@@ -31,21 +40,42 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 def create_app(config_name='development'):
     """Create and configure the Flask application"""
     app = Flask(__name__)
-    CORS(app)
 
     # Load configuration
     app.config.from_object(config[config_name])
+
+    # CORS is restricted to an explicit allow-list (ALLOWED_ORIGINS env var,
+    # comma-separated). With no origins configured, cross-origin requests
+    # are simply denied - same-origin requests (the normal way this app is
+    # used, since Flask serves both the API and the templates) are
+    # unaffected by CORS either way. Do NOT widen this to "*" - the API
+    # carries a bearer token in requests, and a wildcard origin combined
+    # with credentialed requests is exactly the CSRF-adjacent hole CORS
+    # exists to prevent.
+    allowed_origins = [o.strip() for o in os.getenv('ALLOWED_ORIGINS', '').split(',') if o.strip()]
+    if allowed_origins:
+        CORS(app, origins=allowed_origins, supports_credentials=True)
+    else:
+        print("⚠️  ALLOWED_ORIGINS is not set - cross-origin requests will be denied. "
+              "Set ALLOWED_ORIGINS to a comma-separated list of trusted origins if a "
+              "separately-hosted frontend needs to call this API.")
+
     print("👉 FLASK IS CURRENTLY CONNECTING TO DATABASE:", app.config.get('SQLALCHEMY_DATABASE_URI'))
     # 🚀 Extract the exact live URI from your configuration
     live_db_uri = app.config.get('SQLALCHEMY_DATABASE_URI')
     print("👉 FLASK IS CURRENTLY CONNECTING TO DATABASE:", live_db_uri)
-    
+
     # 🚀 Run the separate database creator using that exact verified connection string!
     initialize_api_database(live_db_uri)
     initialize_chats_database(live_db_uri)
     init_auth_database(live_db_uri)
    # app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://saarthi:password@db:5432/saarthi_db"
-    app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
+    if config_name == 'production' and app.config.get('SECRET_KEY') in (None, 'dev-secret-key'):
+        raise RuntimeError(
+            "SECRET_KEY is not set. Refusing to start in production with the "
+            "insecure default - set the SECRET_KEY (and JWT_SECRET_KEY) "
+            "environment variables."
+        )
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 
     print("Working on initialisation")
@@ -53,6 +83,12 @@ def create_app(config_name='development'):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
+    # Flask-Limiter reads its storage backend from config at init time - set
+    # it to Redis (already used elsewhere in this app) so limits are shared
+    # across gunicorn's multiple worker processes, instead of each worker
+    # tracking its own counts independently.
+    app.config.setdefault('RATELIMIT_STORAGE_URI', app.config.get('REDIS_URL'))
+    limiter.init_app(app)
     swagger_template = {
         "swagger": "2.0",
         "info": {

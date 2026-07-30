@@ -86,6 +86,7 @@ def test_datasource(datasource_id):
     pass
 
 @bp.route('/types', methods=['GET'])
+@jwt_required()
 def get_datasource_types():
     """
     Get supported datasource types
@@ -176,6 +177,7 @@ METADATA_FILE = os.path.join(UPLOAD_FOLDER, 'file_metadata.json')
 #     except Exception as e:
 #         return jsonify({"status": "error", "message": str(e)}), 500
 @bp.route('/unstructured/<document_code>', methods=['DELETE'])
+@jwt_required()
 def delete_datasource(document_code):
     """
     Delete datasource file from metadata, disk storage, and Qdrant vector database
@@ -233,6 +235,7 @@ def delete_datasource(document_code):
         return jsonify({"status": "error", "message": str(e)}), 500    
 
 @bp.route('/unstructured/<document_code>/process', methods=['POST'])
+@jwt_required()
 def process_unstructured_file(document_code):
     try:
         # 1. Access the Metadata to find the physical file path

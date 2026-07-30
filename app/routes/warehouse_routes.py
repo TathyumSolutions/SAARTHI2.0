@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 import psycopg2
 from flask import Blueprint, jsonify, request, send_file
 
+from flask_jwt_extended import jwt_required
 from app.models.database_connection import DatabaseConnection
 from app.services.warehouse_generator import (
     WarehouseGenerationError,
@@ -39,6 +40,7 @@ def _serialize_target_connection(conn: DatabaseConnection) -> Dict[str, Any]:
 
 
 @bp.route("/api/warehouse/tables", methods=["GET"])
+@jwt_required()
 def warehouse_tables():
     try:
         return jsonify({"tables": get_discovered_tables()}), 200
@@ -47,6 +49,7 @@ def warehouse_tables():
 
 
 @bp.route("/api/warehouse/targets", methods=["GET"])
+@jwt_required()
 def warehouse_targets():
     try:
         workspace_id = request.args.get("workspace_id", type=int)
@@ -67,6 +70,7 @@ def warehouse_targets():
 
 
 @bp.route("/api/warehouse/history", methods=["GET"])
+@jwt_required()
 def warehouse_history():
     try:
         target_connection_id = request.args.get("target_connection_id", type=int)
@@ -144,6 +148,7 @@ def warehouse_history():
 
 
 @bp.route("/api/warehouse/generate", methods=["POST"])
+@jwt_required()
 def generate_warehouse_script():
     try:
         data = request.get_json() or {}

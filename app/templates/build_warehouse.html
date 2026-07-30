@@ -413,7 +413,7 @@
     }
 
     async function loadTargets() {
-        const res = await fetch('/api/warehouse/targets?workspace_id=1');
+        const res = await authFetch('/api/warehouse/targets?workspace_id=1');
         const data = await res.json();
         state.targets = data.connections || [];
 
@@ -422,7 +422,7 @@
     }
 
     async function loadTables() {
-        const res = await fetch('/api/warehouse/tables');
+        const res = await authFetch('/api/warehouse/tables');
         const data = await res.json();
         state.tables = data.tables || [];
         renderTableList();
@@ -435,7 +435,7 @@
         const targetId = state.selectedTargetId;
         const query = targetId ? `?target_connection_id=${targetId}` : '';
 
-        const res = await fetch(`/api/warehouse/history${query}`);
+        const res = await authFetch(`/api/warehouse/history${query}`);
         const data = await res.json();
 
         const history = data.history || [];
@@ -480,7 +480,7 @@
         status.textContent = 'Saving target connection...';
 
         try {
-            const res = await fetch('/api/databases/', {
+            const res = await authFetch('/api/databases/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -526,7 +526,7 @@
 
         status.textContent = 'Generating script...';
 
-        const res = await fetch('/api/warehouse/generate', {
+        const res = await authFetch('/api/warehouse/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

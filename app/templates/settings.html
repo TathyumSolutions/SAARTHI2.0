@@ -140,7 +140,7 @@
     }
 
     async function loadSettings() {
-        const res = await fetch('/api/settings/rag-config');
+        const res = await authFetch('/api/settings/rag-config');
         const config = await res.json();
         document.querySelectorAll('[data-path]').forEach(el => {
             const val = getByPath(config, el.dataset.path);
@@ -159,7 +159,7 @@
 
         const statusEl = document.getElementById('saveStatus');
         try {
-            const res = await fetch('/api/settings/rag-config', {
+            const res = await authFetch('/api/settings/rag-config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updates)

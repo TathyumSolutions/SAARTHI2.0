@@ -222,7 +222,7 @@
     }
 
     async function loadOptionsAndConfig() {
-        const optionsRes = await fetch('/api/model-config/global-selection/options');
+        const optionsRes = await authFetch('/api/model-config/global-selection/options');
         const optionsData = await optionsRes.json();
 
         state.models = optionsData.models || [];
@@ -231,7 +231,7 @@
         const mainSelect = document.getElementById('mainModelSelect');
         populateModelOptions(mainSelect, false);
 
-        const configRes = await fetch('/api/model-config/global-selection');
+        const configRes = await authFetch('/api/model-config/global-selection');
         const config = await configRes.json();
         state.globalConfig = config;
 
@@ -246,7 +246,7 @@
     }
 
     async function applyPreset(presetKey) {
-        const res = await fetch(`/api/model-config/global-selection/preset/${presetKey}`);
+        const res = await authFetch(`/api/model-config/global-selection/preset/${presetKey}`);
         const payload = await res.json();
 
         const status = document.getElementById('saveStatus');
@@ -284,7 +284,7 @@
         const status = document.getElementById('saveStatus');
         status.textContent = 'Saving...';
 
-        const res = await fetch('/api/model-config/global-selection', {
+        const res = await authFetch('/api/model-config/global-selection', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)

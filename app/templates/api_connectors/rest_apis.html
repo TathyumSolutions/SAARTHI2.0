@@ -128,7 +128,7 @@
 
     // Load active database configuration setups on refresh
     function loadActiveToolsFromDatabase() {
-        fetch('/api_connectors/get_tools')
+        authFetch('/api_connectors/get_tools')
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success' && data.tools.length > 0) {
@@ -180,7 +180,13 @@
         document.getElementById('endpoint').value = tool.endpoint;
         document.getElementById('method').value = tool.method;
         document.getElementById('authType').value = tool.auth_type;
-        document.getElementById('apiToken').value = tool.api_token || '';
+        // The saved token is never sent back to the browser (see
+        // get_tools in api_routes.py) - leave the field blank with a
+        // placeholder; submitting it blank keeps the existing token
+        // unchanged, only filling it in overwrites it.
+        const tokenInput = document.getElementById('apiToken');
+        tokenInput.value = '';
+        tokenInput.placeholder = tool.has_token ? 'Leave blank to keep the existing key' : 'Enter your secret key or authorization token';
         document.getElementById('apiDescription').value = tool.api_description;
 
         toggleAuthField();
@@ -215,7 +221,7 @@
             return;
         }
 
-        fetch('/api_connectors/test_connection', {
+        authFetch('/api_connectors/test_connection', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ baseUrl, endpoint, method })
@@ -244,7 +250,7 @@
             apiDescription: document.getElementById('apiDescription').value
         };
 
-        fetch('/api_connectors/save_tool', {
+        authFetch('/api_connectors/save_tool', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -254,6 +260,11 @@
             if (data.status === 'success') {
                 showStatusNotification(`✅ ${data.message}`, true);
 
+                // A blank apiToken on an edit means "keep the existing
+                // token" (see save_tool), so has_token stays true if one
+                // was already set, even though nothing was resubmitted.
+                const previouslyHadToken = !!(toolRegistryCache[payload.integrationName] && toolRegistryCache[payload.integrationName].has_token);
+
                 // Re-cache local context schema records string map
                 toolRegistryCache[payload.integrationName] = {
                     integration_name: payload.integrationName,
@@ -261,7 +272,7 @@
                     endpoint: payload.endpoint,
                     method: payload.method,
                     auth_type: payload.authType,
-                    api_token: payload.apiToken,
+                    has_token: !!payload.apiToken || previouslyHadToken,
                     api_description: payload.apiDescription
                 };
 
@@ -277,7 +288,7 @@
     function handleDeleteApi(integrationName) {
         if (!confirm(`Are you sure you want to completely remove tool '${integrationName}'?`)) return;
 
-        fetch(`/api_connectors/delete_tool/${integrationName}`, { method: 'DELETE' })
+        authFetch(`/api_connectors/delete_tool/${integrationName}`, { method: 'DELETE' })
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
@@ -300,7 +311,7 @@
         const originalText = triggerBtn.innerText;
         triggerBtn.innerText = 'Processing...';
 
-        fetch(`/api_connectors/tools/${encodeURIComponent(integrationName)}/process`, { method: 'POST' })
+        authFetch(`/api_connectors/tools/${encodeURIComponent(integrationName)}/process`, { method: 'POST' })
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {

@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify
 
 from app.routes.auth_routes import get_auth_db_connection
 from app.models import DatabaseConnection
+from flask_jwt_extended import jwt_required
 
 bp = Blueprint('resource_mapping', __name__, url_prefix='/api/resource-mapping')
 
@@ -33,6 +34,7 @@ def _get_file_metadata():
 
 
 @bp.route('/users', methods=['GET'])
+@jwt_required()
 def list_users():
     """Returns all users, for the resource-mapping dropdown."""
     try:
@@ -49,6 +51,7 @@ def list_users():
 
 
 @bp.route('/resources', methods=['GET'])
+@jwt_required()
 def list_resources():
     """Returns every available resource across all three types, normalized into one list."""
     resources = []
@@ -88,6 +91,7 @@ def list_resources():
 
 
 @bp.route('/bulk', methods=['POST'])
+@jwt_required()
 def create_mappings_bulk():
     """Creates a mapping for every (user_id, resource) combination submitted."""
     data = request.get_json(silent=True) or {}
@@ -125,6 +129,7 @@ def create_mappings_bulk():
 
 
 @bp.route('/all', methods=['GET'])
+@jwt_required()
 def get_all_mappings():
     """Returns every mapping across all users, joined with user name/email, for the admin table view."""
     try:
@@ -147,6 +152,7 @@ def get_all_mappings():
 
 
 @bp.route('/<int:user_id>', methods=['GET'])
+@jwt_required()
 def get_user_mappings(user_id):
     """Returns the resources a specific user is currently mapped to."""
     try:
@@ -167,6 +173,7 @@ def get_user_mappings(user_id):
 
 
 @bp.route('', methods=['POST'])
+@jwt_required()
 def create_mapping():
     """Connects a user to a resource."""
     data = request.get_json(silent=True) or {}
@@ -199,6 +206,7 @@ def create_mapping():
 
 
 @bp.route('/<int:mapping_id>', methods=['DELETE'])
+@jwt_required()
 def delete_mapping(mapping_id):
     """Removes a single mapping."""
     try:

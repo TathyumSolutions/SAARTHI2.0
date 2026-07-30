@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.services.stream_manager import stream_manager
+from app.utils.network_guard import is_safe_url
 
 def fetch_and_translate_tools():
     """
@@ -208,6 +209,20 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                 if api_meta:
                     base_url, endpoint, method = api_meta[0], api_meta[1], api_meta[2]
                     full_target_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+
+                    # Re-checked here, not just at registration time - the
+                    # host this resolves to today might not be the one it
+                    # resolved to when the tool was registered (DNS can
+                    # change), and this is what actually gets called.
+                    safe, reason = is_safe_url(full_target_url)
+                    if not safe:
+                        push_tool_event("start", "Calling the Live System", "This tool's endpoint is no longer reachable.")
+                        push_tool_event("complete", "Calling the Live System", "Blocked: the endpoint resolves to a private or internal address.")
+                        stream_manager.push_step(session_id, "DONE", is_sql=False)
+                        return {
+                            "answer": "This tool's endpoint can't be called because it points to a private or internal address.",
+                            "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
+                        }
 
                     push_tool_event("start", "Calling the Live System", f"Calling the live system with a {method} request.")
 

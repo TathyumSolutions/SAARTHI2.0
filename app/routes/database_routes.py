@@ -15,6 +15,7 @@ import logging
 import datetime
 import pandas as pd
 import psycopg2
+from flask_jwt_extended import jwt_required
 
 bp = Blueprint('database', __name__, url_prefix='/api/databases')
 
@@ -73,6 +74,7 @@ def serialize_connection(conn):
         return {}
 
 @bp.route('/', methods=['GET'])
+@jwt_required()
 def get_databases():
     """
     Get all configured database connections
@@ -102,6 +104,7 @@ def get_databases():
         return jsonify({'error': str(e), 'databases': []}), 200
 
 @bp.route('/', methods=['POST'])
+@jwt_required()
 def create_database_connection():
     """
     Create new database connection
@@ -161,6 +164,7 @@ def create_database_connection():
 
 
 @bp.route('/excel', methods=['POST'])
+@jwt_required()
 def create_excel_database():
     """
     Uploads an Excel file and turns it into ONE queryable table, treated
@@ -249,6 +253,7 @@ def create_excel_database():
             conn.close()
 
 @bp.route('/<int:db_id>', methods=['GET'])
+@jwt_required()
 def get_database(db_id):
     """
     Get specific database connection details
@@ -266,6 +271,7 @@ def get_database(db_id):
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/<int:db_id>', methods=['PUT'])
+@jwt_required()
 def update_database_connection(db_id):
     """
     Update database connection
@@ -297,6 +303,7 @@ def update_database_connection(db_id):
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/<int:db_id>', methods=['DELETE'])
+@jwt_required()
 def delete_database_connection(db_id):
     """
     Delete database connection
@@ -318,6 +325,7 @@ def delete_database_connection(db_id):
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/<int:db_id>/test', methods=['POST'])
+@jwt_required()
 
 def test_database_connection(db_id):
     """
@@ -381,6 +389,7 @@ def test_database_connection(db_id):
 
 
 @bp.route('/<int:db_id>/process', methods=['POST'])
+@jwt_required()
 def process_database_connection(db_id):
     """
     Explicit process action for a saved database connection.
@@ -410,6 +419,7 @@ def process_database_connection(db_id):
 
 
 @bp.route('/test', methods=['POST'])
+@jwt_required()
 def test_new_connection():
     """
     Test a new database connection (before saving)
@@ -470,6 +480,7 @@ def test_new_connection():
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/<int:db_id>/schema', methods=['GET'])
+@jwt_required()
 def get_database_schema(db_id):
     """
     Get database schema (tables, columns, relationships)
@@ -489,6 +500,7 @@ def get_database_schema(db_id):
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/<int:db_id>/tables', methods=['GET'])
+@jwt_required()
 def get_database_tables(db_id):
     """
     Get list of tables in database
@@ -506,6 +518,7 @@ def get_database_tables(db_id):
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/<int:db_id>/tables/<string:table_name>/columns', methods=['GET'])
+@jwt_required()
 def get_table_columns(db_id, table_name):
     """
     Get columns for specific table
@@ -523,6 +536,7 @@ def get_table_columns(db_id, table_name):
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/types', methods=['GET'])
+@jwt_required()
 def get_database_types():
     """
     Get supported database types
@@ -551,6 +565,7 @@ def get_database_types():
 #        return jsonify({"error": str(e)}), 500
     
 @bp.route('/run-agentic-process/<int:conn_id>', methods=['POST'])
+@jwt_required()
 def run_agentic_process(conn_id):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = "/app/logs"

@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 import yaml
 import os
+from flask_jwt_extended import jwt_required
 
 bp = Blueprint('settings', __name__)
 
@@ -20,6 +21,7 @@ def _deep_merge(base, updates):
 
 
 @bp.route('/api/settings/rag-config', methods=['GET'])
+@jwt_required()
 def get_rag_config():
     with open(RAG_CONFIG_PATH, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
@@ -27,6 +29,7 @@ def get_rag_config():
 
 
 @bp.route('/api/settings/rag-config', methods=['POST'])
+@jwt_required()
 def update_rag_config():
     updates = request.get_json()
     if not updates:

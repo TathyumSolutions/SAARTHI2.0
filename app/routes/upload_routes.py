@@ -7,6 +7,13 @@ from flask import Blueprint, request, jsonify, current_app, send_file, send_from
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import json
+from flask_jwt_extended import jwt_required
+from app import limiter
+
+try:
+    import magic
+except ImportError:
+    magic = None
 
 upload_bp = Blueprint('upload_bp', __name__)
 
@@ -14,8 +21,47 @@ UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
 METADATA_FILE = os.path.join(UPLOAD_FOLDER, 'file_metadata.json')
 ALLOWED_EXTENSIONS = set(['pdf', 'docx', 'txt', 'md', 'jpg', 'png', 'gif', 'svg', 'mp4', 'avi', 'mov', 'mkv', 'mp3', 'wav', 'flac', 'm4a', 'eml', 'msg', 'mbox'])
 
+# Regardless of what extension a file claims, its actual bytes should
+# never sniff as one of these - executables and scripts disguised with a
+# "safe" extension (e.g. a renamed .exe uploaded as "report.pdf"). This is
+# deliberately a denylist of dangerous types rather than an allow-list of
+# every legitimate MIME variant per extension: an allow-list would need
+# exhaustive per-extension coverage (libmagic reports several valid
+# variants for the same real format) and risks rejecting genuine files:
+# a denylist targets the actual threat without that fragility.
+_DANGEROUS_MIME_PREFIXES = (
+    'application/x-executable',
+    'application/x-dosexec',
+    'application/x-sharedlib',
+    'application/x-elf',
+    'application/x-mach-binary',
+    'application/x-msdownload',
+    'text/x-shellscript',
+    'text/x-python',
+    'text/x-perl',
+    'text/x-php',
+)
+
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def sniff_dangerous_content(file_path):
+    """Returns the sniffed MIME type if the file's actual bytes match a
+    known-dangerous type, else None. Fails open (returns None) if magic
+    isn't available or sniffing errors, rather than blocking uploads over
+    an unrelated failure in the sniffing library itself."""
+    if not magic:
+        return None
+    try:
+        mime = magic.from_file(file_path, mime=True)
+    except Exception as e:
+        print(f"⚠️  Could not sniff content type for {file_path}: {e}")
+        return None
+    if mime and mime.startswith(_DANGEROUS_MIME_PREFIXES):
+        return mime
+    return None
 
 def load_metadata():
     """Load file metadata from JSON file"""
@@ -35,6 +81,8 @@ def save_metadata(metadata):
         json.dump(metadata, f, indent=2)
 
 @upload_bp.route('/api/upload/unstructured', methods=['POST'])
+@jwt_required()
+@limiter.limit("20 per minute")
 def upload_unstructured():
     if 'files' not in request.files:
         return jsonify({'error': 'No files part'}), 400
@@ -64,6 +112,13 @@ def upload_unstructured():
             
             save_path = os.path.join(UPLOAD_FOLDER, filename)
             file.save(save_path)
+
+            dangerous_mime = sniff_dangerous_content(save_path)
+            if dangerous_mime:
+                os.remove(save_path)
+                print(f"⚠️  Rejected upload '{file.filename}': sniffed as {dangerous_mime}")
+                return jsonify({'error': f"'{file.filename}' was rejected: its content doesn't match a safe file type."}), 400
+
             file_size = os.path.getsize(save_path)
             now = datetime.now()
             date_str = now.strftime('%Y-%m-%d %H:%M')
@@ -97,12 +152,14 @@ def upload_unstructured():
     return jsonify({'files': uploaded_files}), 200
 
 @upload_bp.route('/api/upload/files', methods=['GET'])
+@jwt_required()
 def get_uploaded_files():
     """Get list of all uploaded files"""
     metadata = load_metadata()
     return jsonify({'files': metadata}), 200
 
 @upload_bp.route('/api/files/view/<document_code>', methods=['GET'])
+@jwt_required()
 def view_file(document_code):
     """View/download a file by document code"""
     metadata = load_metadata()
@@ -123,6 +180,7 @@ def view_file(document_code):
     return send_file(file_path, as_attachment=False)
 
 @upload_bp.route('/api/files/<document_code>', methods=['DELETE'])
+@jwt_required()
 def delete_file(document_code):
     """Delete a file by document code"""
     metadata = load_metadata()

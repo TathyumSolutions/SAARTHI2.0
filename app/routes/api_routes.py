@@ -1,7 +1,11 @@
 from flask import Blueprint, render_template, request, jsonify,current_app
+from flask_jwt_extended import jwt_required
 import requests
 import psycopg2
 from urllib.parse import urlparse
+from app.utils.crypto import encrypt, decrypt
+from app.utils.network_guard import is_safe_url
+from app import limiter
 # 1. Define the separate blueprint for API data sources
 bp = Blueprint('api_connectors', __name__)
 
@@ -19,15 +23,21 @@ def rest_apis_page():
     return render_template('api_connectors/rest_apis.html')
 
 @bp.route('/api_connectors/test_connection', methods=['POST'])
+@jwt_required()
+@limiter.limit("20 per minute")
 def test_connection():
     """Pings the target API endpoint to check if it's live"""
     data = request.get_json() or {}
     base_url = data.get('baseUrl', '')
     endpoint = data.get('endpoint', '')
     method = data.get('method', 'GET')
-    
+
     full_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
-    
+
+    safe, reason = is_safe_url(full_url)
+    if not safe:
+        return jsonify({"status": "error", "message": reason}), 400
+
     try:
         # Perform a live mock request with a short timeout
         response = requests.request(method=method, url=full_url, timeout=5)
@@ -44,45 +54,57 @@ def test_connection():
         })
 
 @bp.route('/api_connectors/save_tool', methods=['POST'])
+@jwt_required()
+@limiter.limit("20 per minute")
 def save_tool():
     """Receives form data to save the configured API tool"""
     data = request.get_json() or {}
-    
+
     # Extract form fields sent by the frontend
     integration_name = data.get('integrationName')
     base_url = data.get('baseUrl')
     endpoint = data.get('endpoint')
     method = data.get('method')
     auth_type = data.get('authType')
-    api_token = data.get('apiToken')
+    # Encrypted at rest. An empty value here means "leave the existing
+    # token alone" (the frontend never re-sends a previously-saved token
+    # back to the client, so on edit this field is blank unless the user
+    # is deliberately setting a new one) - handled via COALESCE/NULLIF
+    # below rather than overwriting a real token with an empty string.
+    api_token = encrypt(data.get('apiToken') or '')
     api_description = data.get('apiDescription')
 
     if not integration_name or not base_url or not endpoint:
         return jsonify({"status": "error", "message": "Missing required fields"}), 400
 
+    full_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+    safe, reason = is_safe_url(full_url)
+    if not safe:
+        return jsonify({"status": "error", "message": reason}), 400
+
     # Dynamically extract your exact container credentials directly from the app configuration
     base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-    
+
     # Parse the host/credentials to build the targeted DSN to your custom database room
     try:
         from urllib.parse import urlparse
         result = urlparse(base_uri)
         dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
-        
+
         # Connect and insert the row cleanly
         conn = psycopg2.connect(dsn)
         cursor = conn.cursor()
-        
+
         insert_query = """
         INSERT INTO registered_tools (integration_name, base_url, endpoint, method, auth_type, api_token, api_description)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (integration_name) 
-        DO UPDATE SET 
+        ON CONFLICT (integration_name)
+        DO UPDATE SET
             base_url = EXCLUDED.base_url,
             endpoint = EXCLUDED.endpoint,
             method = EXCLUDED.method,
             auth_type = EXCLUDED.auth_type,
-            api_token = EXCLUDED.api_token,
+            api_token = COALESCE(NULLIF(EXCLUDED.api_token, ''), registered_tools.api_token),
             api_description = EXCLUDED.api_description;
         """
         
@@ -106,6 +128,7 @@ def save_tool():
         }), 500
 
 @bp.route('/api_connectors/delete_tool/<string:integration_name>', methods=['DELETE'])
+@jwt_required()
 def delete_tool(integration_name):
     """Deletes a registered API tool from saarthi_api_db by its unique name"""
     base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
@@ -139,6 +162,7 @@ def delete_tool(integration_name):
         }), 500
     
 @bp.route('/api_connectors/get_tools', methods=['GET'])
+@jwt_required()
 def get_tools():
     """Retrieves all registered custom active endpoints directly out of saarthi_api_db"""
     base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
@@ -159,7 +183,10 @@ def get_tools():
         cursor.execute(select_query)
         rows = cursor.fetchall()
         
-        # Format database rows cleanly into digestible objects for the frontend fetch query
+        # Format database rows cleanly into digestible objects for the frontend fetch query.
+        # The stored token is never sent back to the browser once saved -
+        # only whether one exists, so the edit form can show that state
+        # without re-exposing the secret on every list load.
         tools_list = []
         for row in rows:
             tools_list.append({
@@ -168,7 +195,7 @@ def get_tools():
                 "endpoint": row[2],
                 "method": row[3],
                 "auth_type": row[4],
-                "api_token": row[5],
+                "has_token": bool(row[5]),
                 "api_description": row[6]
             })
             
@@ -189,6 +216,8 @@ def get_tools():
 
 
 @bp.route('/api_connectors/tools/<string:integration_name>/process', methods=['POST'])
+@jwt_required()
+@limiter.limit("20 per minute")
 def process_tool(integration_name):
     """
     Explicit process action for a saved API tool.

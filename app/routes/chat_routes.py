@@ -7,7 +7,7 @@ from flask import Response, stream_with_context
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 import queue
 import json
-from app import db
+from app import db, limiter
 from app.services.llm_service import LLMService
 from flask import Response, stream_with_context, request
 from app.services.stream_manager import stream_manager
@@ -67,6 +67,7 @@ def _resolve_router_snapshot(router_decision: str):
 
 
 @bp.route('/feedback', methods=['POST'])
+@jwt_required()
 def submit_feedback():
     data = request.get_json() or {}
 
@@ -100,6 +101,7 @@ def submit_feedback():
         return jsonify({'error': 'Failed to save feedback'}), 500
 
 @bp.route('/sessions', methods=['GET'])
+@jwt_required()
 def get_chat_sessions():
     """
     Get all chat sessions from saarthi_chats_db ordered chronologically.
@@ -118,6 +120,7 @@ def get_chat_sessions():
         return jsonify({"error": "Failed to load audit logs"}), 500
 
 @bp.route('/sessions', methods=['POST'])
+@jwt_required()
 def create_chat_session():
     """
     Save or Update a chat session's visual layout HTML string inside saarthi_chats_db.
@@ -151,6 +154,7 @@ def create_chat_session():
         return jsonify({"error": "Failed to update persistent history trail"}), 500
 
 @bp.route('/sessions/<string:session_id>', methods=['GET'])
+@jwt_required()
 def get_chat_session(session_id):
     """
     Get a specific chat session's layout logs to rebuild the workspace window.
@@ -171,6 +175,7 @@ def get_chat_session(session_id):
         return jsonify({"error": "Failed to open conversation node"}), 500
 
 @bp.route('/sessions/<string:session_id>', methods=['DELETE'])
+@jwt_required()
 def delete_chat_session(session_id):
     """
     🗑️ Delete a chat session permanently from the Audit Trail database.
@@ -283,7 +288,8 @@ llm_service = LLMService()
 router_service = RouterService()
 
 @bp.route('/message', methods=['POST'])
-#@jwt_required() # This requires a valid login token from your frontend
+@jwt_required()
+@limiter.limit("20 per minute")
 def send_message():
     """
     Send message in chat
@@ -349,6 +355,7 @@ def send_message():
     
 
 @bp.route('/stream_steps', methods=['GET'])
+@jwt_required(locations=["query_string"])
 def stream_steps():
     session_id = str(request.args.get('session_id', '1'))
 

@@ -152,6 +152,7 @@ from psycopg2.extras import RealDictCursor
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
+from app import limiter
 
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
@@ -174,6 +175,7 @@ def get_auth_db_connection():
 
 
 @bp.route('/register', methods=['POST'])
+@limiter.limit("10 per hour")
 def register():
     """
     User registration endpoint
@@ -243,6 +245,7 @@ def register():
 
 
 @bp.route('/login', methods=['POST'])
+@limiter.limit("10 per minute")
 def login():
     """
     User login endpoint

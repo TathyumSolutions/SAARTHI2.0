@@ -222,21 +222,21 @@
     }
 
     async function loadUsers() {
-        const res = await fetch('/api/resource-mapping/users');
+        const res = await authFetch('/api/resource-mapping/users');
         const data = await res.json();
         allUsers = data.users || [];
         renderUserList();
     }
 
     async function loadResources() {
-        const res = await fetch('/api/resource-mapping/resources');
+        const res = await authFetch('/api/resource-mapping/resources');
         const data = await res.json();
         allResources = data.resources || [];
         renderResourceList();
     }
 
     async function loadExistingMappings() {
-        const res = await fetch('/api/resource-mapping/all');
+        const res = await authFetch('/api/resource-mapping/all');
         const data = await res.json();
         existingMappings = data.mappings || [];
         renderExistingMappings();
@@ -289,7 +289,7 @@
         }
 
         for (const mapping of pendingMappings) {
-            const response = await fetch('/api/resource-mapping', {
+            const response = await authFetch('/api/resource-mapping', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -311,7 +311,7 @@
     }
 
     async function deleteExistingMapping(mappingId) {
-        const response = await fetch(`/api/resource-mapping/${mappingId}`, { method: 'DELETE' });
+        const response = await authFetch(`/api/resource-mapping/${mappingId}`, { method: 'DELETE' });
         if (!response.ok) {
             throw new Error('Failed to delete mapping.');
         }

@@ -500,7 +500,7 @@
         
         function loadUploadedFiles() {
             console.log('Loading uploaded files...');
-            fetch('/api/upload/files')
+            authFetch('/api/upload/files')
                 .then(function(response) {
                     if (response.ok) {
                         return response.json();
@@ -581,7 +581,7 @@
             });
             formData.append('file_type', selectedFileType);
             
-            fetch('/api/upload/unstructured', {
+            authFetch('/api/upload/unstructured', {
                 method: 'POST',
                 body: formData
             })
@@ -643,7 +643,7 @@
 
             resultContainer.innerHTML = '<span style="color: var(--accent-orange);">⌛ Processing...</span>';
 
-            fetch('/api/datasources/unstructured/' + documentCode + '/process', {
+            authFetch('/api/datasources/unstructured/' + documentCode + '/process', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -681,7 +681,7 @@
                 return;
             }
             
-            fetch('/api/datasources/unstructured/' + documentCode, {
+            authFetch('/api/datasources/unstructured/' + documentCode, {
                 method: 'DELETE'
             })
             .then(function(response) {

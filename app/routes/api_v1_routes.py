@@ -1,10 +1,14 @@
 from flask import Blueprint, request, jsonify
 from app.services.updated_router_services import RouterService
+from flask_jwt_extended import jwt_required
+from app import limiter
 
 bp = Blueprint('api_v1', __name__, url_prefix='/api/v1')
 router_service = RouterService()
 
 @bp.route('/chat', methods=['POST'])
+@jwt_required()
+@limiter.limit("20 per minute")
 def chat():
     """Chat endpoint
     ---

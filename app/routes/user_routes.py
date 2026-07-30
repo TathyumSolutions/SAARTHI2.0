@@ -70,6 +70,7 @@ def deactivate_user(user_id):
     pass
 
 @bp.route('/roles', methods=['GET'])
+@jwt_required()
 def get_roles():
     """
     Get available user roles

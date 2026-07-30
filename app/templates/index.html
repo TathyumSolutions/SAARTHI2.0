@@ -737,7 +737,7 @@
 
     async function loadSelfLearningMode() {
         try {
-            const res = await fetch('/api/settings/rag-config');
+            const res = await authFetch('/api/settings/rag-config');
             const cfg = await res.json();
             selfLearningModeEnabled = !!(cfg && cfg.self_learning && cfg.self_learning.enabled);
         } catch (e) {
@@ -765,13 +765,9 @@
     }
 
     async function sendFeedback(payload) {
-        const token = localStorage.getItem('saarthi_token');
-        await fetch('/api/feedback', {
+        await authFetch('/api/feedback', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { 'Authorization': 'Bearer ' + token } : {})
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
     }
@@ -976,7 +972,7 @@
             workspace_id: 1
         };
 
-        fetch('/api/model-config/configurations', {
+        authFetch('/api/model-config/configurations', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1088,7 +1084,7 @@
     function loadSavedDatabaseModels() {
         console.log("🔄 Fetching saved configurations from backend database...");
 
-        fetch('/api/model-config/configurations')
+        authFetch('/api/model-config/configurations')
             .then(response => {
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 return response.json();
@@ -1355,7 +1351,12 @@
         let liveStepIndex = 0;
         stepRenderQueue = Promise.resolve();
 
-        stepEventSource = new EventSource(`/api/chat/stream_steps?session_id=${sessionId}`);
+        // EventSource can't set an Authorization header, so the token
+        // travels as a query param instead (server accepts both - see
+        // JWT_TOKEN_LOCATION in config.py).
+        const streamToken = localStorage.getItem('saarthi_token');
+        const streamAuthParam = streamToken ? `&token=${encodeURIComponent(streamToken)}` : '';
+        stepEventSource = new EventSource(`/api/chat/stream_steps?session_id=${sessionId}${streamAuthParam}`);
         stepEventSource.onopen = function () {
             console.log("⚡ SSE Connection opened successfully!");
             if (onConnectionOpen) {
@@ -1573,7 +1574,7 @@
         lastUserQuestion = message;
 
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        renderMessage('You', `<span style="color: #E2E8F0;">${message}</span>`, '👤', time, false);
+        renderMessage('You', `<span style="color: #E2E8F0;">${escapeAttr(message)}</span>`, '👤', time, false);
         renderMessage('Saarthi AI', `
             <span id="typing-dots" class="typing-dots" aria-label="Saarthi is typing">
                 <span></span><span></span><span></span>
@@ -1584,7 +1585,7 @@
         initializeLiveStepStream(currentSessionId, async function () {
 
             try {
-                const response = await fetch('/api/chat/message', {
+                const response = await authFetch('/api/chat/message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1625,8 +1626,8 @@
                     }
                     else if (ui.table && ui.table.length > 0) {
                         const headers = Object.keys(ui.table[0]);
-                        const headerHtml = headers.map(key => `<th style="padding:10px; text-align:left; background:transparent; border-bottom:2px solid #e2e8f0; color:#666;">${key}</th>`).join('');
-                        const rowsHtml = ui.table.map(row => `<tr>${headers.map(h => `<td style="padding:10px; border-bottom:1px solid #eee; color:#333;">${row[h]}</td>`).join('')}</tr>`).join('');
+                        const headerHtml = headers.map(key => `<th style="padding:10px; text-align:left; background:transparent; border-bottom:2px solid #e2e8f0; color:#666;">${escapeAttr(key)}</th>`).join('');
+                        const rowsHtml = ui.table.map(row => `<tr>${headers.map(h => `<td style="padding:10px; border-bottom:1px solid #eee; color:#333;">${escapeAttr(row[h])}</td>`).join('')}</tr>`).join('');
 
                         extraOutput += `
                             <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05); overflow-x:auto;">
@@ -1646,8 +1647,8 @@
 
                             extraOutput += `
                                 <div style="padding: 20px; border-radius: 14px; background: rgba(255,255,255,0.05); border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: inline-block; min-width: 220px; margin-top: 15px;">
-                                    <div style="font-size: 11px; color: #a0aec0; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${kpiLabel.replace(/_/g, ' ')}</div>
-                                    <div style="font-size: 32px; font-weight: 700; color: #ffffff; margin-top: 5px;">${kpiValue}</div>
+                                    <div style="font-size: 11px; color: #a0aec0; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${escapeAttr(kpiLabel.replace(/_/g, ' '))}</div>
+                                    <div style="font-size: 32px; font-weight: 700; color: #ffffff; margin-top: 5px;">${escapeAttr(kpiValue)}</div>
                                     <div style="font-size: 12px; color: #48bb78; margin-top: 5px;">✅ Single summary entry</div>
                                 </div>`;
                         }
@@ -1661,7 +1662,7 @@
                             return `
                             <li style="margin-bottom: 8px; display: flex; gap: 8px; align-items: flex-start;">
                                 <span style="color: #4a90e2; font-weight: bold;">•</span>
-                                <span style="color: #E2E8F0; font-size: 14px;">${textValue}</span>
+                                <span style="color: #E2E8F0; font-size: 14px;">${escapeAttr(textValue)}</span>
                             </li>
                             `;
                         }).join('');
@@ -1791,7 +1792,7 @@
             if (typeof currentSessionId !== 'undefined') {
                 currentSessionId = pendingSessionId;
             }
-            fetch(`/api/chat/sessions/${pendingSessionId}`)
+            authFetch(`/api/chat/sessions/${pendingSessionId}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data.session && chatContainer) {

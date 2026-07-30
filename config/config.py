@@ -13,6 +13,15 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'jwt-secret-key')
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
+    # Default is headers only - query-string tokens (needed for the SSE
+    # Chain of Thought stream, since browsers' native EventSource can't set
+    # custom headers) are opted into per-route with
+    # @jwt_required(locations=["query_string"]), not globally. Query
+    # strings routinely end up in server access logs and browser history,
+    # so every other endpoint should only ever accept the Authorization
+    # header.
+    JWT_TOKEN_LOCATION = ['headers']
+    JWT_QUERY_STRING_NAME = 'token'
     
     # CORS
     CORS_HEADERS = 'Content-Type'
