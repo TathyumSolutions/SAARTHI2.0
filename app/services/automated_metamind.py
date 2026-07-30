@@ -53,7 +53,19 @@ QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "saarthi_unstructured")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_PATH = os.path.join(BASE_DIR, "metamind_router_config.json")
+SUMMARY_OUTPUT_PATH = os.path.join(BASE_DIR, "metamind_router_config_summary.json")
 HASH_PATH = os.path.join(BASE_DIR, ".router_config_hash")
+
+
+# These are Saarthi's own internal application tables - never show them
+# to the AI as if they were customer/business data.
+INTERNAL_SYSTEM_TABLES = {
+    "charts", "reports", "audit_logs", "activities",
+    "chat_sessions", "chat_messages", "database_connections",
+    "datasources", "response_feedback", "model_configurations",
+    "queries", "saved_queries", "app_users", "workspaces",
+    "users", "user_resource_mapping", "alembic_version",
+}
 
 
 # ============================================================
@@ -122,6 +134,9 @@ def introspect_databridge_db():
 
             for row in table_rows:
                 table_name = row["table_name"]
+
+                if table_name in INTERNAL_SYSTEM_TABLES:
+                    continue
 
                 comment_row = _safe_fetchone(
                     cur,
@@ -446,8 +461,46 @@ def introspect_qdrant():
             print(f"⚠️ [FILES] Collection '{QDRANT_COLLECTION}' is empty, skipping FILES datasource.")
             return None
 
-        print(f"✅ [FILES] Qdrant collection '{QDRANT_COLLECTION}' has {points_count} points")
-        return {"collection": QDRANT_COLLECTION, "points_count": points_count}
+        # Count chunks by type (text / table / image) so the router knows
+        # what kind of content is actually available in FILES.
+        chunk_type_counts = {"text": 0, "table": 0, "image": 0, "other": 0}
+        next_offset = None
+        while True:
+            points, next_offset = client.scroll(
+                collection_name=QDRANT_COLLECTION,
+                limit=500,
+                offset=next_offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                chunk_type = payload.get("chunk_type")
+
+                # Backward-compatible fallback for older points without chunk_type.
+                if not chunk_type:
+                    source = str(payload.get("source", "")).lower()
+                    if "table" in source:
+                        chunk_type = "table"
+                    elif "image" in source:
+                        chunk_type = "image"
+                    else:
+                        chunk_type = "text"
+
+                chunk_type = str(chunk_type).lower()
+                if chunk_type not in chunk_type_counts:
+                    chunk_type = "other"
+                chunk_type_counts[chunk_type] += 1
+
+            if next_offset is None:
+                break
+
+        print(f"✅ [FILES] Qdrant collection '{QDRANT_COLLECTION}' has {points_count} points: {chunk_type_counts}")
+        return {
+            "collection": QDRANT_COLLECTION,
+            "points_count": points_count,
+            "chunk_type_breakdown": chunk_type_counts,
+        }
 
     except Exception as e:
         print(f"⚠️ [FILES] Could not connect to Qdrant: {e}")
@@ -559,6 +612,63 @@ def save_hash(new_hash):
 # MAIN ENTRYPOINT
 # ============================================================
 
+def build_routing_menu_summary(menu: dict) -> dict:
+    """
+    Strips the full routing menu down to names + descriptions only -
+    no data_type, nullable, unique_values, null_count, sample_values,
+    row_count, or constraints. Used as a smaller, faster-to-scan config
+    for lightweight routing/UI purposes. Structure mirrors the full menu
+    so downstream consumers can treat it the same way.
+    """
+    full_datasources = menu.get("routing_menu", {}).get("datasources", {})
+    summary_datasources = {}
+
+    if "DB" in full_datasources:
+        summary_tables = {}
+        for table_name, table_data in full_datasources["DB"].get("tables", {}).items():
+            summary_tables[table_name] = {
+                "description": table_data.get("description", ""),
+                "columns": [col.get("name") for col in table_data.get("columns", [])]
+            }
+        summary_datasources["DB"] = {
+            "description": full_datasources["DB"].get("description", ""),
+            "tables": summary_tables
+        }
+
+    if "FILES" in full_datasources:
+        vs_info = full_datasources["FILES"].get("vector_store_info", {})
+        summary_datasources["FILES"] = {
+            "description": full_datasources["FILES"].get("description", ""),
+            "collection": vs_info.get("collection", ""),
+            "points_count": vs_info.get("points_count", 0)
+        }
+
+    if "API" in full_datasources:
+        summary_datasources["API"] = {
+            "description": full_datasources["API"].get("description", ""),
+            "registered_tools": [
+                {"name": t.get("name"), "description": t.get("description", "")}
+                for t in full_datasources["API"].get("registered_tools", [])
+            ]
+        }
+
+    return {
+        "routing_menu_summary": {
+            "datasources": summary_datasources,
+            "generated_at": menu.get("routing_menu", {}).get("generated_at")
+        }
+    }
+
+
+def generate_router_config_summary(menu: dict):
+    """Writes the trimmed summary JSON to disk. Call this only after the
+    full menu has already been built/written by generate_router_config."""
+    summary = build_routing_menu_summary(menu)
+    with open(SUMMARY_OUTPUT_PATH, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"✅ Router config summary regenerated -> {SUMMARY_OUTPUT_PATH}")
+    return SUMMARY_OUTPUT_PATH
+
 def generate_router_config(force=False):
     print("\n" + "=" * 60)
     print("🧠 METAMIND ROUTER CONFIG GENERATOR")
@@ -584,6 +694,8 @@ def generate_router_config(force=False):
 
     with open(OUTPUT_PATH, "w") as f:
         json.dump(menu, f, indent=2)
+
+    generate_router_config_summary(menu)
 
     save_hash(new_hash)
 

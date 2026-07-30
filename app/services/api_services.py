@@ -60,239 +60,235 @@ def fetch_and_translate_tools():
 
 
 def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', ollama_config=None,display_query=None,system_instructions=''):
-      """
-      Dynamically routes queries to models, strictly enforcing tool execution,
-      performs the actual API execution, and returns a fully parsed response context.
-      """
+    """
+    Dynamically routes queries to models, strictly enforcing tool execution,
+    performs the actual API execution, and returns a fully parsed response context.
+    """
 
-      log_query = display_query if display_query else user_message
-      tool_chain_of_thought = []
-      session_id = str(session_id)
-      
-      def push_tool_event(event_type, title, description):
-          event_data = {
-              "event": event_type,
-              "title": title,
-              "description": description,
-              "is_sql": False
-          }
+    log_query = display_query if display_query else user_message
+    tool_chain_of_thought = []
+    session_id = str(session_id)
 
-          if event_type == "start":
-              tool_chain_of_thought.append(f"{title} - {description}")
-          
-          stream_manager.push_step(session_id, event_data, is_sql=False)
-          time.sleep(0.3)
+    def push_tool_event(event_type, title, description):
+        event_data = {
+            "event": event_type,
+            "title": title,
+            "description": description,
+            "is_sql": False
+        }
 
-      system_prompt = (
-          "You are Saarthi, a strict enterprise automation agent. You operate EXCLUSIVELY by executing available tools.\n\n"
-          "Rules:\n"
-          "1. You are NOT a general assistant. You cannot answer casual greetings, general knowledge questions, or conversational text.\n"
-          "2. If the user's request matches an available tool description, you MUST call that tool.\n"
-          "3. If the user's request does NOT match any available tool, you must output exactly this text: "
-          "'ERROR: No matching workflow tool found to execute this request.' Do not write anything else."
-      )
-      if system_instructions.strip():
+        if event_type == "start":
+            tool_chain_of_thought.append(f"{title} - {description}")
+
+        stream_manager.push_step(session_id, event_data, is_sql=False)
+        time.sleep(0.3)
+
+    system_prompt = (
+        "You are Saarthi, a strict enterprise automation agent. You operate EXCLUSIVELY by executing available tools.\n\n"
+        "Rules:\n"
+        "1. You are NOT a general assistant. You cannot answer casual greetings, general knowledge questions, or conversational text.\n"
+        "2. If the user's request matches an available tool description, you MUST call that tool.\n"
+        "3. If the user's request does NOT match any available tool, you must output exactly this text: "
+        "'ERROR: No matching workflow tool found to execute this request.' Do not write anything else."
+    )
+    if system_instructions.strip():
         system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
-      try:
-          push_tool_event("start", "Received the user query", f"User query: '{user_message}'")
-          messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_message)]
-          push_tool_event("complete", "Received the user query", f"Query successfully processed: '{user_message}'")
-          
-          push_tool_event("start", "Context Intent Analysis", "Evaluating structural execution state limits...")
-          push_tool_event("complete", "Context Intent Analysis", "Analysis complete.")
 
-          push_tool_event("start", "Schema Blueprint Matching", "Evaluating intent patterns against active JSON database schemas...")
-          
-          has_tools = False
-          tool_payload = None
-          generation_text = ""
-          
-          is_local_ollama = False
+    try:
+        push_tool_event("start", "Your Question", f"\"{user_message}\"")
+        messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_message)]
+        push_tool_event("complete", "Your Question", f"\"{user_message}\"")
 
-          # --- ROUTE A: OPENAI ---
-          if model_name in ["gpt-4o-mini", "gpt-4o"]:
-              dynamic_llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
-              ai_response = dynamic_llm.bind_tools(llm_tools_list).invoke(messages)
-              
-              has_tools = bool(ai_response.tool_calls)
-              tool_payload = ai_response.tool_calls if has_tools else None
-              generation_text = ai_response.content
+        push_tool_event("start", "Understanding What You Need", "Reviewing your request to identify what action is needed.")
+        push_tool_event("complete", "Understanding What You Need", "I understood what you need.")
+        push_tool_event("start", "Finding the Right Tool", "Selecting the best available tool for your request.")
 
-          # --- ROUTE B: LOCAL OLLAMA ---
-          elif model_name == "llama3":
-              is_local_ollama = True
-              if not ollama_config:
-                  ollama_config = {"url": "http://localhost:11434/api/chat", "temperature": 0}
-              payload = {
-                  "model": "llama3",
-                  "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
-                  "tools": llm_tools_list,
-                  "stream": False,
-                  "options": {"temperature": 0}
-              }
-              response = requests.post(ollama_config["url"], json=payload, timeout=300)
-              response.raise_for_status()
-              ai_message = response.json().get("message", {})
-              
-              has_tools = bool(ai_message.get("tool_calls"))
-              tool_payload = ai_message.get("tool_calls") if has_tools else None
-              generation_text = ai_message.get("content", "")
+        has_tools = False
+        tool_payload = None
+        generation_text = ""
+        is_local_ollama = False
 
-          # --- ROUTE C: DYNAMIC CLOUD PROVIDERS (api://) ---
-          elif str(model_name).startswith("api://"):
-              actual_model = model_name.replace("api://", "").lower()
-              if "claude" in actual_model:
-                  from langchain_anthropic import ChatAnthropic
-                  dynamic_llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY"))
-              elif "gemini" in actual_model:
-                  from langchain_google_genai import ChatGoogleGenerativeAI
-                  dynamic_llm = ChatGoogleGenerativeAI(model=actual_model, temperature=0, google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY"))
-              elif "deepseek" in actual_model:
-                  dynamic_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"), openai_api_base="https://api.deepseek.com/v1")
-              else:
-                  dynamic_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
+        # --- ROUTE A: OPENAI ---
+        if model_name in ["gpt-4o-mini", "gpt-4o"]:
+            dynamic_llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
+            ai_response = dynamic_llm.bind_tools(llm_tools_list).invoke(messages)
+            has_tools = bool(ai_response.tool_calls)
+            tool_payload = ai_response.tool_calls if has_tools else None
+            generation_text = ai_response.content
 
-              ai_response = dynamic_llm.bind_tools(llm_tools_list).invoke(messages)
-              has_tools = bool(ai_response.tool_calls)
-              tool_payload = ai_response.tool_calls if has_tools else None
-              generation_text = ai_response.content
+        # --- ROUTE B: LOCAL OLLAMA ---
+        elif model_name == "llama3":
+            is_local_ollama = True
+            if not ollama_config:
+                ollama_config = {"url": "http://localhost:11434/api/chat", "temperature": 0}
+            payload = {
+                "model": "llama3",
+                "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
+                "tools": llm_tools_list,
+                "stream": False,
+                "options": {"temperature": 0}
+            }
+            response = requests.post(ollama_config["url"], json=payload, timeout=300)
+            response.raise_for_status()
+            ai_message = response.json().get("message", {})
+            has_tools = bool(ai_message.get("tool_calls"))
+            tool_payload = ai_message.get("tool_calls") if has_tools else None
+            generation_text = ai_message.get("content", "")
 
-          # --- ROUTE D: DYNAMIC LOCAL OLLAMA (ollama://) ---
-          elif str(model_name).startswith("ollama://"):
-              is_local_ollama = True
-              actual_model = model_name.replace("ollama://", "")
-              if not ollama_config:
-                  ollama_config = {"url": "http://localhost:11434/api/chat", "temperature": 0}
-              payload = {
-                  "model": actual_model,
-                  "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
-                  "tools": llm_tools_list,
-                  "stream": False,
-                  "options": {"temperature": 0}
-              }
-              response = requests.post(ollama_config["url"], json=payload, timeout=300)
-              response.raise_for_status()
-              ai_message = response.json().get("message", {})
-              has_tools = bool(ai_message.get("tool_calls"))
-              tool_payload = ai_message.get("tool_calls") if has_tools else None
-              generation_text = ai_message.get("content", "")
-          else:
-              raise ValueError(f"Target '{model_name}' has no active route handler.")
+        # --- ROUTE C: DYNAMIC CLOUD PROVIDERS (api://) ---
+        elif str(model_name).startswith("api://"):
+            actual_model = model_name.replace("api://", "").lower()
+            if "claude" in actual_model:
+                from langchain_anthropic import ChatAnthropic
+                dynamic_llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY"))
+            elif "gemini" in actual_model:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                dynamic_llm = ChatGoogleGenerativeAI(model=actual_model, temperature=0, google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY"))
+            elif "deepseek" in actual_model:
+                dynamic_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"), openai_api_base="https://api.deepseek.com/v1")
+            else:
+                dynamic_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
 
-          push_tool_event("complete", "Schema Blueprint Matching", "Model evaluation complete.")
+            ai_response = dynamic_llm.bind_tools(llm_tools_list).invoke(messages)
+            has_tools = bool(ai_response.tool_calls)
+            tool_payload = ai_response.tool_calls if has_tools else None
+            generation_text = ai_response.content
 
-          if not has_tools:
-              push_tool_event("start", "Response Synthesis", "Parsing execution payload...")
-              push_tool_event("complete", "Response Synthesis", "Rejection rule triggered.")
-              stream_manager.push_step(session_id, "DONE", is_sql=False)
-              return {
-                  "answer": "ERROR: No matching workflow tool found to execute this request.",
-                  "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
-              }
+        # --- ROUTE D: DYNAMIC LOCAL OLLAMA (ollama://) ---
+        elif str(model_name).startswith("ollama://"):
+            is_local_ollama = True
+            actual_model = model_name.replace("ollama://", "")
+            if not ollama_config:
+                ollama_config = {"url": "http://localhost:11434/api/chat", "temperature": 0}
+            payload = {
+                "model": actual_model,
+                "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
+                "tools": llm_tools_list,
+                "stream": False,
+                "options": {"temperature": 0}
+            }
+            response = requests.post(ollama_config["url"], json=payload, timeout=300)
+            response.raise_for_status()
+            ai_message = response.json().get("message", {})
+            has_tools = bool(ai_message.get("tool_calls"))
+            tool_payload = ai_message.get("tool_calls") if has_tools else None
+            generation_text = ai_message.get("content", "")
+        else:
+            raise ValueError(f"Target '{model_name}' has no active route handler.")
 
-          if has_tools and not generation_text:
-              try:
-                  target_name = tool_payload[0]['name'] if isinstance(tool_payload[0], dict) else tool_payload[0].name
-                  tool_args = tool_payload[0].get('args', {}) if isinstance(tool_payload[0], dict) else tool_payload[0].arguments
-                  if isinstance(tool_args, str):
-                      tool_args = json.loads(tool_args)
+        push_tool_event("complete", "Finding the Right Tool", "Tool selection complete.")
 
-                  base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-                  result = urlparse(base_uri)
-                  dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
-                  
-                  conn = psycopg2.connect(dsn)
-                  cursor = conn.cursor()
-                  cursor.execute("SELECT base_url, endpoint, method FROM registered_tools WHERE integration_name = %s LIMIT 1;", (target_name,))
-                  api_meta = cursor.fetchone()
-                  cursor.close()
-                  conn.close()
+        if not has_tools:
+            push_tool_event("start", "Putting Your Answer Together", "Preparing your final response.")
+            push_tool_event("complete", "Putting Your Answer Together", "No matching tool was available for this request.")
+            stream_manager.push_step(session_id, "DONE", is_sql=False)
+            return {
+                "answer": "ERROR: No matching workflow tool found to execute this request.",
+                "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
+            }
 
-                  if api_meta:
-                      base_url, endpoint, method = api_meta[0], api_meta[1], api_meta[2]
-                      full_target_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
-                      
-                      push_tool_event("start", "Live Tool Execution", f"Executing REST API via {method} protocol...")
-                      
-                      if str(method).upper() == "POST":
-                          api_res = requests.post(url=full_target_url, json=tool_args, timeout=15)
-                      else:
-                          api_res = requests.get(url=full_target_url, params=tool_args, timeout=15)
-                          
-                      raw_data = api_res.json()
-                      push_tool_event("complete", "Live Tool Execution", "Dynamic REST execution complete.")
-                      
-                      push_tool_event("start", "Response Synthesis", "Parsing execution payload...")
-                      
-                      refinement_sys_msg = "You are an expert data analysis engine. Read the following raw API dataset payload context and provide a precise, targeted answer to the user's specific request. Do not include unneeded object structures or JSON syntax wrappers."
-                      refinement_usr_msg = f"User intent request: {user_message}\n\nLive API Fetched Raw Dataset Context:\n{str(raw_data)[:3500]}"
-                      
-                      # Reuses selected local Ollama model identifier cleanly
-                      if is_local_ollama:
-                          target_ollama_model = model_name.replace("ollama://", "") if "ollama://" in model_name else "llama3"
-                          refine_payload = {
-                              "model": target_ollama_model,
-                              "messages": [{"role": "system", "content": refinement_sys_msg}, {"role": "user", "content": refinement_usr_msg}],
-                              "stream": False,
-                              "options": {"temperature": 0}
-                          }
-                          refine_res = requests.post(ollama_config["url"], json=refine_payload, timeout=300)
-                          refine_res.raise_for_status()
-                          generation_text = refine_res.json().get("message", {}).get("content", "")
-                      
-                      # Reuses selected cloud model type cleanly
-                      else:
-                          refinement_prompt = [
-                              SystemMessage(content=refinement_sys_msg),
-                              HumanMessage(content=refinement_usr_msg)
-                          ]
-                          
-                          if model_name in ["gpt-4o-mini", "gpt-4o"]:
-                              refinement_llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
-                          elif str(model_name).startswith("api://"):
-                              actual_model = model_name.replace("api://", "").lower()
-                              if "claude" in actual_model:
-                                  from langchain_anthropic import ChatAnthropic
-                                  refinement_llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY"))
-                              elif "gemini" in actual_model:
-                                  from langchain_google_genai import ChatGoogleGenerativeAI
-                                  refinement_llm = ChatGoogleGenerativeAI(model=actual_model, temperature=0, google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY"))
-                              elif "deepseek" in actual_model:
-                                  refinement_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"), openai_api_base="https://api.deepseek.com/v1")
-                              else:
-                                  refinement_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
-                          else:
-                              refinement_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
-                              
-                          generation_text = refinement_llm.invoke(refinement_prompt).content
-                          
-                      push_tool_event("complete", "Response Synthesis", "Workflow tool successfully mapped.")
-                  else:
-                      push_tool_event("start", "Response Synthesis", "Parsing execution payload...")
-                      generation_text = f"Tool properties for execution identifier '{target_name}' could not be located in database records."
-                      push_tool_event("complete", "Response Synthesis", "Failed: Tool database configurations missing.")
-              
-              except Exception as e:
-                  push_tool_event("start", "Response Synthesis", "Parsing execution payload...")
-                  generation_text = f"Tool identified successfully, but dynamic automation handler failed: {str(e)}"
-                  push_tool_event("complete", "Response Synthesis", f"Failed: {str(e)}")
+        if has_tools and not generation_text:
+            try:
+                target_name = tool_payload[0]['name'] if isinstance(tool_payload[0], dict) else tool_payload[0].name
+                tool_args = tool_payload[0].get('args', {}) if isinstance(tool_payload[0], dict) else tool_payload[0].arguments
+                if isinstance(tool_args, str):
+                    tool_args = json.loads(tool_args)
 
-          time.sleep(0.5)
-          stream_manager.push_step(session_id, "DONE", is_sql=False)
-          
-          return {
-              "answer": generation_text,
-              "tool_calls": tool_payload,
-              "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
-          }
+                base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+                result = urlparse(base_uri)
+                dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
 
-      except Exception as e:
-          print(f"Engine failure: {str(e)}")
-          stream_manager.push_step(session_id, "DONE", is_sql=False)
-          return {
-              "answer": f"The system encountered an error processing your routing request: {str(e)}",
-              "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
-          }
+                conn = psycopg2.connect(dsn)
+                cursor = conn.cursor()
+                cursor.execute("SELECT base_url, endpoint, method FROM registered_tools WHERE integration_name = %s LIMIT 1;", (target_name,))
+                api_meta = cursor.fetchone()
+                cursor.close()
+                conn.close()
+
+                if api_meta:
+                    base_url, endpoint, method = api_meta[0], api_meta[1], api_meta[2]
+                    full_target_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+
+                    push_tool_event("start", "Calling the Live System", f"Calling the live system with a {method} request.")
+
+                    if str(method).upper() == "POST":
+                        api_res = requests.post(url=full_target_url, json=tool_args, timeout=15)
+                    else:
+                        api_res = requests.get(url=full_target_url, params=tool_args, timeout=15)
+
+                    raw_data = api_res.json()
+                    push_tool_event("complete", "Calling the Live System", "Live system call completed successfully.")
+                    push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
+
+                    refinement_sys_msg = "You are an expert data analysis engine. Read the following raw API dataset payload context and provide a precise, targeted answer to the user's specific request. Do not include unneeded object structures or JSON syntax wrappers."
+                    refinement_usr_msg = f"User intent request: {user_message}\n\nLive API Fetched Raw Dataset Context:\n{str(raw_data)[:3500]}"
+
+                    # Reuses selected local Ollama model identifier cleanly
+                    if is_local_ollama:
+                        target_ollama_model = model_name.replace("ollama://", "") if "ollama://" in model_name else "llama3"
+                        refine_payload = {
+                            "model": target_ollama_model,
+                            "messages": [{"role": "system", "content": refinement_sys_msg}, {"role": "user", "content": refinement_usr_msg}],
+                            "stream": False,
+                            "options": {"temperature": 0}
+                        }
+                        refine_res = requests.post(ollama_config["url"], json=refine_payload, timeout=300)
+                        refine_res.raise_for_status()
+                        generation_text = refine_res.json().get("message", {}).get("content", "")
+
+                    # Reuses selected cloud model type cleanly
+                    else:
+                        refinement_prompt = [
+                            SystemMessage(content=refinement_sys_msg),
+                            HumanMessage(content=refinement_usr_msg)
+                        ]
+
+                        if model_name in ["gpt-4o-mini", "gpt-4o"]:
+                            refinement_llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
+                        elif str(model_name).startswith("api://"):
+                            actual_model = model_name.replace("api://", "").lower()
+                            if "claude" in actual_model:
+                                from langchain_anthropic import ChatAnthropic
+                                refinement_llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY"))
+                            elif "gemini" in actual_model:
+                                from langchain_google_genai import ChatGoogleGenerativeAI
+                                refinement_llm = ChatGoogleGenerativeAI(model=actual_model, temperature=0, google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY"))
+                            elif "deepseek" in actual_model:
+                                refinement_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"), openai_api_base="https://api.deepseek.com/v1")
+                            else:
+                                refinement_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
+                        else:
+                            refinement_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
+
+                        generation_text = refinement_llm.invoke(refinement_prompt).content
+
+                    push_tool_event("complete", "Putting Your Answer Together", "Your answer is ready.")
+                else:
+                    push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
+                    generation_text = f"Tool properties for execution identifier '{target_name}' could not be located in database records."
+                    push_tool_event("complete", "Putting Your Answer Together", "Could not find configuration for the selected tool.")
+
+            except Exception as e:
+                push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
+                generation_text = f"Tool identified successfully, but dynamic automation handler failed: {str(e)}"
+                push_tool_event("complete", "Putting Your Answer Together", f"Could not complete the tool run: {str(e)}")
+
+        time.sleep(0.5)
+        stream_manager.push_step(session_id, "DONE", is_sql=False)
+
+        return {
+            "answer": generation_text,
+            "tool_calls": tool_payload,
+            "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
+        }
+
+    except Exception as e:
+        print(f"Engine failure: {str(e)}")
+        stream_manager.push_step(session_id, "DONE", is_sql=False)
+        return {
+            "answer": f"The system encountered an error processing your routing request: {str(e)}",
+            "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
+        }
 
 
 

@@ -211,7 +211,7 @@ class LLMService:
                             chunks.append(Document(
                                 page_content=self._table_to_markdown(table),
                                 metadata={"document_code": document_code, "table_id": table_id,
-                                          "source": "pdf_table", "page": page_num}
+                                          "source": "pdf_table", "chunk_type": "table", "page": page_num}
                             ))
                         else:
                             group_size = table_cfg["keep_whole_if_under_rows"]
@@ -221,7 +221,7 @@ class LLMService:
                                 chunks.append(Document(
                                     page_content=self._table_to_markdown(piece_rows),
                                     metadata={"document_code": document_code, "table_id": table_id,
-                                              "source": "pdf_table", "page": page_num}
+                                              "source": "pdf_table", "chunk_type": "table", "page": page_num}
                                 ))
         except Exception as e:
             print(f"⚠️ [RAG] Could not extract PDF tables from {file_path}: {e}")
@@ -245,7 +245,7 @@ class LLMService:
                 if len(body_rows) <= table_cfg["keep_whole_if_under_rows"]:
                     chunks.append(Document(
                         page_content=self._table_to_markdown(rows),
-                        metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table"}
+                        metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table", "chunk_type": "table"}
                     ))
                 else:
                     group_size = table_cfg["keep_whole_if_under_rows"]
@@ -254,7 +254,7 @@ class LLMService:
                         piece_rows = ([header] + group) if table_cfg["repeat_headers_on_split"] else group
                         chunks.append(Document(
                             page_content=self._table_to_markdown(piece_rows),
-                            metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table"}
+                            metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table", "chunk_type": "table"}
                         ))
         except Exception as e:
             print(f"⚠️ [RAG] Could not extract DOCX tables from {file_path}: {e}")
@@ -295,7 +295,8 @@ class LLMService:
                         metadata={
                             "document_code": document_code,
                             "image_id": image_id,
-                            "source": "docx_image"
+                            "source": "docx_image",
+                            "chunk_type": "image"
                         }
                     ))
         except Exception as e:
@@ -329,7 +330,7 @@ class LLMService:
                         chunks.append(Document(
                             page_content=caption,
                             metadata={"document_code": document_code, "image_id": image_id,
-                                      "source": "pdf_image", "page": page_num}
+                                      "source": "pdf_image", "chunk_type": "image", "page": page_num}
                         ))
             pdf_doc.close()
         except Exception as e:
@@ -466,6 +467,7 @@ class LLMService:
             # Add metadata to identify chunks by document code
             for chunk in chunks:
                 chunk.metadata["document_code"] = document_code
+                chunk.metadata.setdefault("chunk_type", "text")
 
             chunks.extend(table_chunks)
             chunks.extend(image_chunks)
@@ -544,10 +546,6 @@ class LLMService:
         # HELPER FUNCTION TO STREAM DICTIONARY OBJECTS TO THE NEW UI
         # ========================================================
         def push_rag_event(event_type, title, description):
-            ui_title = title
-            if title == "Query Intent Analysis":
-                ui_title = "Context Intent Analysis"
-            
             payload = {
                 "event": event_type,
                 "title": title,
@@ -568,11 +566,11 @@ class LLMService:
             # ========================================================
             # STEP 1: INQUIRY RECEIVED
             # ========================================================
-            push_rag_event("start", "Query Received", f"'{user_query}'")
-            push_rag_event("complete", "Query Received", f"'{user_query}'")
+            push_rag_event("start", "Your Question", f"\"{user_query}\"")
+            push_rag_event("complete", "Your Question", f"\"{user_query}\"")
            
             # Old implementation: stream_manager.push_step(session_id, "Step 1: Document Query Parsing...", False)
-            push_rag_event("start", "Query Parsing", f"Analyzing raw unstructured prompt: '{user_query}'")
+            push_rag_event("start", "Understanding What You Need", "Reviewing your question to identify the right information to look up.")
             # --- CODE CHANGE END ---
             
             client = QdrantClient(url=self.qdrant_url)
@@ -583,7 +581,7 @@ class LLMService:
             )
             
             # --- CODE CHANGE START ---
-            push_rag_event("complete", "Query Parsing", "Query successfully processed and converted to dense vectors.")
+            push_rag_event("complete", "Understanding What You Need", "I understood your request and prepared the search.")
             # --- CODE CHANGE END ---
 
             # ========================================================
@@ -597,7 +595,7 @@ class LLMService:
             # ========================================================
             # STEP 2: INTENT ANALYSIS
             # ========================================================
-            push_rag_event("start", "Query Intent Analysis", f"Querying {model_name} instance for contextual definition profiles...")
+            push_rag_event("start", "Matching the Right Data Source", "Deciding which of your uploaded documents are most relevant.")
             
             analysis_prompt = f"Describe the analysis of this query in one short sentence: '{user_query}'. Output only the sentence."
             
@@ -663,7 +661,7 @@ class LLMService:
                 print(f"⚠️ Step 2 Dynamic Analysis Fallback Trace: {e}")
                 analysis_text = "Analyzing natural language inquiry for document matching modules."
             
-            push_rag_event("complete", "Query Intent Analysis", analysis_text)
+            push_rag_event("complete", "Matching the Right Data Source", analysis_text)
 
             #################################################
             # push_rag_event("start", "Context Intent Analysis", "Querying local LLM instance for contextual definition profiles...")
@@ -688,7 +686,7 @@ class LLMService:
             # STEP 3: KNOWLEDGE BASE RETRIEVAL
             # ========================================================
             # --- CODE CHANGE START ---
-            push_rag_event("start", "Vector Space Search", "Scanning local Qdrant collections for high-probability matching fragments...")
+            push_rag_event("start", "Finding Relevant Documents", "Searching your documents for the most useful sections.")
             # --- CODE CHANGE END ---
             
             retrieval_cfg = self.rag_config["retrieval"]
@@ -707,10 +705,10 @@ class LLMService:
                 docs = vector_store.similarity_search(search_queries[0], k=retrieval_cfg["top_k"])
             context_text = "\n\n".join([doc.page_content for doc in docs])
             
-            retrieval_msg = f"Successfully matched and isolated {len(docs)} high-relevance documentation segments."
+            retrieval_msg = f"Found {len(docs)} relevant sections in your documents."
             
             # --- CODE CHANGE START ---
-            push_rag_event("complete", "Vector Space Search", retrieval_msg)
+            push_rag_event("complete", "Finding Relevant Documents", retrieval_msg)
             # --- CODE CHANGE END ---
 
             if not context_text:
@@ -727,7 +725,7 @@ class LLMService:
             # STEP 4: RESPONSE SYNTHESIS
             # ========================================================
             # --- CODE CHANGE START ---
-            push_rag_event("start", "Output Synthesis", f"Processing matrices through {model_name} to compile answers...")
+            push_rag_event("start", "Preparing Your Answer", f"Drafting your answer using {model_name} and the selected document sections.")
             # --- CODE CHANGE END ---
 
             system_prompt = (
@@ -876,7 +874,7 @@ class LLMService:
             else:
                 raise ValueError(f"Requested model '{model_name}' has no active route handler configuration.")
             # --- CODE CHANGE START ---
-            push_rag_event("complete", "Output Synthesis", f"generated response through {model_name}")
+            push_rag_event("complete", "Preparing Your Answer", f"Answer generated successfully through {model_name}.")
             # --- CODE CHANGE END ---
 
             # Final execution loop boundary closeout

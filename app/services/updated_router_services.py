@@ -1,5 +1,5 @@
 """
-Smart Router Service (v2 — tool-calling / agentic)
+Smart Router Service (v2 â€” tool-calling / agentic)
 ====================================================
 
 Why this file was rewritten:
@@ -8,14 +8,14 @@ The old version (`RouterService.get_smart_response`, pre-rewrite) picked a
 track using `.with_structured_output(RouterDecisionSchema)` against a fixed
 list of 4 categories (DB, FILES, API, GENERAL). That's why a question like
 "do you have a DB connection?" got force-fit into "DB" and triggered the
-full 8-agent LangGraph pipeline — there was no category for questions about
+full 8-agent LangGraph pipeline â€” there was no category for questions about
 the system's own configuration, only categories for actual data questions.
 
 This version replaces that fixed classifier with real tool-calling
 (`bind_tools`, the same pattern already used in api_services.py for the API
-track). The model is handed a small toolbox — one of which,
+track). The model is handed a small toolbox â€” one of which,
 `check_data_source_status`, answers configuration questions directly from
-`metamind_router_config.json` with no further agent calls at all — and picks
+`metamind_router_config.json` with no further agent calls at all â€” and picks
 whichever tool(s) actually fit the question. Adding a new capability later
 means registering a new tool, not editing a classification prompt and hoping
 the model respects a new rule buried in a paragraph.
@@ -23,7 +23,7 @@ the model respects a new rule buried in a paragraph.
 The model is also now given real conversation context: the current query,
 recent chat history, and the router config, assembled with a token budget so
 none of it silently blows past the model's context window. The current
-query is never trimmed — if something has to give, it's the oldest chat
+query is never trimmed â€” if something has to give, it's the oldest chat
 history first, then the router config.
 """
 
@@ -46,6 +46,7 @@ from app.services.llm_service import answer_from_docs
 from app.services.api_services import fetch_and_translate_tools, ask_dynamic_model_with_tools
 from app.services.automated_metamind import generate_router_config
 from app.services.general_service import answer_general_knowledge
+from app.services.stream_manager import stream_manager
 
 # Token counting is best-effort: fall back to a rough estimate if tiktoken
 # isn't installed, rather than hard-failing the whole router.
@@ -72,7 +73,7 @@ _GENERAL_CONFIG_PATH = os.path.join(_SERVICE_DIR, "general_knowledge_config.json
 _ROUTER_CONFIG_PATH = os.path.join(_SERVICE_DIR, "metamind_router_config.json")
 
 # Router-context token budget. gpt-4o-mini's real window is much larger than
-# this — this cap exists to keep every routing call cheap and fast, not
+# this â€” this cap exists to keep every routing call cheap and fast, not
 # because the model can't technically fit more. Raise it if you find the
 # router genuinely needs more history to make good decisions.
 ROUTER_CONTEXT_TOKEN_BUDGET = 6000
@@ -94,9 +95,9 @@ def _load_general_config() -> dict:
     try:
         with open(_GENERAL_CONFIG_PATH, "r") as f:
             _general_cfg_cache = json.load(f)
-        print("✅ [GENERAL CONFIG] Loaded general_knowledge_config.json")
+        print("âœ… [GENERAL CONFIG] Loaded general_knowledge_config.json")
     except Exception as e:
-        print(f"⚠️ [GENERAL CONFIG] Could not load config: {e}. Using empty defaults.")
+        print(f"âš ï¸ [GENERAL CONFIG] Could not load config: {e}. Using empty defaults.")
         _general_cfg_cache = {"general_knowledge_routing": {}}
     return _general_cfg_cache
 
@@ -113,9 +114,9 @@ def _flatten_patterns(cfg_section: dict) -> list[str]:
 
 def classify_query_heuristic(user_query: str) -> str | None:
     """
-    Layer 1 — free keyword check for greetings/small talk/date-time questions.
+    Layer 1 â€” free keyword check for greetings/small talk/date-time questions.
     Unrelated to the DB-misrouting bug (its patterns never matched status
-    questions in the first place) — kept as-is, it's a real cost saver.
+    questions in the first place) â€” kept as-is, it's a real cost saver.
     """
     cfg = _load_general_config().get("general_knowledge_routing", {})
     q = user_query.lower().strip()
@@ -129,7 +130,7 @@ def classify_query_heuristic(user_query: str) -> str | None:
 # ROUTER CONFIG LOADING + TRIMMING
 # ============================================================
 def _load_router_config() -> dict:
-    """Always reads fresh from disk — freshness of this file is handled by
+    """Always reads fresh from disk â€” freshness of this file is handled by
     generate_router_config() elsewhere; this function just reflects whatever
     is currently on disk at call time."""
     with open(_ROUTER_CONFIG_PATH, "r") as f:
@@ -138,7 +139,7 @@ def _load_router_config() -> dict:
 
 def _trim_router_config(config: dict, max_tables: int, max_cols: int,
                          max_tools: int, max_examples: int) -> dict:
-    """Returns a shallow, trimmed copy for prompt display only — never
+    """Returns a shallow, trimmed copy for prompt display only â€” never
     written back to disk. Caps list/dict sizes so the config can't blow the
     token budget on a schema with hundreds of tables or tools."""
     menu = config.get("routing_menu", {})
@@ -191,7 +192,7 @@ def _fit_router_config_to_budget(config: dict, token_budget: int) -> str:
         last_str = s
         if _count_tokens(s) <= token_budget:
             return s
-    # Still too big — hard truncate.
+    # Still too big â€” hard truncate.
     approx_chars = max(token_budget * 4, 200)
     return last_str[:approx_chars] + "\n...(truncated to fit context budget)"
 
@@ -288,9 +289,9 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
     """
     Assembles the message list for the routing LLM call under a fixed token
     budget. Priority order when something has to be cut:
-      1. current query        — never trimmed
-      2. recent chat history  — oldest turns dropped first
-      3. router config JSON   — capped, then hard-truncated if still too big
+      1. current query        â€” never trimmed
+      2. recent chat history  â€” oldest turns dropped first
+      3. router config JSON   â€” capped, then hard-truncated if still too big
     """
     query_tokens = _count_tokens(user_query)
     remaining = max(ROUTER_CONTEXT_TOKEN_BUDGET - query_tokens - 400, _MIN_CONFIG_BUDGET)  # 400 ~ instructions/tool schema overhead
@@ -312,10 +313,12 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
     # Whatever history didn't use, the config gets to keep.
     config_budget += (history_budget - running)
     config_str = _fit_router_config_to_budget(router_config, config_budget)
+    known_tables = list(router_config.get("routing_menu", {}).get("datasources", {}).get("DB", {}).get("tables", {}).keys())
+    known_tables_str = ", ".join(known_tables) if known_tables else "(no database tables configured)"
 
     system_prompt = f"""You are the enterprise orchestration router for Saarthi AI.
 
-CURRENT QUESTION (this is what you are answering — always prioritize this):
+CURRENT QUESTION (this is what you are answering â€” always prioritize this):
 {user_query}
 
 Decide which tool(s), if any, are needed to answer it. You may call more than
@@ -323,25 +326,37 @@ one tool if the question genuinely needs context from multiple sources.
 
 TOOLS AVAILABLE:
 - check_data_source_status: ONLY for questions about the system's own setup
-  or configuration — "do you have a DB connection?", "are any documents
+  or configuration â€” "do you have a DB connection?", "are any documents
   uploaded?", "what data sources are available?", "is X connected?". This
-  never touches real data and never runs other agents — use it whenever the
+  never touches real data and never runs other agents â€” use it whenever the
   question is about availability/configuration rather than about the data
   itself.
 - query_database: for questions needing real rows/counts/sums/filters from
   connected structured tables.
+    Only use query_database if the question is actually about one of these
+    real tables: {known_tables_str}. If the question mentions a word that
+    merely looks like a table/column name but isn't in this list, treat it as
+    a documents/files question instead, not a database question.
 - search_documents: for questions about internal company documents, policies,
-  or uploaded files.
+    or uploaded files - including questions about tables or images found
+    inside those documents (check the FILES vector_store_info chunk_type_breakdown
+    below to see if tables/images are actually available before answering that
+    they exist).
 - call_external_api: for questions matching a live registered external tool.
 - answer_general_knowledge: for world knowledge, definitions, greetings, or
   anything not covered by the company's own data sources.
 
 If none of the tools fit, just answer directly in plain text.
+If you are not confident which single source has the answer, call more than
+one tool rather than guessing - for example call both query_database and
+search_documents if the question could reasonably be answered by either.
+It is better to check two sources and combine the answer than to pick the
+wrong one.
 
 LIVE REGISTERED TOOLS FOR THE 'API' TRACK:
 {live_tools_summary}
 
-CURRENT DATA SOURCE CONFIGURATION (router_metamind.json — may be trimmed for length):
+CURRENT DATA SOURCE CONFIGURATION (router_metamind.json â€” may be trimmed for length):
 {config_str}
 """
     if company_feedback_context:
@@ -362,7 +377,7 @@ CURRENT DATA SOURCE CONFIGURATION (router_metamind.json — may be trimmed for l
 
 # ============================================================
 # TOOL SCHEMAS
-# (bodies are placeholders — bind_tools only needs these for their name,
+# (bodies are placeholders â€” bind_tools only needs these for their name,
 #  description, and argument schema; actual execution happens in
 #  TOOL_DISPATCH below, where real closures like model_name/session_id
 #  are available.)
@@ -370,7 +385,7 @@ CURRENT DATA SOURCE CONFIGURATION (router_metamind.json — may be trimmed for l
 @tool
 def check_data_source_status(track: Literal["DB", "FILES", "API", "ANY"]) -> str:
     """Answer a question about whether a data source is configured/available
-    (e.g. 'do you have a DB connection?'). Reads configuration only — never
+    (e.g. 'do you have a DB connection?'). Reads configuration only â€” never
     runs the DB, FILES, or API agent pipelines."""
     raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
 
@@ -412,7 +427,7 @@ _ALL_TOOLS = [
 
 
 # ============================================================
-# STATUS CHECK — the fix for the misrouting bug
+# STATUS CHECK â€” the fix for the misrouting bug
 # ============================================================
 def _answer_status_check(args: dict, router_config: dict) -> dict:
     menu = router_config.get("routing_menu", {}).get("datasources", {})
@@ -435,14 +450,14 @@ def _answer_status_check(args: dict, router_config: dict) -> dict:
             "FILES": f"{files_info.get('points_count', 0)} document chunk(s) indexed." if available["FILES"] else "No documents uploaded yet.",
             "API": f"{len(api_tools)} tool(s) registered." if available["API"] else "No external tools registered.",
         }[track]
-        answer = f"{yes_no} — {detail}"
+        answer = f"{yes_no} â€” {detail}"
     else:
         parts = [f"{k}: {'available' if v else 'not available'}" for k, v in available.items()]
-        answer = "Current data source status — " + ", ".join(parts) + "."
+        answer = "Current data source status â€” " + ", ".join(parts) + "."
 
     return {
         "answer": answer,
-        "steps": ["Checked data source configuration directly (metamind_router_config.json) — no agents were run."],
+        "steps": ["Checked data source configuration directly (metamind_router_config.json) â€” no agents were run."],
         "sql": None, "table": [], "chart": {}, "insights": [],
     }
 
@@ -530,6 +545,20 @@ TOOL_DISPATCH = {
 }
 
 
+def _push_router_event(session_id: str, event_type: str, title: str, description: str, is_sql: bool = False) -> None:
+    payload = {
+        "event": event_type,
+        "title": title,
+        "description": description,
+        "is_sql": is_sql,
+    }
+    stream_manager.push_step(str(session_id), payload, is_sql=is_sql)
+
+
+def _push_router_done(session_id: str, is_sql: bool = False) -> None:
+    stream_manager.push_step(str(session_id), "DONE", is_sql=is_sql)
+
+
 # ============================================================
 # ROUTER SERVICE ORCHESTRATOR CLASS
 # ============================================================
@@ -537,10 +566,10 @@ class RouterService:
 
     def __init__(self):
         try:
-            print("\n🔄 Running Router Schema Configuration Sync Check...")
+            print("\nðŸ”„ Running Router Schema Configuration Sync Check...")
             generate_router_config(force=False)
         except Exception as e:
-            print(f"⚠️ [SCHEMA SYNC]: Failed to check structural drifts: {e}")
+            print(f"âš ï¸ [SCHEMA SYNC]: Failed to check structural drifts: {e}")
         _load_general_config()
 
     def get_smart_response(
@@ -557,14 +586,14 @@ class RouterService:
 
         try:
             print("\n" + "=" * 60)
-            print(f"🧠 SMART ROUTER PROCESSING QUERY: {user_query}")
+            print(f"ðŸ§  SMART ROUTER PROCESSING QUERY: {user_query}")
             session_id = str(session_id)
 
             # ------------------------------------------------
             # LAYER 1: Fast heuristic check (Zero LLM Token Cost)
             # ------------------------------------------------
             if classify_query_heuristic(user_query) == "GENERAL":
-                print("🌐 [FAST PATH] Heuristic matched GENERAL knowledge pattern.")
+                print("ðŸŒ [FAST PATH] Heuristic matched GENERAL knowledge pattern.")
                 fast_res = answer_general_knowledge(
                     user_query, model_name, custom_key, system_instructions, []
                 )
@@ -588,7 +617,7 @@ class RouterService:
             if self_learning_enabled and company_name:
                 company_feedback_context = _build_company_feedback_context(company_name, user_query)
                 if company_feedback_context:
-                    print(f"🧠 [SELF-LEARNING] Injected company feedback context for company: {company_name}")
+                    print(f"ðŸ§  [SELF-LEARNING] Injected company feedback context for company: {company_name}")
 
             messages = _build_router_messages(
                 user_query,
@@ -607,22 +636,35 @@ class RouterService:
 
             # --- TEMP DEBUG: remove once the 401 is sorted -------------
             _k = openai_api_key or ""
-            print("🔑 DEBUG key source:", "custom_key (from request)" if custom_key else "OPENAI_API_KEY (from env)")
-            print("🔑 DEBUG key length:", len(_k))
-            print("🔑 DEBUG key preview:", (_k[:7] + "..." + _k[-4:]) if len(_k) > 15 else "too short / empty")
-            print("🔑 DEBUG has quote chars:", ('"' in _k) or ("'" in _k))
-            print("🔑 DEBUG has stray whitespace/CR:", _k != _k.strip())
-            print("🔑 DEBUG model requested:", model_name)
+            print("ðŸ”‘ DEBUG key source:", "custom_key (from request)" if custom_key else "OPENAI_API_KEY (from env)")
+            print("ðŸ”‘ DEBUG key length:", len(_k))
+            print("ðŸ”‘ DEBUG key preview:", (_k[:7] + "..." + _k[-4:]) if len(_k) > 15 else "too short / empty")
+            print("ðŸ”‘ DEBUG has quote chars:", ('"' in _k) or ("'" in _k))
+            print("ðŸ”‘ DEBUG has stray whitespace/CR:", _k != _k.strip())
+            print("ðŸ”‘ DEBUG model requested:", model_name)
             # -------------------------------------------------------------
 
             
             router_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0, openai_api_key=openai_api_key)
             response = router_llm.bind_tools(_ALL_TOOLS).invoke(messages)
             tool_calls = getattr(response, "tool_calls", None) or []
-            print(f"🧠 Router selected tools: {[c['name'] for c in tool_calls]}")
+            print(f"ðŸ§  Router selected tools: {[c['name'] for c in tool_calls]}")
 
-            # No tool needed — model judged it answerable directly.
+            # No tool needed â€” model judged it answerable directly.
             if not tool_calls:
+                _push_router_event(
+                    session_id,
+                    "start",
+                    "Answering Directly",
+                    "No external data source was needed for this question."
+                )
+                _push_router_event(
+                    session_id,
+                    "complete",
+                    "Answering Directly",
+                    "Answered directly using model reasoning."
+                )
+                _push_router_done(session_id)
                 return {
                     "answer": response.content,
                     "sql": None, "table": [], "chart": {}, "insights": [],
@@ -649,19 +691,39 @@ class RouterService:
                 worker = TOOL_DISPATCH.get(name)
                 if not worker:
                     continue
-                print(f"🧭 Route Triggered -> Executing Tool: {name}")
+                print(f"ðŸ§­ Route Triggered -> Executing Tool: {name}")
+
+                if name == "check_data_source_status":
+                    requested_track = (args.get("track") or "ANY").upper()
+                    _push_router_event(
+                        session_id,
+                        "start",
+                        "Checking Data Source Status",
+                        f"Verifying availability for {requested_track}."
+                    )
+
                 result = worker(args, ctx)
+
+                if name == "check_data_source_status":
+                    _push_router_event(
+                        session_id,
+                        "complete",
+                        "Checking Data Source Status",
+                        "Data source availability check completed."
+                    )
+
                 master_steps.extend(result.get("steps", []))
                 results.append((name, result))
 
             if not results:
+                _push_router_done(session_id)
                 return {
                     "answer": "The system encountered an error routing your request.",
                     "sql": None, "table": [], "chart": {}, "insights": [],
                     "steps": ["No dispatchable tool matched the router's selection."],
                 }
 
-            # Single tool selected — return its result directly, unmodified.
+            # Single tool selected â€” return its result directly, unmodified.
             if len(results) == 1:
                 tool_name, result = results[0]
                 router_map = {
@@ -674,6 +736,8 @@ class RouterService:
                 result["chain_of_thought"] = master_steps
                 result["steps"] = master_steps
                 result["router_decision"] = router_map.get(tool_name, "GENERAL")
+                if tool_name == "check_data_source_status":
+                    _push_router_done(session_id)
                 return result
 
             # ------------------------------------------------
@@ -705,8 +769,9 @@ Provide a clean, natural enterprise assistant response.
 
         except Exception as e:
             import traceback
-            print(f"❌ [CRITICAL PIPELINE FAILURE]: {e}")
+            print(f"âŒ [CRITICAL PIPELINE FAILURE]: {e}")
             traceback.print_exc()
+            _push_router_done(session_id)
             return {
                 "answer": "The system encountered an error routing your request.",
                 "sql": None, "table": [], "chart": {}, "insights": [],

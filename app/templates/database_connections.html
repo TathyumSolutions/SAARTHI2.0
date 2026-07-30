@@ -620,6 +620,12 @@
             desc: 'Custom database connection',
             defaultPort: null,
             fields: []
+        },
+        'Excel': {
+            icon: '📊',
+            desc: 'Upload an Excel file - treated as a database with one table',
+            defaultPort: null,
+            fields: []
         }
     };
 
@@ -802,8 +808,8 @@
         const hostInput = document.getElementById('host');
         const databaseNameInput = document.getElementById('databaseName');
 
-        const isCloudOrGeneric = ['BigQuery', 'Salesforce', 'ODBC', 'Others'].includes(dbType);
-        const isStringBased = ['ODBC', 'Others'].includes(dbType);
+        const isCloudOrGeneric = ['BigQuery', 'Salesforce', 'ODBC', 'Others', 'Excel'].includes(dbType);
+        const isStringBased = ['ODBC', 'Others', 'Excel'].includes(dbType);
 
         if (hostInput) {
             hostInput.parentElement.style.display = isCloudOrGeneric ? 'none' : 'block';
@@ -811,6 +817,29 @@
 
         if (databaseNameInput) {
             databaseNameInput.parentElement.style.display = isStringBased ? 'none' : 'block';
+        }
+
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        if (usernameInput) usernameInput.parentElement.style.display = (dbType === 'Excel') ? 'none' : 'block';
+        if (passwordInput) passwordInput.parentElement.style.display = (dbType === 'Excel') ? 'none' : 'block';
+
+        let excelFieldContainer = document.getElementById('excelFileFieldContainer');
+        if (dbType === 'Excel') {
+            if (!excelFieldContainer) {
+                excelFieldContainer = document.createElement('div');
+                excelFieldContainer.id = 'excelFileFieldContainer';
+                excelFieldContainer.className = 'form-group';
+                excelFieldContainer.innerHTML = `
+                    <label class="form-label">Excel File *</label>
+                    <input type="file" id="excelFileInput" class="form-input" accept=".xlsx,.xls">
+                    <div class="form-hint">The file's first sheet becomes one table. Column headers become column names.</div>
+                `;
+                form.appendChild(excelFieldContainer);
+            }
+            excelFieldContainer.style.display = 'block';
+        } else if (excelFieldContainer) {
+            excelFieldContainer.style.display = 'none';
         }
 
         // 6. Run additional field logic for specific DB requirements
@@ -1012,6 +1041,49 @@
     
     function saveConnection() {
         console.log('💾 SAVE CONNECTION FUNCTION CALLED!');
+
+        if (selectedDbType === 'Excel') {
+            const nameInput = document.getElementById('connectionName');
+            const fileInput = document.getElementById('excelFileInput');
+
+            if (!nameInput || !nameInput.value.trim()) {
+                showFormAlert('Please enter a connection name.', 'error');
+                return;
+            }
+            if (!fileInput || !fileInput.files.length) {
+                showFormAlert('Please choose an Excel file.', 'error');
+                return;
+            }
+
+            const saveBtn = document.getElementById('saveConnectionBtn');
+            const saveBtnText = document.getElementById('saveBtnText');
+            if (saveBtn) saveBtn.disabled = true;
+            if (saveBtnText) saveBtnText.innerHTML = '<span class="loading-spinner"></span> Uploading...';
+
+            const formData = new FormData();
+            formData.append('name', nameInput.value.trim());
+            formData.append('file', fileInput.files[0]);
+            formData.append('workspace_id', 1);
+
+            fetch('/api/databases/excel', { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        showFormAlert(data.error, 'error');
+                    } else {
+                        showFormAlert(data.message || 'Excel database created.', 'success');
+                        resetForm();
+                        loadConnections();
+                    }
+                })
+                .catch(err => showFormAlert('Upload failed: ' + err.message, 'error'))
+                .finally(() => {
+                    if (saveBtn) saveBtn.disabled = false;
+                    if (saveBtnText) saveBtnText.innerHTML = '💾 Save Connection';
+                });
+
+            return;
+        }
         
         // Show frontend validation alerts
         if (!selectedDbType) {
@@ -1129,7 +1201,7 @@
         }
         
         // For cloud services, don't require host/port
-        const requiresHostPort = !['BigQuery', 'Salesforce', 'ODBC', 'Others'].includes(selectedDbType);
+        const requiresHostPort = !['BigQuery', 'Salesforce', 'ODBC', 'Others', 'Excel'].includes(selectedDbType);
         
         if (requiresHostPort) {
             if (!host || host.length === 0) {
@@ -1148,7 +1220,7 @@
         }
         
         // Database name required for most databases (except ODBC/Others)
-        const requiresDatabase = !['ODBC', 'Others'].includes(selectedDbType);
+        const requiresDatabase = !['ODBC', 'Others', 'Excel'].includes(selectedDbType);
         if (requiresDatabase) {
             if (!databaseName || databaseName.length === 0) {
                 console.error('❌ Validation failed: Database name is required');
@@ -1158,14 +1230,14 @@
             }
         }
         
-        if (!username || username.length === 0) {
+        if (selectedDbType !== 'Excel' && (!username || username.length === 0)) {
             console.error('❌ Validation failed: Username is required');
             showFormAlert('Please enter the database username', 'error');
             usernameEl?.focus();
             return null;
         }
         
-        if (!password || password.length === 0) {
+        if (selectedDbType !== 'Excel' && (!password || password.length === 0)) {
             console.error('❌ Validation failed: Password is required');
             showFormAlert('Please enter the database password', 'error');
             passwordEl?.focus();
@@ -1179,6 +1251,11 @@
             username: username,
             password: password
         };
+
+        if (selectedDbType === 'Excel') {
+            data.username = '';
+            data.password = '';
+        }
         
         if (requiresHostPort) {
             data.host = host;
@@ -1261,7 +1338,7 @@
                             <div id="formAlertSuccess" class="test-result success" style="display: none; margin-bottom: 5px;"><span id="formAlertSuccessMessage"></span></div>
                             <div id="formAlertError" class="test-result error" style="display: none; margin-bottom: 5px;"><span id="formAlertErrorMessage"></span></div>
     
-                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id}, this)">Process</button>
+                            ${conn.type !== 'Excel' ? `<button class="btn btn-secondary" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id}, this)">Process</button>` : ''}
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="testExistingConnection(${conn.id})">Test</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
                             <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>

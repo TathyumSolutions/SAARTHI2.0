@@ -232,6 +232,34 @@
         color: #F48771;
     }
 
+    @keyframes blink {
+        0%, 80%, 100% { opacity: 0.2; }
+        40% { opacity: 1; }
+    }
+
+    .typing-dots {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .typing-dots span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #94A3B8;
+        opacity: 0.2;
+        animation: blink 1.2s infinite;
+    }
+
+    .typing-dots span:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .typing-dots span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
     /* Modal Styles */
     .modal-overlay {
         display: none;
@@ -1167,6 +1195,113 @@
     // LIVE CHAIN-OF-THOUGHT STEP STREAM (SSE)
     // ==========================================
     let stepEventSource = null;
+    let stepRenderQueue = Promise.resolve();
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function typeTextIntoElement(element, text, baseDelay = 14) {
+        const value = String(text || "");
+        element.textContent = "";
+
+        for (let i = 0; i < value.length; i++) {
+            element.textContent += value[i];
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            let delay = baseDelay;
+            if (value[i] === ',' || value[i] === ';') delay += 30;
+            if (value[i] === '.' || value[i] === '!' || value[i] === '?') delay += 70;
+
+            await sleep(delay);
+        }
+    }
+
+    function setElementTextImmediately(element, text) {
+        if (!element) return;
+        element.textContent = String(text || "");
+        if (chatContainer) {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+    }
+
+    function simplifyStepText(text) {
+        if (!text) return "";
+
+        return String(text)
+            .replace(/metamind_router_config\.json/gi, "your connected data sources")
+            .replace(/router_metamind\.json/gi, "your connected data sources")
+            .replace(/SQL Agent/gi, "data assistant")
+            .replace(/RAG/gi, "document assistant")
+            .replace(/vector store/gi, "document index")
+            .replace(/schema/gi, "structure")
+            .replace(/query parsing/gi, "question understanding")
+            .replace(/automation handler/gi, "integration runner")
+            .replace(/dynamic API tools?/gi, "connected integrations")
+            .replace(/retrieval pipeline/gi, "document lookup")
+            .replace(/context assembly/gi, "context preparation")
+            .trim();
+    }
+
+    function humanizeStep(title, description) {
+        let safeTitle = simplifyStepText(title);
+        let safeDescription = simplifyStepText(description);
+        const joined = `${safeTitle} ${safeDescription}`.toLowerCase();
+
+        if (joined.includes("your question") || joined.includes("request received") || joined.includes("understanding")) {
+            safeTitle = "Understanding your request";
+        } else if (joined.includes("right tool") || joined.includes("tool selection") || joined.includes("route") || joined.includes("best path")) {
+            safeTitle = "Choosing the right approach";
+        } else if (joined.includes("data source status") || joined.includes("availability") || joined.includes("available")) {
+            safeTitle = "Checking what is available";
+        } else if (joined.includes("live system") || joined.includes("integration") || joined.includes("external api") || joined.includes("connected")) {
+            safeTitle = "Gathering details from connected systems";
+        } else if (joined.includes("preparing your answer") || joined.includes("putting your answer together") || joined.includes("synthesis") || joined.includes("answer")) {
+            safeTitle = "Preparing your answer";
+        } else {
+            safeTitle = "Working through your request";
+        }
+
+        if (!safeDescription) {
+            safeDescription = "Working through this step now.";
+        }
+
+        return { title: safeTitle, description: safeDescription };
+    }
+
+    async function renderStepWithTyping(thoughtChainContainer, title, description, liveStepIndex, isInProgress) {
+        const statusText = isInProgress ? "⏳ Processing..." : "✓ Completed";
+        const statusColor = isInProgress ? "#60A5FA" : "#10B981";
+
+        const stepHtml = `
+            <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
+                <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
+                    STEP ${liveStepIndex + 1}
+                </div>
+                <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;"></div>
+                <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;"></div>
+                <span class="status-indicator" style="color: ${statusColor}; font-size: 11px; display: block; margin-top: 8px;">
+                    ${statusText}
+                </span>
+            </div>
+        `;
+
+        thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+
+        const element = document.getElementById(`live-step-${liveStepIndex}`);
+        if (!element) return;
+
+        setTimeout(() => {
+            element.style.opacity = "1";
+            element.style.transform = "translateY(0)";
+        }, 50);
+
+        const titleEl = element.querySelector('.thought-title');
+        const descEl = element.querySelector('.thought-description');
+
+        if (titleEl) setElementTextImmediately(titleEl, title);
+        if (descEl) setElementTextImmediately(descEl, description);
+    }
 
     function initializeLiveStepStream(sessionId, onConnectionOpen) {
         const thoughtChainContainer = document.querySelector('.thought-chain');
@@ -1175,13 +1310,14 @@
         if (!thoughtChainContainer) return;
 
         thoughtChainContainer.innerHTML = '';
-        if (panelTitle) panelTitle.innerText = "Analyzing Query Intent...";
+        if (panelTitle) panelTitle.innerText = "Chain of Thought";
 
         if (stepEventSource) {
             stepEventSource.close();
         }
 
         let liveStepIndex = 0;
+        stepRenderQueue = Promise.resolve();
 
         stepEventSource = new EventSource(`/api/chat/stream_steps?session_id=${sessionId}`);
         stepEventSource.onopen = function () {
@@ -1193,121 +1329,85 @@
 
         stepEventSource.addEventListener('message', function (event) {
             console.log("STEP EVENT:", event.data);
-
             const payload = JSON.parse(event.data);
 
-            if (payload.heartbeat) return;
+            stepRenderQueue = stepRenderQueue.then(async () => {
+                if (payload.heartbeat) return;
 
-            if (payload.step === "DONE") {
-                finalizeLiveSteps(payload.is_sql);
-                if (stepEventSource) {
-                    stepEventSource.close();
-                }
-                return;
-            }
-
-            const data = payload.step;
-            if (!data) return;
-
-            if (typeof data === "string") {
-                const rawStep = data;
-                let title = rawStep.includes(' - ')
-                    ? rawStep.split(' - ')[0]
-                    : `Step ${liveStepIndex + 1}`;
-
-                let description = rawStep.includes(' - ')
-                    ? rawStep.split(' - ')[1]
-                    : rawStep;
-
-                const stepHtml = `
-                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
-                            STEP ${liveStepIndex + 1}
-                        </div>
-                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
-                            ${title}
-                        </div>
-                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
-                            ${description}
-                        </div>
-                        <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
-                            ✓ Completed
-                        </span>
-                    </div>
-                `;
-
-                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
-                liveStepIndex++;
-                return;
-            }
-
-            const {
-                event: eventType,
-                title,
-                description,
-                is_sql
-            } = data;
-
-            if (panelTitle) {
-                if (is_sql) {
-                    panelTitle.innerText = "SQL Agent Analysis";
-                }
-                else if (title && (title.includes("Request Received") || title.includes("Knowledge Alignment") || title.includes("Model Execution"))) {
-                    panelTitle.innerText = "General Knowledge Assistant";
-                }
-                else if (title && (title.includes("Automation") || title.includes("Context") || title.includes("Schema") || title.includes("Response"))) {
-                    panelTitle.innerText = "API Workflow Execution";
-                }
-                else {
-                    panelTitle.innerText = "RAG Document Analysis";
-                }
-            }
-
-            if (eventType === "start") {
-                const stepHtml = `
-                    <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-                        <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
-                            STEP ${liveStepIndex + 1}
-                        </div>
-                        <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
-                            ${title}
-                        </div>
-                        <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
-                            ${description}
-                        </div>
-                        <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">
-                            ⏳ Processing...
-                        </span>
-                    </div>
-                `;
-
-                thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
-
-                const element = document.getElementById(`live-step-${liveStepIndex}`);
-                if (element) {
-                    setTimeout(() => {
-                        element.style.opacity = "1";
-                        element.style.transform = "translateY(0)";
-                    }, 50);
+                if (payload.step === "DONE") {
+                    finalizeLiveSteps(payload.is_sql);
+                    if (stepEventSource) {
+                        stepEventSource.close();
+                    }
+                    return;
                 }
 
-                liveStepIndex++;
-            }
-            else if (eventType === "complete") {
-                const currentStep = document.querySelector(`#live-step-${liveStepIndex - 1}`);
-                if (currentStep) {
+                const data = payload.step;
+                if (!data) return;
+
+                if (typeof data === "string") {
+                    const rawStep = data;
+                    const title = rawStep.includes(' - ')
+                        ? rawStep.split(' - ')[0]
+                        : `Step ${liveStepIndex + 1}`;
+
+                    const description = rawStep.includes(' - ')
+                        ? rawStep.split(' - ').slice(1).join(' - ')
+                        : rawStep;
+
+                    const humanized = humanizeStep(title, description);
+                    await renderStepWithTyping(
+                        thoughtChainContainer,
+                        humanized.title,
+                        humanized.description,
+                        liveStepIndex,
+                        false
+                    );
+                    liveStepIndex++;
+                    return;
+                }
+
+                const {
+                    event: eventType,
+                    title,
+                    description,
+                    is_sql
+                } = data;
+
+                if (panelTitle) {
+                    panelTitle.innerText = "Chain of Thought";
+                }
+
+                if (eventType === "start") {
+                    const humanized = humanizeStep(title, description);
+                    await renderStepWithTyping(
+                        thoughtChainContainer,
+                        humanized.title,
+                        humanized.description,
+                        liveStepIndex,
+                        true
+                    );
+                    liveStepIndex++;
+                }
+                else if (eventType === "complete") {
+                    const currentStep = document.querySelector(`#live-step-${liveStepIndex - 1}`);
+                    if (!currentStep) return;
+
                     const descEl = currentStep.querySelector('.thought-description');
                     const statusEl = currentStep.querySelector('.status-indicator');
+                    const humanized = humanizeStep(title, description);
 
-                    if (descEl) {
-                        descEl.innerHTML = description;
+                    if (descEl && humanized.description) {
+                        setElementTextImmediately(descEl, humanized.description);
                     }
                     if (statusEl) {
                         statusEl.innerHTML = "✓ Completed";
                         statusEl.style.color = "#10B981";
                     }
                 }
-            }
+            }).catch((err) => {
+                console.error("Step render queue failure:", err);
+            });
         });
 
         stepEventSource.onerror = function () {
@@ -1320,14 +1420,7 @@
     function finalizeLiveSteps(isSql) {
         const panelTitle = document.querySelector('.panel-title');
         if (panelTitle) {
-            const currentTitle = panelTitle.innerText;
-            if (currentTitle.includes("General")) {
-                panelTitle.innerText = "General Knowledge Complete";
-            } else if (currentTitle.includes("API")) {
-                panelTitle.innerText = "API Execution Complete";
-            } else {
-                panelTitle.innerText = isSql ? "SQL Analysis Complete" : "RAG Analysis Complete";
-            }
+            panelTitle.innerText = "Chain of Thought";
         }
 
         const statusIndicators = document.querySelectorAll('.status-indicator');
@@ -1336,6 +1429,60 @@
             finalStatus.innerHTML = "✓ Completed";
             finalStatus.style.color = "#10B981";
         }
+    }
+
+    function renderFallbackStepsFromResponse(ui, isSql) {
+        const thoughtChainContainer = document.querySelector('.thought-chain');
+        const panelTitle = document.querySelector('.panel-title');
+
+        if (!thoughtChainContainer || !ui) return;
+
+        const existingSteps = thoughtChainContainer.querySelectorAll('.thought-step').length;
+        const fallbackSteps = Array.isArray(ui.steps) ? ui.steps.filter(Boolean) : [];
+        if (existingSteps > 0 || fallbackSteps.length === 0) return;
+
+        if (panelTitle) {
+            panelTitle.innerText = "Chain of Thought";
+        }
+
+        fallbackSteps.forEach((step, index) => {
+            let title = `Step ${index + 1}`;
+            let description = "";
+
+            if (typeof step === 'string') {
+                if (step.includes(' - ')) {
+                    const parts = step.split(' - ');
+                    title = parts[0] || title;
+                    description = parts.slice(1).join(' - ') || step;
+                } else {
+                    description = step;
+                }
+            } else if (typeof step === 'object') {
+                title = step.title || title;
+                description = step.description || JSON.stringify(step);
+            }
+
+            const humanized = humanizeStep(title, description);
+
+            const stepHtml = `
+                <div class="thought-step" style="opacity: 1; transform: translateY(0); transition: all 0.4s ease; margin-bottom: 15px;">
+                    <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
+                        STEP ${index + 1}
+                    </div>
+                    <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
+                        ${humanized.title}
+                    </div>
+                    <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                        ${humanized.description}
+                    </div>
+                    <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
+                        ✓ Completed
+                    </span>
+                </div>
+            `;
+
+            thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+        });
     }
 
     // ==========================================
@@ -1359,6 +1506,11 @@
 
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         renderMessage('You', `<span style="color: #E2E8F0;">${message}</span>`, '👤', time, false);
+        renderMessage('Saarthi AI', `
+            <span id="typing-dots" class="typing-dots" aria-label="Saarthi is typing">
+                <span></span><span></span><span></span>
+            </span>
+        `, 'S', time, true);
         chatInput.value = '';
 
         initializeLiveStepStream(currentSessionId, async function () {
@@ -1381,17 +1533,14 @@
                     const ui = data.response;
 
                     const isSqlResult = ui.sql !== undefined && ui.sql !== null && ui.sql !== "-- No SQL Generated --" && ui.sql !== "null";
-                    setTimeout(() => {
-                        finalizeLiveSteps(isSqlResult);
-                    }, 1500);
+                    renderFallbackStepsFromResponse(ui, isSqlResult);
+                    finalizeLiveSteps(isSqlResult);
 
-                    let finalOutput = `<div style="font-family: 'Inter', sans-serif; display: flex; flex-direction: column; gap: 15px;">`;
-
-                    finalOutput += `<div style="color: #E2E8F0; font-size: 15px;">${ui.answer}</div>`;
+                    let extraOutput = ``;
 
                     if (ui.chart && ui.chart.recommended && ui.chart[ui.chart.recommended]) {
                         const chartId = 'chart-' + Date.now();
-                        finalOutput += `
+                        extraOutput += `
                             <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
                                 <canvas id="${chartId}" style="max-height:240px; width:100%;"></canvas>
                             </div>`;
@@ -1408,7 +1557,7 @@
                         const headerHtml = headers.map(key => `<th style="padding:10px; text-align:left; background:transparent; border-bottom:2px solid #e2e8f0; color:#666;">${key}</th>`).join('');
                         const rowsHtml = ui.table.map(row => `<tr>${headers.map(h => `<td style="padding:10px; border-bottom:1px solid #eee; color:#333;">${row[h]}</td>`).join('')}</tr>`).join('');
 
-                        finalOutput += `
+                        extraOutput += `
                             <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05); overflow-x:auto;">
                                 <table style="width:100%; border-collapse:collapse; font-size:13px;">
                                     <thead><tr>${headerHtml}</tr></thead>
@@ -1424,7 +1573,7 @@
                             const kpiLabel = keys[1] || keys[0];
                             const kpiValue = primaryRecord[kpiLabel];
 
-                            finalOutput += `
+                            extraOutput += `
                                 <div style="padding: 20px; border-radius: 14px; background: rgba(255,255,255,0.05); border: 1px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: inline-block; min-width: 220px; margin-top: 15px;">
                                     <div style="font-size: 11px; color: #a0aec0; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${kpiLabel.replace(/_/g, ' ')}</div>
                                     <div style="font-size: 32px; font-weight: 700; color: #ffffff; margin-top: 5px;">${kpiValue}</div>
@@ -1446,7 +1595,7 @@
                             `;
                         }).join('');
 
-                        finalOutput += `
+                        extraOutput += `
                             <div style="padding: 15px 0px; background: transparent; margin-top: 10px;">
                                 <div style="font-size: 12px; font-weight: 700; color: #FFFFFF; margin-bottom: 10px; letter-spacing: 0.5px;">Data Insights</div>
                                 <ul style="list-style: none; padding: 0; margin: 0; line-height: 1.6;">
@@ -1455,19 +1604,76 @@
                             </div>`;
                     }
 
-                    finalOutput += `</div>`;
-                    renderMessage('Saarthi AI', finalOutput, 'S', time, true, {
+                    await loadSelfLearningMode();
+                    removeTypingBubble();
+
+                    const assistantMeta = {
                         question: lastUserQuestion,
                         answer: ui.answer || '',
                         sql_query: ui.sql || null,
                         router_decision: ui.router_decision || null
-                    });
+                    };
+
+                    const shell = renderAssistantMessageShell(time, assistantMeta);
+                    await typeTextIntoElement(shell.answerEl, ui.answer || "", 10);
+
+                    if (extraOutput) {
+                        shell.extrasEl.innerHTML = `<div style="font-family: 'Inter', sans-serif; display: flex; flex-direction: column; gap: 15px;">${extraOutput}</div>`;
+                    }
+
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                    localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
+                } else {
+                    removeTypingBubble();
                 }
             } catch (error) {
                 console.error("Fetch Error:", error);
+                removeTypingBubble();
                 renderMessage('Saarthi AI', "❌ Connection Error.", 'S', time, true);
             }
         });
+    }
+
+    function removeTypingBubble() {
+        const typingBubble = document.getElementById('typing-dots');
+        if (typingBubble) {
+            typingBubble.closest('.message')?.remove();
+        }
+    }
+
+    function renderAssistantMessageShell(time, meta = null) {
+        let feedbackHtml = '';
+        if (selfLearningModeEnabled && meta) {
+            feedbackHtml = `
+                <div class="feedback-buttons" data-question="${escapeAttr(meta.question)}" data-answer="${escapeAttr(meta.answer)}" data-sql="${escapeAttr(meta.sql_query)}" data-router="${escapeAttr(meta.router_decision)}" style="margin-top: 10px; display: flex; gap: 10px;">
+                    <button type="button" onclick="submitFeedback(this, 'like')" style="cursor:pointer; background: #1f2937; color: white; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px;">👍</button>
+                    <button type="button" onclick="submitFeedback(this, 'dislike')" style="cursor:pointer; background: #1f2937; color: white; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px;">👎</button>
+                </div>
+            `;
+        }
+
+        const html = `
+            <div class="message" style="margin-bottom: 20px; display: flex; gap: 12px;">
+                <div class="message-avatar" style="background: #4a90e2; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; flex-shrink: 0;">S</div>
+                <div class="message-content" style="flex-grow: 1;">
+                    <div class="message-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <span class="message-author" style="font-weight: 600; font-size: 14px;">Saarthi AI</span>
+                        <span class="message-time" style="font-size: 11px; color: #888;">${time}</span>
+                    </div>
+                    <div class="message-text" style="font-size: 15px; line-height: 1.5; color: #444;">
+                        <div class="assistant-main-answer" style="color: #E2E8F0; font-size: 15px; white-space: pre-wrap;"></div>
+                        <div class="assistant-extra-output" style="margin-top: 12px;"></div>
+                    </div>
+                    ${feedbackHtml}
+                </div>
+            </div>`;
+
+        chatContainer.insertAdjacentHTML('beforeend', html);
+        const messageNode = chatContainer.lastElementChild;
+        const answerEl = messageNode.querySelector('.assistant-main-answer');
+        const extrasEl = messageNode.querySelector('.assistant-extra-output');
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        return { messageNode, answerEl, extrasEl };
     }
 
     function renderMessage(author, text, avatar, time, isAI, meta = null) {

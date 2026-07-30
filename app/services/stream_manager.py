@@ -43,6 +43,11 @@ class StepStreamManager:
         # Buffer to store step history so late connections don't miss steps
         self.session_history = {}
 
+    def start_new_query(self, session_id):
+        """Call this at the start of every new question, so old steps don't leak into the new answer."""
+        session_id = str(session_id)
+        self.session_history[session_id] = []
+
     def listen(self, session_id):
         """Called by the SSE route to start listening for updates on a session"""
         session_id = str(session_id)

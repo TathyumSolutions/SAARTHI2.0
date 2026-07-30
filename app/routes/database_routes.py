@@ -4,6 +4,7 @@ Handles database connections, schema discovery, and connection testing
 """
 import time
 import traceback
+import re
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models.database_connection import DatabaseConnection
@@ -12,8 +13,41 @@ import sys
 import os
 import logging
 import datetime
+import pandas as pd
+import psycopg2
 
 bp = Blueprint('database', __name__, url_prefix='/api/databases')
+
+
+def _sanitize_identifier(name: str) -> str:
+    """Turns a messy file/column name into a safe SQL table/column name."""
+    name = re.sub(r'[^a-zA-Z0-9_]', '_', (name or '').strip().lower())
+    name = re.sub(r'_+', '_', name).strip('_')
+    if not name or name[0].isdigit():
+        name = f"col_{name}"
+    return name
+
+
+def _dedupe_identifiers(names):
+    """Ensures identifiers are unique after sanitization."""
+    seen = {}
+    out = []
+    for raw in names:
+        base = _sanitize_identifier(str(raw))
+        count = seen.get(base, 0)
+        seen[base] = count + 1
+        out.append(base if count == 0 else f"{base}_{count + 1}")
+    return out
+
+
+def _get_databridge_db_config():
+    return {
+        "host": os.getenv("DATABRIDGE_DB_HOST", os.getenv("PGHOST", "db")),
+        "port": os.getenv("DATABRIDGE_DB_PORT", os.getenv("PGPORT", "5432")),
+        "dbname": os.getenv("DATABRIDGE_DB_NAME", os.getenv("PGDATABASE", "databrige_db")),
+        "user": os.getenv("DATABRIDGE_DB_USER", os.getenv("PGUSER", "saarthi")),
+        "password": os.getenv("DATABRIDGE_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
+    }
 
 def serialize_connection(conn):
     """Serialize database connection to dict"""
@@ -124,6 +158,95 @@ def create_database_connection():
         print(f"POST error: {str(e)}")
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/excel', methods=['POST'])
+def create_excel_database():
+    """
+    Uploads an Excel file and turns it into ONE queryable table, treated
+    exactly like a normal database connection.
+    Request: multipart/form-data with fields 'name' (connection name) and 'file' (.xlsx/.xls)
+    """
+    conn = None
+    cursor = None
+    try:
+        name = request.form.get('name', '').strip()
+        file = request.files.get('file')
+
+        if not name:
+            return jsonify({'error': 'Connection name is required'}), 400
+        if not file or file.filename == '':
+            return jsonify({'error': 'An Excel file is required'}), 400
+        if not file.filename.lower().endswith(('.xlsx', '.xls')):
+            return jsonify({'error': 'Only .xlsx or .xls files are supported'}), 400
+
+        # Read the first sheet only and treat it as the single source table.
+        df = pd.read_excel(file, sheet_name=0)
+        if df.empty:
+            return jsonify({'error': 'The Excel file has no data rows'}), 400
+
+        # Ensure SQL-safe and unique column names.
+        df.columns = _dedupe_identifiers(df.columns)
+
+        table_name = _sanitize_identifier(name)
+        if not table_name:
+            return jsonify({'error': 'Could not derive a valid table name from the connection name'}), 400
+
+        conn = psycopg2.connect(**_get_databridge_db_config())
+        conn.autocommit = True
+        cursor = conn.cursor()
+
+        cursor.execute(f'DROP TABLE IF EXISTS "{table_name}";')
+        col_defs = ', '.join([f'"{col}" TEXT' for col in df.columns])
+        cursor.execute(f'CREATE TABLE "{table_name}" ({col_defs});')
+
+        columns_sql = ', '.join([f'"{c}"' for c in df.columns])
+        placeholders = ', '.join(['%s'] * len(df.columns))
+        insert_sql = f'INSERT INTO "{table_name}" ({columns_sql}) VALUES ({placeholders});'
+
+        rows = [
+            tuple(None if pd.isna(v) else str(v) for v in row)
+            for row in df.itertuples(index=False, name=None)
+        ]
+        cursor.executemany(insert_sql, rows)
+
+        connection = DatabaseConnection(
+            name=name,
+            type='Excel',
+            host=None,
+            port=None,
+            database=table_name,
+            username=None,
+            password=None,
+            config={
+                'source_table': table_name,
+                'original_filename': file.filename,
+                'row_count': len(df)
+            },
+            workspace_id=int(request.form.get('workspace_id', 1) or 1),
+            status='connected'
+        )
+        db.session.add(connection)
+        db.session.commit()
+
+        from app.services.automated_metamind import generate_router_config
+        generate_router_config(force=True)
+
+        return jsonify({
+            'database': serialize_connection(connection),
+            'message': f'Excel file uploaded and table "{table_name}" created with {len(df)} rows.'
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"POST /excel error: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @bp.route('/<int:db_id>', methods=['GET'])
 def get_database(db_id):
@@ -268,6 +391,12 @@ def process_database_connection(db_id):
         if not connection:
             return jsonify({"status": "error", "message": "Connection not found"}), 404
 
+        if (connection.type or '').lower() == 'excel':
+            return jsonify({
+                "status": "success",
+                "message": "Excel connections are already processed at upload time."
+            }), 200
+
         from app.services.automated_metamind import generate_router_config
         try:
             generate_router_config(force=True)
@@ -401,7 +530,7 @@ def get_database_types():
     """
     types = [
         'PostgreSQL', 'MySQL', 'MongoDB', 'SQL Server', 'Oracle',
-        'BigQuery', 'Snowflake', 'Redis', 'SAP HANA', 'Salesforce', 'ODBC'
+        'BigQuery', 'Snowflake', 'Redis', 'SAP HANA', 'Salesforce', 'ODBC', 'Excel'
     ]
     return jsonify({'types': types}), 200
 
