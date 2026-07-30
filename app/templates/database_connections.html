@@ -623,7 +623,7 @@
         },
         'Excel': {
             icon: '📊',
-            desc: 'Upload an Excel file - treated as a database with one table',
+            desc: 'Upload an Excel or CSV file - each sheet becomes a queryable table',
             defaultPort: null,
             fields: []
         }
@@ -831,11 +831,18 @@
                 excelFieldContainer.id = 'excelFileFieldContainer';
                 excelFieldContainer.className = 'form-group';
                 excelFieldContainer.innerHTML = `
-                    <label class="form-label">Excel File *</label>
-                    <input type="file" id="excelFileInput" class="form-input" accept=".xlsx,.xls">
-                    <div class="form-hint">The file's first sheet becomes one table. Column headers become column names.</div>
+                    <label class="form-label">Excel or CSV File *</label>
+                    <input type="file" id="excelFileInput" class="form-input" accept=".xlsx,.xls,.csv">
+                    <div class="form-hint">Each sheet in an Excel workbook becomes its own table (a CSV becomes one). Column headers become column names.</div>
                 `;
-                form.appendChild(excelFieldContainer);
+                // Insert before the Test/Save/Cancel buttons, not appended
+                // to the end of the form (which put it below them).
+                const formActions = form.querySelector('.form-actions');
+                if (formActions) {
+                    form.insertBefore(excelFieldContainer, formActions);
+                } else {
+                    form.appendChild(excelFieldContainer);
+                }
             }
             excelFieldContainer.style.display = 'block';
         } else if (excelFieldContainer) {
@@ -1051,7 +1058,7 @@
                 return;
             }
             if (!fileInput || !fileInput.files.length) {
-                showFormAlert('Please choose an Excel file.', 'error');
+                showFormAlert('Please choose an Excel or CSV file.', 'error');
                 return;
             }
 
@@ -1338,7 +1345,7 @@
                             <div id="formAlertSuccess" class="test-result success" style="display: none; margin-bottom: 5px;"><span id="formAlertSuccessMessage"></span></div>
                             <div id="formAlertError" class="test-result error" style="display: none; margin-bottom: 5px;"><span id="formAlertErrorMessage"></span></div>
     
-                            ${conn.type !== 'Excel' ? `<button class="btn btn-secondary" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id}, this)">Process</button>` : ''}
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id}, this)">Process</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="testExistingConnection(${conn.id})">Test</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
                             <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>
@@ -1657,12 +1664,12 @@
             const result = await response.json();
 
             if (response.ok && result.status === 'success') {
-                showAlert(result.message || 'Router config updated', 'success');
+                showAlert(result.message || 'This connection is now ready for queries.', 'success');
             } else {
-                throw new Error(result.message || result.error || 'Process failed');
+                throw new Error(result.message || result.error || 'Something went wrong. Please try again.');
             }
         } catch (err) {
-            showAlert("Process failed: " + err.message, 'error');
+            showAlert(err.message, 'error');
         } finally {
             btn.disabled = false;
             btn.innerText = "Process";
