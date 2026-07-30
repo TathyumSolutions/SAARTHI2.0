@@ -1209,27 +1209,21 @@
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    async function typeTextIntoElement(element, text, baseDelay = 14) {
+    async function typeTextIntoElement(element, text, baseDelay = 14, scrollContainer = chatContainer) {
         const value = String(text || "");
         element.textContent = "";
 
         for (let i = 0; i < value.length; i++) {
             element.textContent += value[i];
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+            if (scrollContainer) {
+                scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            }
 
             let delay = baseDelay;
             if (value[i] === ',' || value[i] === ';') delay += 30;
             if (value[i] === '.' || value[i] === '!' || value[i] === '?') delay += 70;
 
             await sleep(delay);
-        }
-    }
-
-    function setElementTextImmediately(element, text) {
-        if (!element) return;
-        element.textContent = String(text || "");
-        if (chatContainer) {
-            chatContainer.scrollTop = chatContainer.scrollHeight;
         }
     }
 
@@ -1248,45 +1242,71 @@
             .replace(/dynamic API tools?/gi, "connected integrations")
             .replace(/retrieval pipeline/gi, "document lookup")
             .replace(/context assembly/gi, "context preparation")
+            // Never leak a raw generated SQL statement into a step's narration -
+            // the final query is shown separately, wrapped as a technical detail.
+            .replace(/Generated structured query syntax:.*$/i, "Prepared the exact question to ask your database.")
             .trim();
     }
 
-    function humanizeStep(title, description) {
-        let safeTitle = simplifyStepText(title);
-        let safeDescription = simplifyStepText(description);
-        const joined = `${safeTitle} ${safeDescription}`.toLowerCase();
+    // Raw backend step titles that add no analytical value in the UI (they
+    // just echo text already visible elsewhere, e.g. the user's own chat
+    // bubble) - these are dropped entirely rather than rendered as a card.
+    const SKIPPED_RAW_TITLES = new Set(["Your Question"]);
 
-        if (joined.includes("your question") || joined.includes("request received") || joined.includes("understanding")) {
-            safeTitle = "Understanding your request";
-        } else if (joined.includes("right tool") || joined.includes("tool selection") || joined.includes("route") || joined.includes("best path")) {
-            safeTitle = "Choosing the right approach";
-        } else if (joined.includes("data source status") || joined.includes("availability") || joined.includes("available")) {
-            safeTitle = "Checking what is available";
-        } else if (joined.includes("live system") || joined.includes("integration") || joined.includes("external api") || joined.includes("connected")) {
-            safeTitle = "Gathering details from connected systems";
-        } else if (joined.includes("preparing your answer") || joined.includes("putting your answer together") || joined.includes("synthesis") || joined.includes("answer")) {
-            safeTitle = "Preparing your answer";
-        } else {
-            safeTitle = "Working through your request";
-        }
+    // Every stage across the general-knowledge, document (RAG), SQL-agent,
+    // API-tool and router pipelines is mapped explicitly by its exact raw
+    // backend title. This replaces the old fuzzy substring matching, which
+    // collapsed distinct stages (e.g. "Your Question" and "Checking What I
+    // Already Know" both contain "your question") into the same bucket and
+    // produced duplicate-looking cards.
+    const STEP_PRESENTATION_MAP = {
+        "Pipeline Entry": { icon: "📥", label: "Reading your request" },
+        "Checking What I Already Know": { icon: "🧠", label: "Recalling what's relevant" },
+        "Understanding What You Need": { icon: "🧭", label: "Understanding your request" },
+        "Matching the Right Data Source": { icon: "🔎", label: "Finding the right resource" },
+        "Finding Relevant Documents": { icon: "📄", label: "Searching your documents" },
+        "Checking Data Source Status": { icon: "📡", label: "Checking data availability" },
+        "Answering Directly": { icon: "💡", label: "Answering from what I know" },
+        "Finding the Right Tool": { icon: "🧰", label: "Choosing the right tool" },
+        "Calling the Live System": { icon: "🔌", label: "Connecting to your system" },
+        "Putting Your Answer Together": { icon: "📝", label: "Putting your answer together" },
+        "Query Simplifier Agent": { icon: "🧹", label: "Simplifying your request" },
+        "Query Sense Agent": { icon: "🗂️", label: "Identifying the right data" },
+        "Query Validator Agent": { icon: "✅", label: "Double-checking the details" },
+        "SQL Generator Agent": { icon: "🛠️", label: "Building the data query" },
+        "Query Formatter Agent": { icon: "⚙️", label: "Running the query" },
+        "Data Insight Agent": { icon: "📊", label: "Spotting key trends" },
+        "Data Visualizer Agent": { icon: "📈", label: "Preparing a visual" },
+        "Response Builder Agent": { icon: "📝", label: "Putting together your answer" },
+        "Error Diagnosis Agent": { icon: "⚠️", label: "Working through an issue" },
+        "Preparing Your Answer": { icon: "✍️", label: "Preparing your answer" }
+    };
 
-        if (!safeDescription) {
-            safeDescription = "Working through this step now.";
-        }
-
-        return { title: safeTitle, description: safeDescription };
+    function shouldSkipRawStep(rawTitle) {
+        return SKIPPED_RAW_TITLES.has(String(rawTitle || "").trim());
     }
 
-    async function renderStepWithTyping(thoughtChainContainer, title, description, liveStepIndex, isInProgress) {
+    function humanizeStep(title, description) {
+        const rawTitle = String(title || "").trim();
+        const mapped = STEP_PRESENTATION_MAP[rawTitle];
+
+        let safeDescription = simplifyStepText(description) || "Working through this step now.";
+        let safeTitle = mapped ? mapped.label : (simplifyStepText(rawTitle) || "Working through your request");
+        let icon = mapped ? mapped.icon : "⚙️";
+
+        return { title: safeTitle, description: safeDescription, icon };
+    }
+
+    async function renderStepWithTyping(thoughtChainContainer, title, description, icon, liveStepIndex, isInProgress) {
         const statusText = isInProgress ? "⏳ Processing..." : "✓ Completed";
         const statusColor = isInProgress ? "#60A5FA" : "#10B981";
 
         const stepHtml = `
             <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
-                <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
-                    STEP ${liveStepIndex + 1}
+                <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px; display: flex; align-items: baseline; gap: 6px;">
+                    <span class="thought-icon" aria-hidden="true">${icon || "⚙️"}</span>
+                    <span class="thought-title-text"></span>
                 </div>
-                <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;"></div>
                 <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;"></div>
                 <span class="status-indicator" style="color: ${statusColor}; font-size: 11px; display: block; margin-top: 8px;">
                     ${statusText}
@@ -1304,11 +1324,19 @@
             element.style.transform = "translateY(0)";
         }, 50);
 
-        const titleEl = element.querySelector('.thought-title');
+        const titleEl = element.querySelector('.thought-title-text');
         const descEl = element.querySelector('.thought-description');
+        const sidebarScroller = document.querySelector('.right-sidebar');
 
-        if (titleEl) setElementTextImmediately(titleEl, title);
-        if (descEl) setElementTextImmediately(descEl, description);
+        // Type the step text out, ChatGPT/Claude-style, rather than dropping
+        // the whole sentence in at once.
+        if (titleEl) await typeTextIntoElement(titleEl, title, 10, sidebarScroller);
+        if (descEl) await typeTextIntoElement(descEl, description, 8, sidebarScroller);
+    }
+
+    async function updateStepDescriptionWithTyping(element, description) {
+        if (!element) return;
+        await typeTextIntoElement(element, description, 8, document.querySelector('.right-sidebar'));
     }
 
     function initializeLiveStepStream(sessionId, onConnectionOpen) {
@@ -1355,10 +1383,10 @@
 
                 if (typeof data === "string") {
                     const rawStep = data;
-                    const title = rawStep.includes(' - ')
-                        ? rawStep.split(' - ')[0]
-                        : `Step ${liveStepIndex + 1}`;
+                    const rawTitle = rawStep.includes(' - ') ? rawStep.split(' - ')[0] : "";
+                    if (shouldSkipRawStep(rawTitle)) return;
 
+                    const title = rawTitle || `Step ${liveStepIndex + 1}`;
                     const description = rawStep.includes(' - ')
                         ? rawStep.split(' - ').slice(1).join(' - ')
                         : rawStep;
@@ -1368,6 +1396,7 @@
                         thoughtChainContainer,
                         humanized.title,
                         humanized.description,
+                        humanized.icon,
                         liveStepIndex,
                         false
                     );
@@ -1382,6 +1411,8 @@
                     is_sql
                 } = data;
 
+                if (shouldSkipRawStep(title)) return;
+
                 if (panelTitle) {
                     panelTitle.innerText = "Chain of Thought";
                 }
@@ -1392,6 +1423,7 @@
                         thoughtChainContainer,
                         humanized.title,
                         humanized.description,
+                        humanized.icon,
                         liveStepIndex,
                         true
                     );
@@ -1406,7 +1438,7 @@
                     const humanized = humanizeStep(title, description);
 
                     if (descEl && humanized.description) {
-                        setElementTextImmediately(descEl, humanized.description);
+                        await updateStepDescriptionWithTyping(descEl, humanized.description);
                     }
                     if (statusEl) {
                         statusEl.innerHTML = "✓ Completed";
@@ -1453,8 +1485,8 @@
             panelTitle.innerText = "Chain of Thought";
         }
 
-        fallbackSteps.forEach((step, index) => {
-            let title = `Step ${index + 1}`;
+        fallbackSteps.forEach((step) => {
+            let title = "";
             let description = "";
 
             if (typeof step === 'string') {
@@ -1470,15 +1502,15 @@
                 description = step.description || JSON.stringify(step);
             }
 
+            if (shouldSkipRawStep(title)) return;
+
             const humanized = humanizeStep(title, description);
 
             const stepHtml = `
                 <div class="thought-step" style="opacity: 1; transform: translateY(0); transition: all 0.4s ease; margin-bottom: 15px;">
-                    <div class="thought-number" style="font-size: 11px; font-weight: 700; color: #4a90e2; margin-bottom: 4px; text-transform: uppercase;">
-                        STEP ${index + 1}
-                    </div>
-                    <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px;">
-                        ${humanized.title}
+                    <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px; display: flex; align-items: baseline; gap: 6px;">
+                        <span class="thought-icon" aria-hidden="true">${humanized.icon}</span>
+                        <span>${humanized.title}</span>
                     </div>
                     <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
                         ${humanized.description}
@@ -1491,6 +1523,36 @@
 
             thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
         });
+    }
+
+    // Shows the actual query behind an SQL-backed answer, wrapped in a
+    // plain-language sentence first so business users aren't confronted
+    // with raw SQL - the technical query itself stays available but tucked
+    // behind a collapsible "view" toggle for anyone who wants it.
+    function renderTechnicalQueryDetail(sql) {
+        const thoughtChainContainer = document.querySelector('.thought-chain');
+        if (!thoughtChainContainer || !sql) return;
+
+        const stepHtml = `
+            <div class="thought-step" style="opacity: 1; transform: translateY(0); transition: all 0.4s ease; margin-bottom: 15px;">
+                <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px; display: flex; align-items: baseline; gap: 6px;">
+                    <span class="thought-icon" aria-hidden="true">🗄️</span>
+                    <span>How I found this</span>
+                </div>
+                <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                    I looked this up in your connected database using a structured query.
+                </div>
+                <details style="margin-top: 8px;">
+                    <summary style="cursor: pointer; color: #60A5FA; font-size: 12px;">View technical query</summary>
+                    <pre style="margin-top: 6px; padding: 10px; background: #07091E; border: 1px solid #1F2348; border-radius: 6px; color: #CBD5E1; font-size: 12px; white-space: pre-wrap; word-break: break-word;"><code>${escapeAttr(sql)}</code></pre>
+                </details>
+                <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
+                    ✓ Completed
+                </span>
+            </div>
+        `;
+
+        thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
     }
 
     // ==========================================
@@ -1543,6 +1605,9 @@
                     const isSqlResult = ui.sql !== undefined && ui.sql !== null && ui.sql !== "-- No SQL Generated --" && ui.sql !== "null";
                     renderFallbackStepsFromResponse(ui, isSqlResult);
                     finalizeLiveSteps(isSqlResult);
+                    if (isSqlResult) {
+                        renderTechnicalQueryDetail(ui.sql);
+                    }
 
                     let extraOutput = ``;
 
