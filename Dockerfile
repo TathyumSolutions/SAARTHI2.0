@@ -39,4 +39,9 @@ ENV FLASK_APP=run.py
 ENV PYTHONUNBUFFERED=1
 
 # Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "run:app"]
+# gthread (real OS threads) rather than gevent's cooperative greenlets: the
+# request pipeline makes direct blocking psycopg2 calls that aren't
+# gevent-patched, which stalls an entire gevent worker's event loop -
+# including the parallel SSE /stream_steps connection - until the blocking
+# call returns. gthread doesn't have that failure mode.
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--threads", "4", "--worker-class", "gthread", "--timeout", "120", "run:app"]

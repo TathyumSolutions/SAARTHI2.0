@@ -1471,7 +1471,12 @@
         }
     }
 
-    function renderFallbackStepsFromResponse(ui, isSql) {
+    // Only fires if the live SSE stream delivered nothing (e.g. it connected
+    // too late to catch any steps). Types each step out the same way the
+    // live path does, so Chain of Thought never appears as an instant dump
+    // synchronized with the final answer typing - it stays its own,
+    // independently-paced beat even in this fallback case.
+    async function renderFallbackStepsFromResponse(ui, isSql) {
         const thoughtChainContainer = document.querySelector('.thought-chain');
         const panelTitle = document.querySelector('.panel-title');
 
@@ -1485,7 +1490,8 @@
             panelTitle.innerText = "Chain of Thought";
         }
 
-        fallbackSteps.forEach((step) => {
+        let renderedIndex = 0;
+        for (const step of fallbackSteps) {
             let title = "";
             let description = "";
 
@@ -1502,27 +1508,19 @@
                 description = step.description || JSON.stringify(step);
             }
 
-            if (shouldSkipRawStep(title)) return;
+            if (shouldSkipRawStep(title)) continue;
 
             const humanized = humanizeStep(title, description);
-
-            const stepHtml = `
-                <div class="thought-step" style="opacity: 1; transform: translateY(0); transition: all 0.4s ease; margin-bottom: 15px;">
-                    <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px; display: flex; align-items: baseline; gap: 6px;">
-                        <span class="thought-icon" aria-hidden="true">${humanized.icon}</span>
-                        <span>${humanized.title}</span>
-                    </div>
-                    <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
-                        ${humanized.description}
-                    </div>
-                    <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
-                        ✓ Completed
-                    </span>
-                </div>
-            `;
-
-            thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
-        });
+            await renderStepWithTyping(
+                thoughtChainContainer,
+                humanized.title,
+                humanized.description,
+                humanized.icon,
+                renderedIndex,
+                false
+            );
+            renderedIndex++;
+        }
     }
 
     // Shows the actual query behind an SQL-backed answer, wrapped in a
@@ -1603,7 +1601,7 @@
                     const ui = data.response;
 
                     const isSqlResult = ui.sql !== undefined && ui.sql !== null && ui.sql !== "-- No SQL Generated --" && ui.sql !== "null";
-                    renderFallbackStepsFromResponse(ui, isSqlResult);
+                    await renderFallbackStepsFromResponse(ui, isSqlResult);
                     finalizeLiveSteps(isSqlResult);
                     if (isSqlResult) {
                         renderTechnicalQueryDetail(ui.sql);

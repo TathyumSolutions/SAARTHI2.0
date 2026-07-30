@@ -355,6 +355,13 @@ def stream_steps():
     def generate():
         q = stream_manager.listen(session_id)
         try:
+            # Send a byte immediately so the browser's EventSource fires
+            # `onopen` right away, instead of waiting on the first real step
+            # (or up to 5s for a heartbeat). The frontend gates sending the
+            # chat request on this connection actually being open, so any
+            # delay here directly delays - and can bunch up - live steps.
+            yield f"data: {json.dumps({'connected': True})}\n\n"
+
             while True:
                 try:
                     payload = q.get(timeout=5)

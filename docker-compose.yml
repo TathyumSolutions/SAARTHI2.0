@@ -9,7 +9,11 @@ services:
       - FLASK_ENV=production
       #- DATABASE_URL=postgresql://saarthi:password@db:5432/saarthi_db
       - REDIS_URL=redis://redis:6379/0
-    command: sh -c "pip install --no-cache-dir -r /app/requirements.txt && gunicorn --worker-class gevent --bind 0.0.0.0:5000 --workers 2 --timeout 5000 run:app"
+    # gthread instead of gevent: direct blocking psycopg2 calls in the
+    # request pipeline aren't gevent-patched, so they stall gevent's
+    # cooperative event loop - and the parallel SSE /stream_steps
+    # connection with it - until the blocking call returns.
+    command: sh -c "pip install --no-cache-dir -r /app/requirements.txt && gunicorn --worker-class gthread --threads 4 --bind 0.0.0.0:5000 --workers 2 --timeout 5000 run:app"
     #command: gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 5000 run:app
     depends_on:
       db:
