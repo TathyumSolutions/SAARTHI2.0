@@ -687,6 +687,381 @@
               }
             ]
           },
+          "ratefile": {
+            "description": "Table storing ratefile records.",
+            "row_count": 1039,
+            "constraints": {
+              "primary_key": [],
+              "foreign_keys": [],
+              "unique_columns": []
+            },
+            "columns": [
+              {
+                "name": "rk",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 1039,
+                "null_count": 0,
+                "sample_values": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5"
+                ]
+              },
+              {
+                "name": "player",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 1039,
+                "null_count": 0,
+                "sample_values": [
+                  "Brenden Aaronson",
+                  "Thelo Aasgaard",
+                  "Hamza Abdelkarim",
+                  "Hossam Abdelmaguid",
+                  "Mohamed Abdelmonem"
+                ]
+              },
+              {
+                "name": "pos",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 4,
+                "null_count": 0,
+                "sample_values": [
+                  "MF",
+                  "MF",
+                  "FW",
+                  "DF",
+                  "DF"
+                ]
+              },
+              {
+                "name": "squad",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 48,
+                "null_count": 0,
+                "sample_values": [
+                  "us United States",
+                  "no Norway",
+                  "eg Egypt",
+                  "eg Egypt",
+                  "eg Egypt"
+                ]
+              },
+              {
+                "name": "age",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 25,
+                "null_count": 0,
+                "sample_values": [
+                  "25",
+                  "24",
+                  "18",
+                  "25",
+                  "27"
+                ]
+              },
+              {
+                "name": "club",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 386,
+                "null_count": 3,
+                "sample_values": [
+                  "1.eng Leeds United",
+                  "1.sct Rangers",
+                  "4.es Barcelona B",
+                  "1.eg Zamalek SC",
+                  "1.fr Nice"
+                ]
+              },
+              {
+                "name": "born",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 24,
+                "null_count": 0,
+                "sample_values": [
+                  "2000",
+                  "2002",
+                  "2008",
+                  "2001",
+                  "1999"
+                ]
+              },
+              {
+                "name": "mp",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 8,
+                "null_count": 0,
+                "sample_values": [
+                  "1",
+                  "1",
+                  "4",
+                  "2",
+                  "2"
+                ]
+              },
+              {
+                "name": "starts",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 9,
+                "null_count": 0,
+                "sample_values": [
+                  "1",
+                  "1",
+                  "0",
+                  "0",
+                  "1"
+                ]
+              },
+              {
+                "name": "min",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 386,
+                "null_count": 0,
+                "sample_values": [
+                  "76",
+                  "90",
+                  "60",
+                  "59",
+                  "14"
+                ]
+              },
+              {
+                "name": "col_90s",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 76,
+                "null_count": 0,
+                "sample_values": [
+                  "0.8",
+                  "1.0",
+                  "0.7",
+                  "0.7",
+                  "0.2"
+                ]
+              },
+              {
+                "name": "gls",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 10,
+                "null_count": 0,
+                "sample_values": [
+                  "0",
+                  "1",
+                  "0",
+                  "0",
+                  "0"
+                ]
+              },
+              {
+                "name": "ast",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 6,
+                "null_count": 0,
+                "sample_values": [
+                  "0",
+                  "0",
+                  "0",
+                  "0",
+                  "0"
+                ]
+              },
+              {
+                "name": "g_a",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 11,
+                "null_count": 0,
+                "sample_values": [
+                  "0",
+                  "1",
+                  "0",
+                  "0",
+                  "0"
+                ]
+              },
+              {
+                "name": "g_pk",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 9,
+                "null_count": 0,
+                "sample_values": [
+                  "0",
+                  "1",
+                  "0",
+                  "0",
+                  "0"
+                ]
+              },
+              {
+                "name": "pk",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 3,
+                "null_count": 0,
+                "sample_values": [
+                  "0",
+                  "0",
+                  "0",
+                  "0",
+                  "0"
+                ]
+              },
+              {
+                "name": "pkatt",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 3,
+                "null_count": 0,
+                "sample_values": [
+                  "0",
+                  "0",
+                  "0",
+                  "0",
+                  "0"
+                ]
+              },
+              {
+                "name": "crdy",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 4,
+                "null_count": 0,
+                "sample_values": [
+                  "0",
+                  "0",
+                  "0",
+                  "0",
+                  "0"
+                ]
+              },
+              {
+                "name": "crdr",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 2,
+                "null_count": 0,
+                "sample_values": [
+                  "0",
+                  "0",
+                  "0",
+                  "0",
+                  "0"
+                ]
+              },
+              {
+                "name": "playerid",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 1039,
+                "null_count": 0,
+                "sample_values": [
+                  "5bc43860",
+                  "c88a28b9",
+                  "057d8f12",
+                  "accbfc94",
+                  "bff15d74"
+                ]
+              },
+              {
+                "name": "astper90",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 75,
+                "null_count": 0,
+                "sample_values": [
+                  "0.0",
+                  "0.0",
+                  "0.0",
+                  "0.0",
+                  "0.0"
+                ]
+              },
+              {
+                "name": "g_aper90",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 123,
+                "null_count": 0,
+                "sample_values": [
+                  "0.0",
+                  "1.0",
+                  "0.0",
+                  "0.0",
+                  "0.0"
+                ]
+              },
+              {
+                "name": "glsper90",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 94,
+                "null_count": 0,
+                "sample_values": [
+                  "0.0",
+                  "1.0",
+                  "0.0",
+                  "0.0",
+                  "0.0"
+                ]
+              },
+              {
+                "name": "g_pkper90",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 89,
+                "null_count": 0,
+                "sample_values": [
+                  "0.0",
+                  "1.0",
+                  "0.0",
+                  "0.0",
+                  "0.0"
+                ]
+              },
+              {
+                "name": "g_a_pkper90",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 118,
+                "null_count": 0,
+                "sample_values": [
+                  "0.0",
+                  "1.0",
+                  "0.0",
+                  "0.0",
+                  "0.0"
+                ]
+              },
+              {
+                "name": "secondpos",
+                "data_type": "text",
+                "nullable": true,
+                "unique_values": 3,
+                "null_count": 871,
+                "sample_values": [
+                  "MF",
+                  "MF",
+                  "FW",
+                  "MF",
+                  "MF"
+                ]
+              }
+            ]
+          },
           "ska1": {
             "description": "Table storing ska1 records.",
             "row_count": 500,
@@ -1190,6 +1565,6 @@
       "rule_6": "When in doubt between DB and FILES -> prefer FILES",
       "output_format": "Return ONLY a JSON array. Example: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"DB\", \"FILES\"]"
     },
-    "generated_at": "2026-07-29T16:36:12.253880Z"
+    "generated_at": "2026-07-30T11:39:32.584698Z"
   }
 }
