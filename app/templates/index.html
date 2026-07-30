@@ -1298,9 +1298,23 @@
 
         const titleEl = element.querySelector('.thought-title');
         const descEl = element.querySelector('.thought-description');
+        const statusEl = element.querySelector('.status-indicator');
 
-        if (titleEl) setElementTextImmediately(titleEl, title);
-        if (descEl) setElementTextImmediately(descEl, description);
+        if (isInProgress) {
+            if (titleEl) {
+                titleEl.innerHTML = `<span class="typing-dots" aria-label="Thinking"><span></span><span></span><span></span></span>`;
+            }
+            if (descEl) {
+                descEl.innerHTML = `<span class="typing-dots" aria-label="Thinking"><span></span><span></span><span></span></span>`;
+            }
+            if (statusEl) {
+                statusEl.innerHTML = "⏳ Processing...";
+                statusEl.style.color = "#60A5FA";
+            }
+        } else {
+            if (titleEl) setElementTextImmediately(titleEl, title);
+            if (descEl) setElementTextImmediately(descEl, description);
+        }
     }
 
     function initializeLiveStepStream(sessionId, onConnectionOpen) {
@@ -1403,6 +1417,10 @@
                     if (statusEl) {
                         statusEl.innerHTML = "✓ Completed";
                         statusEl.style.color = "#10B981";
+                    }
+                    const titleEl = currentStep.querySelector('.thought-title');
+                    if (titleEl && humanized.title) {
+                        setElementTextImmediately(titleEl, humanized.title);
                     }
                 }
             }).catch((err) => {

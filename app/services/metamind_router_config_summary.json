@@ -78,6 +78,37 @@
               "material_group"
             ]
           },
+          "ratefile": {
+            "description": "Table storing ratefile records.",
+            "columns": [
+              "rk",
+              "player",
+              "pos",
+              "squad",
+              "age",
+              "club",
+              "born",
+              "mp",
+              "starts",
+              "min",
+              "col_90s",
+              "gls",
+              "ast",
+              "g_a",
+              "g_pk",
+              "pk",
+              "pkatt",
+              "crdy",
+              "crdr",
+              "playerid",
+              "astper90",
+              "g_aper90",
+              "glsper90",
+              "g_pkper90",
+              "g_a_pkper90",
+              "secondpos"
+            ]
+          },
           "ska1": {
             "description": "Table storing ska1 records.",
             "columns": [
@@ -147,6 +178,6 @@
         ]
       }
     },
-    "generated_at": "2026-07-29T16:36:12.253880Z"
+    "generated_at": "2026-07-30T07:16:45.412790Z"
   }
 }
