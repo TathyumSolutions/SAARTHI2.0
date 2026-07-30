@@ -15,6 +15,7 @@ import logging
 import datetime
 import pandas as pd
 import psycopg2
+from app.utils.decorators import rate_limit
 
 bp = Blueprint('database', __name__, url_prefix='/api/databases')
 
@@ -102,6 +103,7 @@ def get_databases():
         return jsonify({'error': str(e), 'databases': []}), 200
 
 @bp.route('/', methods=['POST'])
+@rate_limit(max_requests=20, window=60)
 def create_database_connection():
     """
     Create new database connection
@@ -161,6 +163,7 @@ def create_database_connection():
 
 
 @bp.route('/excel', methods=['POST'])
+@rate_limit(max_requests=20, window=60)
 def create_excel_database():
     """
     Uploads an Excel file and turns it into ONE queryable table, treated
@@ -318,7 +321,7 @@ def delete_database_connection(db_id):
         return jsonify({'error': str(e)}), 500
 
 @bp.route('/<int:db_id>/test', methods=['POST'])
-
+@rate_limit(max_requests=20, window=60)
 def test_database_connection(db_id):
     """
     Test database connection
@@ -410,6 +413,7 @@ def process_database_connection(db_id):
 
 
 @bp.route('/test', methods=['POST'])
+@rate_limit(max_requests=20, window=60)
 def test_new_connection():
     """
     Test a new database connection (before saving)

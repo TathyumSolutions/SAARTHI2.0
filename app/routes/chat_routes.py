@@ -18,6 +18,8 @@ import os  # 👈 Fixes the 'environ' underline
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from app.services.updated_router_services import RouterService
+from app.utils.decorators import rate_limit
+from app.utils.guardrails import sanitize_text, detect_prompt_injection
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
@@ -269,6 +271,7 @@ def get_suggestions():
 
 @bp.route('/stream', methods=['POST'])
 @jwt_required()
+@rate_limit(max_requests=30, window=60)
 def stream_message():
     """
     Stream chat response (Server-Sent Events)
@@ -284,24 +287,32 @@ router_service = RouterService()
 
 @bp.route('/message', methods=['POST'])
 #@jwt_required() # This requires a valid login token from your frontend
+@rate_limit(max_requests=30, window=60)
 def send_message():
     """
     Send message in chat
     Request: { "session_id": 1, "message": "What is in the document?", "mode": "chat" ,model_name": "llama3" }
     """
     data = request.get_json()
-    user_query = data.get('message')
+    user_query = sanitize_text(data.get('message'))
     session_id = data.get('session_id', 1) # Default to 1 if not provided
     model_name = data.get('model_name')
 
     stream_manager.start_new_query(session_id)
 
     custom_key = data.get('custom_key', '')
-    system_instructions = data.get('system_instructions', '')
+    system_instructions = sanitize_text(data.get('system_instructions', ''))
 
     if not user_query:
         return jsonify({"error": "Message is required"}), 400
-    
+
+    flagged, matched = detect_prompt_injection(user_query)
+    if flagged:
+        print(f"⚠️ [GUARDRAIL] Prompt injection heuristic flagged message (session {session_id}): {matched}")
+        return jsonify({
+            "error": "Your message looks like it's trying to override system instructions and was blocked. Please rephrase your question."
+        }), 400
+
     if not model_name:
         return jsonify({"error": "No valid LLM model selected. Please select a model from the dropdown."}), 400
     

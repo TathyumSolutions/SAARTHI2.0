@@ -315,6 +315,7 @@ import traceback
 import re
 import os
 from langchain_openai import ChatOpenAI
+from app.utils.guardrails import is_safe_sql
 
 
 class DataInsightGeneratorAgent:
@@ -498,6 +499,17 @@ class QueryFormatterAgent:
                 "query": sql_query
             }
             print("\n[DEBUG] Returning error (empty SQL):", json.dumps(error_result, indent=4))
+            return error_result
+
+        safe, unsafe_reason = is_safe_sql(sql_query)
+        if not safe:
+            error_result = {
+                "status": "error",
+                "format": "error",
+                "message": f"❌ Query blocked by guardrails: {unsafe_reason}",
+                "query": sql_query
+            }
+            print("\n[GUARDRAIL] Blocked unsafe SQL:", json.dumps(error_result, indent=4))
             return error_result
 
         try:

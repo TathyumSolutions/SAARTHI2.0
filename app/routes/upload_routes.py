@@ -7,6 +7,8 @@ from flask import Blueprint, request, jsonify, current_app, send_file, send_from
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import json
+from app.utils.decorators import rate_limit
+from app.utils.guardrails import validate_upload_content, MAX_UPLOAD_FILE_SIZE
 
 upload_bp = Blueprint('upload_bp', __name__)
 
@@ -35,6 +37,7 @@ def save_metadata(metadata):
         json.dump(metadata, f, indent=2)
 
 @upload_bp.route('/api/upload/unstructured', methods=['POST'])
+@rate_limit(max_requests=20, window=60)
 def upload_unstructured():
     if 'files' not in request.files:
         return jsonify({'error': 'No files part'}), 400
@@ -54,17 +57,31 @@ def upload_unstructured():
     for file in files:
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
-            
+            ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+
+            header_bytes = file.stream.read(32)
+            file.stream.seek(0)
+            content_ok, content_reason = validate_upload_content(header_bytes, ext)
+            if not content_ok:
+                return jsonify({'error': f'{filename}: {content_reason}'}), 400
+
             # Generate unique filename if exists
             base_name, ext = os.path.splitext(filename)
             counter = 1
             while os.path.exists(os.path.join(UPLOAD_FOLDER, filename)):
                 filename = f"{base_name}_{counter}{ext}"
                 counter += 1
-            
+
             save_path = os.path.join(UPLOAD_FOLDER, filename)
             file.save(save_path)
             file_size = os.path.getsize(save_path)
+
+            if file_size > MAX_UPLOAD_FILE_SIZE:
+                os.remove(save_path)
+                return jsonify({
+                    'error': f'{filename}: file exceeds the {MAX_UPLOAD_FILE_SIZE // (1024 * 1024)}MB size limit'
+                }), 400
+
             now = datetime.now()
             date_str = now.strftime('%Y-%m-%d %H:%M')
             code_prefix = {
