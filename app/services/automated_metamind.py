@@ -522,10 +522,48 @@ def introspect_qdrant():
 
 
 # ============================================================
+# STEP 3.5: INTROSPECT spreadsheet-backed tables -> SPREADSHEET datasource
+# ============================================================
+
+def introspect_spreadsheets():
+    """
+    Reads the Parquet-backed table manifest (spreadsheet_service.py) - not
+    a database - for Excel/CSV uploads that deliberately never got written
+    into Postgres. Mirrors the DB datasource's shape closely enough that
+    the router prompt and the SPREADSHEET query path can both work off it.
+    """
+    try:
+        from app.services.spreadsheet_service import list_all_tables
+    except Exception as e:
+        print(f"⚠️ [SPREADSHEET] Could not import spreadsheet_service: {e}")
+        return None
+
+    try:
+        tables = list_all_tables()
+    except Exception as e:
+        print(f"⚠️ [SPREADSHEET] Could not read spreadsheet manifest: {e}")
+        return None
+
+    if not tables:
+        return None
+
+    tables_out = {}
+    for table in tables:
+        tables_out[table["table"]] = {
+            "description": table.get("description") or f"Spreadsheet table storing {table['table']} records.",
+            "row_count": table.get("row_count"),
+            "columns": table.get("columns", []),
+        }
+
+    print(f"✅ [SPREADSHEET] Found {len(tables_out)} spreadsheet-backed table(s).")
+    return tables_out
+
+
+# ============================================================
 # STEP 4: BUILD THE ROUTING MENU JSON
 # ============================================================
 
-def build_routing_menu(db_tables, api_tools, files_info):
+def build_routing_menu(db_tables, api_tools, files_info, spreadsheet_tables=None):
     """
     Assembles the contextual schema payload mapping active nodes.
     """
@@ -571,6 +609,18 @@ def build_routing_menu(db_tables, api_tools, files_info):
             "registered_tools": api_tools
         }
 
+    if spreadsheet_tables:
+        datasources["SPREADSHEET"] = {
+            "description": "Use when query needs data from an uploaded Excel or CSV file (not the main business database). These tables live outside Postgres as separate spreadsheet-backed tables and are queried with a Python/pandas-based path, never SQL.",
+            "trigger_keywords": ["excel", "csv", "spreadsheet", "sheet", "workbook", "uploaded file"],
+            "example_queries": [
+                "Show player performance from the uploaded sheet",
+                "Total sales in the Q1 spreadsheet",
+                "How many rows are in the excel file?"
+            ],
+            "tables": spreadsheet_tables
+        }
+
     routing_rules = {
         "rule_1": "If query mentions table names or columns shown under DB.tables -> always choose DB",
         "rule_2": "If query has count/sum/list/show/how many -> prefer DB",
@@ -578,7 +628,8 @@ def build_routing_menu(db_tables, api_tools, files_info):
         "rule_4": "If query asks for live/real-time data or matches a registered_tools name/description under API -> always choose API",
         "rule_5": "If query could match more than one active datasource -> return all matching ones, e.g. [\"DB\", \"FILES\"]",
         "rule_6": "When in doubt between DB and FILES -> prefer FILES",
-        "output_format": "Return ONLY a JSON array. Example: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"DB\", \"FILES\"]"
+        "rule_7": "If query mentions table names or columns shown under SPREADSHEET.tables, or explicitly refers to an uploaded excel/csv/spreadsheet file -> always choose SPREADSHEET",
+        "output_format": "Return ONLY a JSON array. Example: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"SPREADSHEET\"] or [\"DB\", \"FILES\"]"
     }
 
     menu = {
@@ -596,7 +647,7 @@ def build_routing_menu(db_tables, api_tools, files_info):
 # STEP 5: CHANGE DETECTION (hash-based)
 # ============================================================
 
-def compute_fingerprint(db_tables, api_tools, files_info):
+def compute_fingerprint(db_tables, api_tools, files_info, spreadsheet_tables=None):
     """
     Generates data fingerprints to capture structural state drift.
     """
@@ -604,7 +655,8 @@ def compute_fingerprint(db_tables, api_tools, files_info):
         "db_tables": db_tables or {},
         "api_tools": api_tools or [],
         "files_points_count": (files_info or {}).get("points_count", 0),
-        "files_collection": (files_info or {}).get("collection", "")
+        "files_collection": (files_info or {}).get("collection", ""),
+        "spreadsheet_tables": spreadsheet_tables or {}
     }
     raw = json.dumps(fingerprint_source, sort_keys=True, default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -666,6 +718,18 @@ def build_routing_menu_summary(menu: dict) -> dict:
             ]
         }
 
+    if "SPREADSHEET" in full_datasources:
+        summary_tables = {}
+        for table_name, table_data in full_datasources["SPREADSHEET"].get("tables", {}).items():
+            summary_tables[table_name] = {
+                "description": table_data.get("description", ""),
+                "columns": [col.get("name") for col in table_data.get("columns", [])]
+            }
+        summary_datasources["SPREADSHEET"] = {
+            "description": full_datasources["SPREADSHEET"].get("description", ""),
+            "tables": summary_tables
+        }
+
     return {
         "routing_menu_summary": {
             "datasources": summary_datasources,
@@ -691,12 +755,13 @@ def generate_router_config(force=False):
     db_tables = introspect_databridge_db()
     api_tools = introspect_api_db()
     files_info = introspect_qdrant()
+    spreadsheet_tables = introspect_spreadsheets()
 
-    if not db_tables and not api_tools and not files_info:
-        print("❌ All three datasources are unreachable or empty. Nothing to generate.")
+    if not db_tables and not api_tools and not files_info and not spreadsheet_tables:
+        print("❌ All datasources are unreachable or empty. Nothing to generate.")
         return None
 
-    new_hash = compute_fingerprint(db_tables, api_tools, files_info)
+    new_hash = compute_fingerprint(db_tables, api_tools, files_info, spreadsheet_tables)
     previous_hash = load_previous_hash()
 
     if not force and new_hash == previous_hash and os.path.exists(OUTPUT_PATH):
@@ -704,7 +769,7 @@ def generate_router_config(force=False):
         print(f"   Existing config remains at: {OUTPUT_PATH}")
         return OUTPUT_PATH
 
-    menu = build_routing_menu(db_tables, api_tools, files_info)
+    menu = build_routing_menu(db_tables, api_tools, files_info, spreadsheet_tables)
 
     with open(OUTPUT_PATH, "w") as f:
         json.dump(menu, f, indent=2)

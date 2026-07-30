@@ -47,6 +47,7 @@ from app.services.api_services import fetch_and_translate_tools, ask_dynamic_mod
 from app.services.automated_metamind import generate_router_config
 from app.services.general_service import answer_general_knowledge
 from app.services.stream_manager import stream_manager
+from app.services.spreadsheet_query_service import answer_from_spreadsheets
 
 # Token counting is best-effort: fall back to a rough estimate if tiktoken
 # isn't installed, rather than hard-failing the whole router.
@@ -176,6 +177,23 @@ def _trim_router_config(config: dict, max_tables: int, max_cols: int,
         "description": api.get("description", ""),
         "example_queries": (api.get("example_queries", []) or [])[:max_examples],
         "registered_tools": tools_list[:max_tools],
+    }
+
+    spreadsheet = ds.get("SPREADSHEET", {})
+    spreadsheet_tables = spreadsheet.get("tables", {})
+    trimmed_spreadsheet_tables = {}
+    for i, (tname, tinfo) in enumerate(spreadsheet_tables.items()):
+        if i >= max_tables:
+            trimmed_spreadsheet_tables["__truncated__"] = f"...and {len(spreadsheet_tables) - max_tables} more tables not shown"
+            break
+        trimmed_spreadsheet_tables[tname] = {
+            "description": tinfo.get("description", ""),
+            "columns": (tinfo.get("columns", []) or [])[:max_cols],
+        }
+    trimmed_ds["SPREADSHEET"] = {
+        "description": spreadsheet.get("description", ""),
+        "example_queries": (spreadsheet.get("example_queries", []) or [])[:max_examples],
+        "tables": trimmed_spreadsheet_tables,
     }
 
     return {"routing_menu": {"instructions": menu.get("instructions", ""), "datasources": trimmed_ds}}
@@ -315,6 +333,8 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
     config_str = _fit_router_config_to_budget(router_config, config_budget)
     known_tables = list(router_config.get("routing_menu", {}).get("datasources", {}).get("DB", {}).get("tables", {}).keys())
     known_tables_str = ", ".join(known_tables) if known_tables else "(no database tables configured)"
+    known_spreadsheet_tables = list(router_config.get("routing_menu", {}).get("datasources", {}).get("SPREADSHEET", {}).get("tables", {}).keys())
+    known_spreadsheet_tables_str = ", ".join(known_spreadsheet_tables) if known_spreadsheet_tables else "(no spreadsheet tables uploaded)"
 
     system_prompt = f"""You are the enterprise orchestration router for Saarthi AI.
 
@@ -343,6 +363,11 @@ TOOLS AVAILABLE:
     below to see if tables/images are actually available before answering that
     they exist).
 - call_external_api: for questions matching a live registered external tool.
+- query_spreadsheet_data: for questions about data uploaded as an Excel or CSV
+    file. These are separate spreadsheet-backed tables, not part of the main
+    database, and are answered with a Python/pandas-based path instead of SQL.
+    Only use query_spreadsheet_data if the question is actually about one of
+    these real spreadsheet tables: {known_spreadsheet_tables_str}.
 - answer_general_knowledge: for world knowledge, definitions, greetings, or
   anything not covered by the company's own data sources.
 
@@ -383,7 +408,7 @@ CURRENT DATA SOURCE CONFIGURATION (router_metamind.json — may be trimmed for l
 #  are available.)
 # ============================================================
 @tool
-def check_data_source_status(track: Literal["DB", "FILES", "API", "ANY"]) -> str:
+def check_data_source_status(track: Literal["DB", "FILES", "API", "SPREADSHEET", "ANY"]) -> str:
     """Answer a question about whether a data source is configured/available
     (e.g. 'do you have a DB connection?'). Reads configuration only — never
     runs the DB, FILES, or API agent pipelines."""
@@ -411,6 +436,15 @@ def call_external_api(question: str) -> str:
 
 
 @tool
+def query_spreadsheet_data(question: str) -> str:
+    """Answer a question that needs data from an uploaded Excel or CSV file.
+    These tables are stored separately from the main database (no spare
+    warehouse to hold them) and are answered via a Python/pandas-based path,
+    never SQL."""
+    raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
+
+
+@tool
 def answer_general_knowledge_tool(question: str) -> str:
     """Answer general world-knowledge questions, greetings, definitions, or
     anything not covered by the company's own data sources."""
@@ -422,6 +456,7 @@ _ALL_TOOLS = [
     query_database,
     search_documents,
     call_external_api,
+    query_spreadsheet_data,
     answer_general_knowledge_tool,
 ]
 
@@ -435,11 +470,13 @@ def _answer_status_check(args: dict, router_config: dict) -> dict:
     db_tables = menu.get("DB", {}).get("tables", {}) or {}
     files_info = menu.get("FILES", {}).get("vector_store_info", {}) or {}
     api_tools = menu.get("API", {}).get("registered_tools", []) or []
+    spreadsheet_tables = menu.get("SPREADSHEET", {}).get("tables", {}) or {}
 
     available = {
         "DB": bool(db_tables),
         "FILES": (files_info.get("points_count", 0) or 0) > 0,
         "API": bool(api_tools),
+        "SPREADSHEET": bool(spreadsheet_tables),
     }
 
     def _plural(count: int, noun: str) -> str:
@@ -472,13 +509,19 @@ def _answer_status_check(args: dict, router_config: dict) -> dict:
                 listed += f", and {count - 5} more"
             return f"Yes, I have {count} connected {_plural(count, 'tool')} available: {listed}."
 
+        if track == "SPREADSHEET":
+            if not available["SPREADSHEET"]:
+                return "No Excel or CSV files have been uploaded yet."
+            count = len(spreadsheet_tables)
+            return f"Yes, I can query uploaded spreadsheet data. {count} {_plural(count, 'table')} available."
+
         return ""
 
     track = (args.get("track") or "ANY").upper()
     if track in available:
         answer = _describe(track)
     else:
-        answer = " ".join(_describe(t) for t in ("DB", "FILES", "API"))
+        answer = " ".join(_describe(t) for t in ("DB", "FILES", "API", "SPREADSHEET"))
 
     return {
         "answer": answer,
@@ -546,6 +589,23 @@ def _run_api_track(question: str, ctx: dict) -> dict:
             "sql": None, "table": [], "chart": {}, "insights": []}
 
 
+def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
+    enriched_question = question
+    if ctx.get("company_feedback_context"):
+        enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+
+    result = answer_from_spreadsheets(
+        enriched_question, model_name=ctx["model_name"], custom_key=ctx["custom_key"],
+        system_instructions=ctx.get("system_instructions", ""), session_id=ctx["session_id"],
+    )
+    return {
+        "answer": result.get("answer"),
+        "steps": result.get("steps", []),
+        "sql": result.get("sql"), "table": result.get("table", []),
+        "chart": result.get("chart", {}), "insights": result.get("insights", []),
+    }
+
+
 def _run_general_track(question: str, ctx: dict) -> dict:
     enriched_question = question
     if ctx.get("company_feedback_context"):
@@ -565,6 +625,7 @@ TOOL_DISPATCH = {
     "query_database": lambda args, ctx: _run_db_track(args.get("question", ctx["user_query"]), ctx),
     "search_documents": lambda args, ctx: _run_files_track(args.get("question", ctx["user_query"]), ctx),
     "call_external_api": lambda args, ctx: _run_api_track(args.get("question", ctx["user_query"]), ctx),
+    "query_spreadsheet_data": lambda args, ctx: _run_spreadsheet_track(args.get("question", ctx["user_query"]), ctx),
     "answer_general_knowledge_tool": lambda args, ctx: _run_general_track(args.get("question", ctx["user_query"]), ctx),
     "check_data_source_status": lambda args, ctx: _answer_status_check(args, ctx["router_config"]),
 }

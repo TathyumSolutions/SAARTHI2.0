@@ -15,8 +15,8 @@ import logging
 import datetime
 import pandas as pd
 import psycopg2
-from psycopg2 import sql as pgsql
 from flask_jwt_extended import jwt_required
+from app.services import spreadsheet_service
 
 bp = Blueprint('database', __name__, url_prefix='/api/databases')
 
@@ -41,52 +41,6 @@ def _dedupe_identifiers(names):
         out.append(base if count == 0 else f"{base}_{count + 1}")
     return out
 
-
-def _infer_pg_type(series: pd.Series) -> str:
-    """Maps a pandas column's inferred dtype to a real Postgres type,
-    instead of creating every column as TEXT regardless of content. All-TEXT
-    columns silently break anything that relies on actual comparison
-    semantics (numeric filters/aggregates, date ranges, sorting), since
-    e.g. "9" > "10" as strings - this is the SQL-side "cleaning" a numeric
-    or date column needs, not a separate execution engine."""
-    non_null = series.dropna()
-    if non_null.empty:
-        return "TEXT"
-    if pd.api.types.is_bool_dtype(series):
-        return "BOOLEAN"
-    if pd.api.types.is_integer_dtype(series):
-        return "BIGINT"
-    if pd.api.types.is_float_dtype(series):
-        return "DOUBLE PRECISION"
-    if pd.api.types.is_datetime64_any_dtype(series):
-        return "TIMESTAMP"
-    return "TEXT"
-
-
-def _format_cell_for_type(value, pg_type: str):
-    """Converts a pandas cell value into something psycopg2 can bind
-    correctly for the target column type."""
-    if pd.isna(value):
-        return None
-    if pg_type == "BOOLEAN":
-        return bool(value)
-    if pg_type == "BIGINT":
-        return int(value)
-    if pg_type == "DOUBLE PRECISION":
-        return float(value)
-    if pg_type == "TIMESTAMP":
-        return value.to_pydatetime() if hasattr(value, "to_pydatetime") else value
-    return str(value)
-
-
-def _get_databridge_db_config():
-    return {
-        "host": os.getenv("DATABRIDGE_DB_HOST", os.getenv("PGHOST", "db")),
-        "port": os.getenv("DATABRIDGE_DB_PORT", os.getenv("PGPORT", "5432")),
-        "dbname": os.getenv("DATABRIDGE_DB_NAME", os.getenv("PGDATABASE", "databrige_db")),
-        "user": os.getenv("DATABRIDGE_DB_USER", os.getenv("PGUSER", "saarthi")),
-        "password": os.getenv("DATABRIDGE_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
-    }
 
 def serialize_connection(conn):
     """Serialize database connection to dict"""
@@ -205,14 +159,15 @@ def create_database_connection():
 @jwt_required()
 def create_excel_database():
     """
-    Uploads an Excel or CSV file and turns it into one or more queryable
-    tables, treated exactly like a normal database connection. Every sheet
-    in an Excel workbook becomes its own table; a CSV file becomes one.
+    Uploads an Excel or CSV file and turns each sheet (or the CSV itself)
+    into a queryable table - WITHOUT writing it into Postgres. There's no
+    spare warehouse to hold this data, and no SQL runs against it: each
+    table is saved as a Parquet file (see spreadsheet_service.py) and
+    queried through a separate pandas-based path, never SQL. Every sheet
+    in a workbook becomes its own table; a CSV file becomes one.
     Request: multipart/form-data with fields 'name' (connection name) and
     'file' (.xlsx/.xls/.csv)
     """
-    conn = None
-    cursor = None
     try:
         name = request.form.get('name', '').strip()
         file = request.files.get('file')
@@ -240,16 +195,29 @@ def create_excel_database():
         if not base_table_name:
             return jsonify({'error': 'Could not derive a valid table name from the connection name'}), 400
 
+        # Row created first so its id is available to key the spreadsheet
+        # files/manifest by - filled in with the resulting tables below.
+        connection = DatabaseConnection(
+            name=name,
+            type='Excel',
+            host=None,
+            port=None,
+            database=base_table_name,
+            username=None,
+            password=None,
+            config={'source_tables': []},
+            workspace_id=int(request.form.get('workspace_id', 1) or 1),
+            status='connected'
+        )
+        db.session.add(connection)
+        db.session.commit()
+
         # Only suffix table names with the sheet when there's more than one -
         # keeps the common single-sheet/CSV case's table named exactly after
         # the connection, same as before.
         multi_sheet = len(sheets) > 1
         used_table_names = set()
         created_tables = []
-
-        conn = psycopg2.connect(**_get_databridge_db_config())
-        conn.autocommit = True
-        cursor = conn.cursor()
 
         for sheet_name, df in sheets.items():
             if multi_sheet:
@@ -261,49 +229,15 @@ def create_excel_database():
             used_table_names.add(table_name)
 
             df.columns = _dedupe_identifiers(df.columns)
-            col_types = {col: _infer_pg_type(df[col]) for col in df.columns}
+            record = spreadsheet_service.save_table(connection.id, table_name, sheet_name, df)
+            created_tables.append(record)
 
-            cursor.execute(pgsql.SQL('DROP TABLE IF EXISTS {};').format(pgsql.Identifier(table_name)))
-            col_defs = pgsql.SQL(', ').join(
-                pgsql.SQL('{} {}').format(pgsql.Identifier(col), pgsql.SQL(col_types[col]))
-                for col in df.columns
-            )
-            cursor.execute(pgsql.SQL('CREATE TABLE {} ({});').format(pgsql.Identifier(table_name), col_defs))
-
-            insert_sql = pgsql.SQL('INSERT INTO {} ({}) VALUES ({});').format(
-                pgsql.Identifier(table_name),
-                pgsql.SQL(', ').join(pgsql.Identifier(c) for c in df.columns),
-                pgsql.SQL(', ').join(pgsql.Placeholder() for _ in df.columns),
-            )
-            rows = [
-                tuple(_format_cell_for_type(v, col_types[col]) for col, v in zip(df.columns, row))
-                for row in df.itertuples(index=False, name=None)
-            ]
-            cursor.executemany(insert_sql, rows)
-
-            created_tables.append({
-                'table': table_name,
-                'sheet': sheet_name,
-                'row_count': len(df),
-            })
-
-        connection = DatabaseConnection(
-            name=name,
-            type='Excel',
-            host=None,
-            port=None,
-            database=base_table_name,
-            username=None,
-            password=None,
-            config={
-                'source_tables': created_tables,
-                'original_filename': file.filename,
-                'row_count': sum(t['row_count'] for t in created_tables)
-            },
-            workspace_id=int(request.form.get('workspace_id', 1) or 1),
-            status='connected'
-        )
-        db.session.add(connection)
+        spreadsheet_service.set_original_filename(connection.id, file.filename)
+        connection.config = {
+            'source_tables': [{'table': t['table'], 'sheet': t['sheet'], 'row_count': t['row_count']} for t in created_tables],
+            'original_filename': file.filename,
+            'row_count': sum(t['row_count'] for t in created_tables)
+        }
         db.session.commit()
 
         from app.services.automated_metamind import generate_router_config
@@ -320,11 +254,6 @@ def create_excel_database():
         print(f"POST /excel error: {str(e)}")
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 @bp.route('/<int:db_id>', methods=['GET'])
 @jwt_required()
@@ -387,10 +316,14 @@ def delete_database_connection(db_id):
         connection = DatabaseConnection.query.get(db_id)
         if not connection:
             return jsonify({'error': 'Connection not found'}), 404
-        
+
+        is_excel = (connection.type or '').lower() == 'excel'
         db.session.delete(connection)
         db.session.commit()
-        
+
+        if is_excel:
+            spreadsheet_service.delete_connection_tables(db_id)
+
         return jsonify({'message': 'Connection deleted successfully'}), 200
     except Exception as e:
         db.session.rollback()
@@ -462,23 +395,18 @@ def test_database_connection(db_id):
         return jsonify({'error': str(e)}), 500
 
 
-def _summarize_table_for_metamind(cursor, table_name: str) -> str:
-    """Asks an LLM to describe what a table actually contains (e.g. "Player
-    roster with season-by-season performance stats") from its columns and a
-    few sample rows, then stores that as a real Postgres table comment.
-    automated_metamind.py's DB introspection already reads table comments
-    via obj_description() and uses them as the table's description in
-    metamind_router_config.json ahead of the generic "Table storing X
-    records" fallback - so this is the one place that needs to write it."""
-    cursor.execute(
-        pgsql.SQL('SELECT * FROM {} LIMIT 5;').format(pgsql.Identifier(table_name))
-    )
-    sample_rows = cursor.fetchall()
-    columns = [desc[0] for desc in cursor.description]
-
+def _summarize_spreadsheet_table_for_metamind(table_name: str) -> str:
+    """Asks an LLM to describe what a spreadsheet-backed table actually
+    contains (e.g. "Player roster with season-by-season performance
+    stats") from its columns and a few sample rows, then stores that on
+    the table's manifest record. automated_metamind.py's spreadsheet
+    introspection reads that description and uses it in
+    metamind_router_config.json - this is the one place that writes it."""
+    df = spreadsheet_service.get_table_df(table_name)
+    sample = df.head(5)
     sample_text = "\n".join(
-        ", ".join(f"{col}={val}" for col, val in zip(columns, row))
-        for row in sample_rows
+        ", ".join(f"{col}={row[col]}" for col in df.columns)
+        for _, row in sample.iterrows()
     )
 
     from langchain_openai import ChatOpenAI
@@ -486,7 +414,7 @@ def _summarize_table_for_metamind(cursor, table_name: str) -> str:
 
     prompt = (
         f"Table name: {table_name}\n"
-        f"Columns: {', '.join(columns)}\n"
+        f"Columns: {', '.join(df.columns)}\n"
         f"Sample rows:\n{sample_text}\n\n"
         "In one short sentence, describe what this table contains in "
         "plain business language (e.g. \"Player roster with season-by-"
@@ -495,17 +423,14 @@ def _summarize_table_for_metamind(cursor, table_name: str) -> str:
     )
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, openai_api_key=os.getenv("OPENAI_API_KEY"))
     response = llm.invoke([
-        SystemMessage(content="You write single-sentence, plain-language summaries of database tables."),
+        SystemMessage(content="You write single-sentence, plain-language summaries of spreadsheet tables."),
         HumanMessage(content=prompt),
     ])
     description = (response.content or "").strip().strip('"')
     if not description:
         description = f"Table storing {table_name} records."
 
-    cursor.execute(
-        pgsql.SQL('COMMENT ON TABLE {} IS %s;').format(pgsql.Identifier(table_name)),
-        (description,)
-    )
+    spreadsheet_service.set_table_description(table_name, description)
     return description
 
 
@@ -519,8 +444,6 @@ def process_database_connection(db_id):
     can tell what it's actually useful for - then regenerates the router
     config either way.
     """
-    conn = None
-    cursor = None
     try:
         connection = DatabaseConnection.query.get(db_id)
         if not connection:
@@ -529,21 +452,14 @@ def process_database_connection(db_id):
         from app.services.automated_metamind import generate_router_config
 
         if (connection.type or '').lower() == 'excel':
-            cfg = connection.config or {}
-            tables = [t['table'] for t in cfg.get('source_tables', [])]
-            if not tables and cfg.get('source_table'):
-                tables = [cfg['source_table']]  # connections created before multi-sheet support
+            tables = [t['table'] for t in spreadsheet_service.get_tables_for_connection(connection.id)]
 
             if not tables:
                 return jsonify({"status": "error", "message": "No tables found for this connection."}), 404
 
             try:
-                conn = psycopg2.connect(**_get_databridge_db_config())
-                conn.autocommit = True
-                cursor = conn.cursor()
-                summaries = {}
                 for table_name in tables:
-                    summaries[table_name] = _summarize_table_for_metamind(cursor, table_name)
+                    _summarize_spreadsheet_table_for_metamind(table_name)
             except Exception as e:
                 print(f"Table summarization error: {e}")
                 print(traceback.format_exc())
@@ -566,11 +482,6 @@ def process_database_connection(db_id):
         print(f"Process connection error: {str(e)}")
         print(traceback.format_exc())
         return jsonify({"status": "error", "message": "Something went wrong. Please try again."}), 500
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 
 @bp.route('/test', methods=['POST'])
