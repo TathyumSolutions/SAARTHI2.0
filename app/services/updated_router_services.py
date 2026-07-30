@@ -442,22 +442,47 @@ def _answer_status_check(args: dict, router_config: dict) -> dict:
         "API": bool(api_tools),
     }
 
+    def _plural(count: int, noun: str) -> str:
+        return noun if count == 1 else f"{noun}s"
+
+    def _describe(track: str) -> str:
+        if track == "DB":
+            if not available["DB"]:
+                return "No database tables are connected yet."
+            count = len(db_tables)
+            return f"Yes, I can query your database. It has {count} {_plural(count, 'table')} available."
+
+        if track == "FILES":
+            if not available["FILES"]:
+                return "No documents have been uploaded yet."
+            count = files_info.get("points_count", 0) or 0
+            return f"Yes, I can search your uploaded documents. {count} {_plural(count, 'section')} are indexed."
+
+        if track == "API":
+            if not available["API"]:
+                return "No external tools are connected yet."
+            count = len(api_tools)
+            entries = []
+            for tool in api_tools[:5]:
+                name = tool.get("name") or "Unnamed tool"
+                description = tool.get("description")
+                entries.append(f"{name} ({description})" if description else name)
+            listed = ", ".join(entries)
+            if count > 5:
+                listed += f", and {count - 5} more"
+            return f"Yes, I have {count} connected {_plural(count, 'tool')} available: {listed}."
+
+        return ""
+
     track = (args.get("track") or "ANY").upper()
     if track in available:
-        yes_no = "Yes" if available[track] else "No"
-        detail = {
-            "DB": f"{len(db_tables)} table(s) available." if available["DB"] else "No tables configured.",
-            "FILES": f"{files_info.get('points_count', 0)} document chunk(s) indexed." if available["FILES"] else "No documents uploaded yet.",
-            "API": f"{len(api_tools)} tool(s) registered." if available["API"] else "No external tools registered.",
-        }[track]
-        answer = f"{yes_no} — {detail}"
+        answer = _describe(track)
     else:
-        parts = [f"{k}: {'available' if v else 'not available'}" for k, v in available.items()]
-        answer = "Current data source status — " + ", ".join(parts) + "."
+        answer = " ".join(_describe(t) for t in ("DB", "FILES", "API"))
 
     return {
         "answer": answer,
-        "steps": ["Checked data source configuration directly (metamind_router_config.json) — no agents were run."],
+        "steps": ["Checked what data sources are connected right now. No other agents were run for this."],
         "sql": None, "table": [], "chart": {}, "insights": [],
     }
 

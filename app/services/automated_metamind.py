@@ -405,12 +405,26 @@ def introspect_api_db():
                 endpoint = row[col_keys[3]] if len(col_keys) > 3 else ""
                 method = row[col_keys[4]] if len(col_keys) > 4 else "GET"
 
-                # Loop to extract the longest non-url string for description field
-                description = f"API integration: {name}"
-                for col in col_keys:
-                    val = row[col]
-                    if isinstance(val, str) and len(val) > len(description) and "http" not in str(val):
-                        description = val
+                # Prefer an explicitly-named description column when the
+                # schema has one (this app's own registered_tools table
+                # does, via api_description) - only guess the longest
+                # non-URL string as a last resort for unfamiliar table
+                # shapes, since that guess can grab the endpoint or base
+                # URL instead of the real business description.
+                description = None
+                for key in col_keys:
+                    if key.lower() in ("api_description", "description", "desc"):
+                        val = row[key]
+                        if isinstance(val, str) and val.strip():
+                            description = val.strip()
+                            break
+
+                if not description:
+                    description = f"API integration: {name}"
+                    for col in col_keys:
+                        val = row[col]
+                        if isinstance(val, str) and len(val) > len(description) and "http" not in str(val):
+                            description = val
 
                 tools_out.append({
                     "name": name,
