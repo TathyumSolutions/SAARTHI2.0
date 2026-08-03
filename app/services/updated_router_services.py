@@ -30,6 +30,7 @@ history first, then the router config.
 import json
 import os
 import math
+import threading
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -651,11 +652,29 @@ def _push_router_done(session_id: str, is_sql: bool = False) -> None:
 class RouterService:
 
     def __init__(self):
-        try:
-            print("\nðŸ”„ Running Router Schema Configuration Sync Check...")
-            generate_router_config(force=False)
-        except Exception as e:
-            print(f"âš ï¸ [SCHEMA SYNC]: Failed to check structural drifts: {e}")
+        # generate_router_config() introspects every table in the DB (row
+        # counts, plus a separate COUNT(DISTINCT ...)/null-count query and a
+        # 5-sample-value query per column - real round trips to Postgres),
+        # the API DB, Qdrant, and the spreadsheet manifest. This class is
+        # instantiated at blueprint import time (chat_routes.py and
+        # api_v1_routes.py both do `router_service = RouterService()` at
+        # module scope, which runs during create_app()), so doing this work
+        # synchronously here used to block the entire app from accepting
+        # any request - including the login page - until a full schema
+        # scan finished (twice, once per blueprint). It's safe to run in
+        # the background instead: metamind_router_config.json already
+        # holds the last known-good schema on disk, and
+        # _load_router_config() always re-reads that file fresh on every
+        # request, so requests just use the current file while this catches
+        # up, then pick up any drift once it finishes.
+        def _sync_in_background():
+            try:
+                print("Running Router Schema Configuration Sync Check (background)...")
+                generate_router_config(force=False)
+            except Exception as e:
+                print(f"[SCHEMA SYNC]: Failed to check structural drifts: {e}")
+
+        threading.Thread(target=_sync_in_background, daemon=True).start()
         _load_general_config()
 
     def get_smart_response(
