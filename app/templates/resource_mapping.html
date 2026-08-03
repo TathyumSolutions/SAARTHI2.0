@@ -8,6 +8,8 @@
     .rm-grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
     .rm-panel { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; }
     .rm-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .rm-select-all-btn { background: none; border: 1px solid var(--border-color); color: var(--accent-green); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+    .rm-select-all-btn:hover { background: rgba(78, 201, 176, 0.12); }
     .rm-search { width: 100%; padding: 8px 10px; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); margin-bottom: 10px; }
     .rm-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
     .rm-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(255,255,255,0.02); }
@@ -38,6 +40,7 @@
         <div class="rm-panel">
             <div class="rm-panel-header">
                 <strong>Users</strong>
+                <button type="button" id="selectAllUsersBtn" class="rm-select-all-btn">Select All</button>
             </div>
             <input id="userSearch" class="rm-search" type="text" placeholder="Search users..." />
             <div id="userList" class="rm-list"></div>
@@ -46,6 +49,7 @@
         <div class="rm-panel">
             <div class="rm-panel-header">
                 <strong>Resources</strong>
+                <button type="button" id="selectAllResourcesBtn" class="rm-select-all-btn">Select All</button>
             </div>
             <input id="resourceSearch" class="rm-search" type="text" placeholder="Search resources..." />
             <div id="resourceList" class="rm-list"></div>
@@ -242,9 +246,27 @@
         renderExistingMappings();
     }
 
+    function toggleSelectAll(containerId, buttonId) {
+        const checkboxes = Array.from(document.querySelectorAll(`#${containerId} input[type="checkbox"]`));
+        const button = document.getElementById(buttonId);
+        if (!checkboxes.length) {
+            return;
+        }
+        const shouldSelectAll = checkboxes.some(box => !box.checked);
+        checkboxes.forEach(box => { box.checked = shouldSelectAll; });
+        if (button) {
+            button.textContent = shouldSelectAll ? 'Deselect All' : 'Select All';
+        }
+        renderPendingSummary();
+    }
+
     function clearSelections() {
         document.querySelectorAll('.user-checkbox:checked').forEach(box => box.checked = false);
         document.querySelectorAll('.resource-checkbox:checked').forEach(box => box.checked = false);
+        const selectAllUsersBtn = document.getElementById('selectAllUsersBtn');
+        const selectAllResourcesBtn = document.getElementById('selectAllResourcesBtn');
+        if (selectAllUsersBtn) selectAllUsersBtn.textContent = 'Select All';
+        if (selectAllResourcesBtn) selectAllResourcesBtn.textContent = 'Select All';
         renderPendingSummary();
     }
 
@@ -320,11 +342,19 @@
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
-        document.getElementById('userSearch').addEventListener('input', renderUserList);
-        document.getElementById('resourceSearch').addEventListener('input', renderResourceList);
+        document.getElementById('userSearch').addEventListener('input', () => {
+            renderUserList();
+            document.getElementById('selectAllUsersBtn').textContent = 'Select All';
+        });
+        document.getElementById('resourceSearch').addEventListener('input', () => {
+            renderResourceList();
+            document.getElementById('selectAllResourcesBtn').textContent = 'Select All';
+        });
         document.getElementById('existingSearch').addEventListener('input', renderExistingMappings);
         document.getElementById('addPendingBtn').addEventListener('click', addPendingMappings);
         document.getElementById('saveMappingsBtn').addEventListener('click', savePendingMappings);
+        document.getElementById('selectAllUsersBtn').addEventListener('click', () => toggleSelectAll('userList', 'selectAllUsersBtn'));
+        document.getElementById('selectAllResourcesBtn').addEventListener('click', () => toggleSelectAll('resourceList', 'selectAllResourcesBtn'));
 
         document.getElementById('pendingMappingsList').addEventListener('click', (event) => {
             const button = event.target.closest('[data-remove-pending]');

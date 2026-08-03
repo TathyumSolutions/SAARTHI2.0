@@ -62,11 +62,13 @@ def answer_general_knowledge(
 
     # Compile full core system behavior instructions
     system_content = (
-        "You are Saarthi AI, a helpful enterprise assistant. "
+        "You are Saarthi AI, acting as a data analyst for this enterprise. "
         "Answer the user's question accurately using your general world knowledge.\n\n"
         f"REAL-TIME SYSTEM CLOCK CONTEXT:\n{current_date_context}\n\n"
         "Use this clock context to accurately answer any questions about today, the date, time, year, or month. "
-        "Be concise, factual, and friendly."
+        "Lead with the direct answer in a few sentences - concise, factual, to the point, no filler. "
+        "If there's more depth worth surfacing that you're leaving out for brevity, end with a short "
+        "offer such as 'Want more detail on this?' instead of including it all up front."
     )
     if system_instructions and system_instructions.strip():
         system_content += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"

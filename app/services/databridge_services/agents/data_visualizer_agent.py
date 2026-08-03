@@ -164,13 +164,43 @@ class DataVisualizerAgent:
     # -----------------------------
     # Helper chart generators
     # -----------------------------
+    # A wider, more vibrant palette than the old 4-color list, so charts
+    # with more than a handful of categories don't run out of colors (which
+    # left later slices/bars undefined/blank) and don't read as flat and
+    # monochrome. Cycled with modulo so any number of labels is covered.
+    PALETTE = [
+        'rgba(255, 99, 132, 0.85)',   # red/pink
+        'rgba(54, 162, 235, 0.85)',   # blue
+        'rgba(255, 206, 86, 0.85)',   # yellow
+        'rgba(75, 192, 192, 0.85)',   # teal
+        'rgba(153, 102, 255, 0.85)',  # purple
+        'rgba(255, 159, 64, 0.85)',   # orange
+        'rgba(46, 204, 113, 0.85)',   # green
+        'rgba(231, 76, 60, 0.85)',    # dark red
+        'rgba(52, 152, 219, 0.85)',   # light blue
+        'rgba(241, 196, 15, 0.85)',   # gold
+        'rgba(155, 89, 182, 0.85)',   # violet
+        'rgba(26, 188, 156, 0.85)',   # turquoise
+    ]
+
+    def _palette(self, n: int) -> List[str]:
+        return [self.PALETTE[i % len(self.PALETTE)] for i in range(n)]
+
     def _generate_bar_chart(self, labels: List[str], values: List[float], label_col: str, data_col: str) -> Dict[str, Any]:
         if not labels or not values:
             return {}
         dynamic_height = max(400, len(labels) * 25)
+        colors = self._palette(len(labels))
         return {
             "type": "bar",
-            "data": {"labels": labels, "datasets": [{"label": f"{data_col}", "data": values, "backgroundColor": "rgba(54, 162, 235, 0.6)", "borderColor": "rgba(54, 162, 235, 1)", "borderWidth": 1}]},
+            "data": {"labels": labels, "datasets": [{
+                "label": f"{data_col}",
+                "data": values,
+                "backgroundColor": colors,
+                "borderColor": [c.replace(', 0.85)', ', 1)') for c in colors],
+                "borderWidth": 1,
+                "borderRadius": 4,
+            }]},
             "options": {"indexAxis": "y" if len(labels) > 10 else "x", "responsive": True, "maintainAspectRatio": False},
             "height": dynamic_height
         }
@@ -180,16 +210,32 @@ class DataVisualizerAgent:
             return {}
         return {
             "type": "line",
-            "data": {"labels": labels, "datasets": [{"label": f"{data_col}", "data": values, "fill": False, "borderColor": "rgba(75, 192, 192, 1)"}]},
+            "data": {"labels": labels, "datasets": [{
+                "label": f"{data_col}",
+                "data": values,
+                "fill": True,
+                "backgroundColor": "rgba(153, 102, 255, 0.15)",
+                "borderColor": "rgba(153, 102, 255, 1)",
+                "pointBackgroundColor": "rgba(255, 99, 132, 1)",
+                "pointBorderColor": "#fff",
+                "pointRadius": 4,
+                "tension": 0.3,
+            }]},
             "options": {"responsive": True, "maintainAspectRatio": True}
         }
 
     def _generate_pie_chart(self, labels: List[str], values: List[float], label_col: str, data_col: str) -> Dict[str, Any]:
         if not labels or not values:
             return {}
-        colors = ['rgba(255, 99, 132, 0.8)','rgba(54, 162, 235, 0.8)','rgba(255, 206, 86, 0.8)','rgba(75, 192, 192, 0.8)']
+        colors = self._palette(len(labels))
         return {
             "type": "pie",
-            "data": {"labels": labels, "datasets": [{"label": f"{data_col}", "data": values, "backgroundColor": colors[:len(labels)]}]},
+            "data": {"labels": labels, "datasets": [{
+                "label": f"{data_col}",
+                "data": values,
+                "backgroundColor": colors,
+                "borderColor": "#1E1E1E",
+                "borderWidth": 2,
+            }]},
             "options": {"responsive": True, "maintainAspectRatio": True}
         }

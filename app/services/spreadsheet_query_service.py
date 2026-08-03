@@ -34,6 +34,61 @@ class PlanValidationError(Exception):
     caught - never lets an invalid plan reach the executor."""
 
 
+# Phrases that mean the user is asking about a table itself (what it is,
+# what's in it) rather than asking a question that needs filtering/
+# aggregating its rows. These go straight to the manifest metadata -
+# "table"/"sheet"/"description"/"row_count"/"columns", i.e. the same
+# meta-summary written to spreadsheet_metadata.json when the file was
+# uploaded and summarized - instead of forcing the LLM to build a query
+# plan against a question that isn't really a data query.
+METADATA_QUESTION_PATTERNS = (
+    "what do you know about", "what do you know regarding",
+    "tell me about", "tell me more about",
+    "describe", "give me an overview of", "overview of",
+    "summary of", "summarize", "what is in", "what's in",
+    "information about", "info about", "details about",
+    "what data is in", "what columns are in", "what does",
+)
+
+
+def _find_metadata_match(user_query: str, available_tables: dict):
+    """Returns the (table_name, info) pair the question is asking about,
+    if this looks like a "what do you know about <upload>" question rather
+    than a filter/aggregate question. None otherwise."""
+    query_lower = (user_query or "").lower()
+    if not any(pattern in query_lower for pattern in METADATA_QUESTION_PATTERNS):
+        return None
+
+    for table_name, info in available_tables.items():
+        candidates = [table_name, info.get("sheet") or ""]
+        for candidate in candidates:
+            normalized = candidate.lower().replace("_", " ").strip()
+            if normalized and normalized in query_lower:
+                return table_name, info
+    return None
+
+
+def _build_metadata_answer(table_name: str, info: dict) -> str:
+    """An analyst-style, to-the-point summary of an uploaded spreadsheet
+    table, grounded in the metadata captured at upload time (description,
+    columns, row count) - not invented by the LLM."""
+    description = (info.get("description") or "").strip()
+    columns = [c["name"] for c in info.get("columns", [])]
+    row_count = info.get("row_count", 0)
+
+    column_preview = ", ".join(columns[:6])
+    if len(columns) > 6:
+        column_preview += f", and {len(columns) - 6} more"
+
+    lines = [f"**{table_name}** - {row_count:,} row(s), {len(columns)} column(s)."]
+    if description:
+        lines.append(description)
+    if column_preview:
+        lines.append(f"Columns: {column_preview}.")
+    lines.append("Want more detail - e.g. sample rows, or a breakdown by a specific column?")
+    return "\n".join(lines)
+
+
 def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_content: str) -> str:
     """Same multi-provider dispatch pattern used throughout the other
     tracks (general_service.py, llm_service.py) - kept local to this file
@@ -306,6 +361,19 @@ def answer_from_spreadsheets(
             }
         push_event("complete", "Matching the Right Data Source", f"Found {len(available_tables)} spreadsheet table(s) to consider.")
 
+        metadata_match = _find_metadata_match(user_query, available_tables)
+        if metadata_match:
+            table_name, info = metadata_match
+            push_event("start", "Preparing Your Answer", f"Summarizing what's known about '{table_name}' from its upload metadata.")
+            answer_text = _build_metadata_answer(table_name, info)
+            push_event("complete", "Preparing Your Answer", "Answer generated from the spreadsheet's metadata summary.")
+            stream_manager.push_step(session_id, "DONE", is_sql=False)
+            return {
+                "answer": answer_text,
+                "sql": None, "table": [], "chart": {}, "insights": [],
+                "steps": master_steps,
+            }
+
         push_event("start", "Building the Data Query", "Working out how to filter, group, and join the relevant tables.")
         plan_prompt = _build_plan_prompt(available_tables)
         raw_plan = _invoke_llm(model_name, custom_key, plan_prompt, user_query)
@@ -343,10 +411,16 @@ def answer_from_spreadsheets(
         answer_prompt = (
             f"Question: {user_query}\n\n"
             f"Result ({len(result_df)} row(s)):\n{sample_text}\n\n"
-            "Answer the question in plain business language using this result. "
-            "Be concise and specific with numbers where relevant."
+            "Answer the question the way an analyst would report it to a busy "
+            "stakeholder: lead with the direct answer in 1-3 sentences, "
+            "specific numbers where relevant, no filler or restating the "
+            "question. Do not dump every row or every column of nuance up "
+            "front. If there is more depth worth surfacing (breakdowns, "
+            "outliers, caveats) that you're leaving out for brevity, end "
+            "with a short offer such as 'Want more detail on this?' instead "
+            "of including it all."
         )
-        system_content = "You are Saarthi AI, a helpful enterprise assistant."
+        system_content = "You are Saarthi AI, acting as a data analyst for this enterprise."
         if system_instructions and system_instructions.strip():
             system_content += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
         try:
