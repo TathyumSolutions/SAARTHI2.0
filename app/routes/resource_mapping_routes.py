@@ -103,6 +103,7 @@ def create_mappings_bulk(current_user):
     }
 
     created, skipped = 0, 0
+    granted_user_ids = set()
     for user_id in user_ids:
         if user_id not in valid_user_ids:
             skipped += len(resources)
@@ -136,10 +137,15 @@ def create_mappings_bulk(current_user):
                 granted_by_user_id=current_user.id,
             ))
             created += 1
+            granted_user_ids.add(user_id)
 
     db.session.commit()
     log_event('resource_mapping_bulk_grant', company_code=company_code, user_id=current_user.id,
                details={'created': created, 'skipped': skipped})
+
+    from app.services.automated_metamind import generate_router_config
+    for uid in granted_user_ids:
+        generate_router_config(user_id=uid, force=True)
 
     return jsonify({"status": "success", "created": created, "skipped": skipped}), 201
 
@@ -232,6 +238,9 @@ def create_mapping(current_user):
     log_event('resource_mapping_grant', company_code=current_user.company_code, user_id=current_user.id,
                resource_type=resource_type, resource_id=resource_id, details={'granted_to_user_id': user_id})
 
+    from app.services.automated_metamind import generate_router_config
+    generate_router_config(user_id=user_id, force=True)
+
     return jsonify({"status": "success", "message": "Resource mapped to user."}), 201
 
 
@@ -244,11 +253,15 @@ def delete_mapping(current_user, mapping_id):
     if not mapping or mapping.company_code != current_user.company_code:
         return jsonify({"status": "error", "message": "Mapping not found."}), 404
 
+    revoked_from_user_id = mapping.user_id
     db.session.delete(mapping)
     db.session.commit()
 
     log_event('resource_mapping_revoke', company_code=current_user.company_code, user_id=current_user.id,
                resource_type=mapping.resource_type, resource_id=mapping.resource_id,
-               details={'revoked_from_user_id': mapping.user_id})
+               details={'revoked_from_user_id': revoked_from_user_id})
+
+    from app.services.automated_metamind import generate_router_config
+    generate_router_config(user_id=revoked_from_user_id, force=True)
 
     return jsonify({"status": "success", "message": "Mapping removed."}), 200

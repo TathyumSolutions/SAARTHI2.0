@@ -15,7 +15,6 @@ from app.models.model_config import ModelConfiguration
 from app.models.feedback import ResponseFeedback
 from app.models.user import User
 from app.models.chat import ChatSession
-import os  # 👈 Fixes the 'environ' underline
 from app.services.updated_router_services import RouterService
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
@@ -37,20 +36,16 @@ def _resolve_feedback_user():
     return fallback_user
 
 
-def _resolve_router_snapshot(router_decision: str):
+def _resolve_router_snapshot(router_decision: str, user_id: int):
     try:
-        config_path = os.path.join(
-            os.path.dirname(__file__), '..', 'services', 'metamind_router_config.json'
-        )
-        with open(config_path, 'r', encoding='utf-8') as handle:
-            full_config = json.load(handle)
+        from app.models.router_config import RouterConfig
+        row = RouterConfig.query.filter_by(user_id=user_id).first()
+        if not row or not row.config:
+            return None
 
         decision = (router_decision or '').upper()
-        snapshot = full_config.get(decision)
-        if snapshot is None:
-            data_sources = full_config.get('routing_menu', {}).get('datasources', {})
-            snapshot = data_sources.get(decision)
-        return snapshot
+        data_sources = row.config.get('routing_menu', {}).get('datasources', {})
+        return data_sources.get(decision)
     except Exception as exc:
         print(f"⚠️ Could not attach metamind info to feedback: {exc}")
         return None
@@ -80,7 +75,7 @@ def submit_feedback():
             router_decision=data.get('router_decision'),
             feedback_type=data.get('feedback_type'),
             remarks=data.get('remarks'),
-            metamind_snapshot=_resolve_router_snapshot(data.get('router_decision'))
+            metamind_snapshot=_resolve_router_snapshot(data.get('router_decision'), current_user.id)
         )
         db.session.add(fb)
         db.session.commit()

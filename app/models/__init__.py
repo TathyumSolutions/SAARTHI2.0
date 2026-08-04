@@ -4,7 +4,7 @@ Database Models
 3 logical databases (see config/config.py SQLALCHEMY_BINDS):
   - core:      Company, User, ResourceMapping, AuditLog
   - resources: DatabaseConnection, ApiConnector, FileResource
-  - workspace: ChatSession, ModelConfiguration, ResponseFeedback
+  - workspace: ChatSession, ModelConfiguration, ResponseFeedback, RouterConfig
 """
 from .company import Company
 from .user import User
@@ -18,6 +18,7 @@ from .file_resource import FileResource
 from .chat import ChatSession
 from .model_config import ModelConfiguration
 from .feedback import ResponseFeedback
+from .router_config import RouterConfig
 
 __all__ = [
     'Company',
@@ -30,4 +31,5 @@ __all__ = [
     'ChatSession',
     'ModelConfiguration',
     'ResponseFeedback',
+    'RouterConfig',
 ]

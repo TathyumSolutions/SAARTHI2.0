@@ -43,8 +43,11 @@ def _serialize_target_connection(conn: DatabaseConnection) -> Dict[str, Any]:
 @bp.route("/api/warehouse/tables", methods=["GET"])
 @jwt_required()
 def warehouse_tables():
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required", "tables": []}), 401
     try:
-        return jsonify({"tables": get_discovered_tables()}), 200
+        return jsonify({"tables": get_discovered_tables(current_user.id)}), 200
     except Exception as exc:
         return jsonify({"error": str(exc), "tables": []}), 500
 
@@ -153,6 +156,9 @@ def warehouse_history():
 @bp.route("/api/warehouse/generate", methods=["POST"])
 @jwt_required()
 def generate_warehouse_script():
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
     try:
         data = request.get_json() or {}
 
@@ -179,6 +185,7 @@ def generate_warehouse_script():
             schema_generator=schema_generator,
             incremental_load=incremental_load,
             full_load=full_load,
+            user_id=current_user.id,
         )
 
         return send_file(

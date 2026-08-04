@@ -20,20 +20,17 @@ class WarehouseGenerationError(Exception):
     """Raised when script generation inputs are invalid."""
 
 
-def _metamind_config_path() -> str:
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "metamind_router_config.json")
+def _load_metamind_tables(user_id: int) -> Dict[str, Dict[str, Any]]:
+    """Loads this user's own router config row (see app/models/router_config.py)
+    instead of the old shared metamind_router_config.json file."""
+    from app.models.router_config import RouterConfig
 
-
-def _load_metamind_tables() -> Dict[str, Dict[str, Any]]:
-    config_path = _metamind_config_path()
-    if not os.path.exists(config_path):
-        raise WarehouseGenerationError("Metamind table metadata file not found")
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
+    row = RouterConfig.query.filter_by(user_id=user_id).first()
+    if not row or not row.config:
+        raise WarehouseGenerationError("Metamind table metadata not found for this user")
 
     tables = (
-        payload.get("routing_menu", {})
+        row.config.get("routing_menu", {})
         .get("datasources", {})
         .get("DB", {})
         .get("tables", {})
@@ -45,9 +42,9 @@ def _load_metamind_tables() -> Dict[str, Dict[str, Any]]:
     return tables
 
 
-def get_discovered_tables() -> List[Dict[str, Any]]:
+def get_discovered_tables(user_id: int) -> List[Dict[str, Any]]:
     """Return a lightweight list of discovered tables and columns for UI use."""
-    tables = _load_metamind_tables()
+    tables = _load_metamind_tables(user_id)
     out: List[Dict[str, Any]] = []
 
     for table_name, table_info in tables.items():
@@ -474,6 +471,7 @@ def generate_script(
     schema_generator: bool,
     incremental_load: bool,
     full_load: bool,
+    user_id: int,
 ) -> Tuple[str, str]:
     """Build and validate a warehouse ETL script."""
     _validate_modes(schema_generator, incremental_load, full_load)
@@ -481,7 +479,7 @@ def generate_script(
     if not selected_tables:
         raise WarehouseGenerationError("Select at least one table")
 
-    raw_tables = _load_metamind_tables()
+    raw_tables = _load_metamind_tables(user_id)
     table_metadata = _build_table_metadata(raw_tables, selected_tables)
     target_config = _target_connection_payload(target_connection)
 

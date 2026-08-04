@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from app.services.updated_router_services import RouterService
 from flask_jwt_extended import jwt_required
 from app import limiter
+from app.utils.auth_helpers import get_current_user
 
 bp = Blueprint('api_v1', __name__, url_prefix='/api/v1')
 router_service = RouterService()
@@ -119,13 +120,17 @@ def chat():
     chat_history = data.get('chat_history')
     system_instructions = data.get('system_instructions', '')
 
+    current_user = get_current_user()
+
     try:
         response = router_service.get_smart_response(
             query,
             model_name=model,
             session_id=session_id,
             chat_history=chat_history,
-            system_instructions=system_instructions
+            system_instructions=system_instructions,
+            company_code=current_user.company_code if current_user else None,
+            user_id=current_user.id if current_user else 1,
         )
 
         return jsonify({
