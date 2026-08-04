@@ -110,6 +110,9 @@ def save_tool():
         log_event('api_connector_saved', company_code=current_user.company_code, user_id=current_user.id,
                    resource_type='api', resource_id=tool.id, details={'integration_name': integration_name})
 
+        from app.services.automated_metamind import generate_router_config
+        generate_router_config(user_id=current_user.id, force=True)
+
         return jsonify({
             "status": "success",
             "message": f"'{integration_name}' was saved successfully."
@@ -139,11 +142,21 @@ def delete_tool(integration_name):
         if tool.created_by_user_id != current_user.id and current_user.role != 'admin':
             return jsonify({"status": "error", "message": "Only the creator or a company admin can delete this tool"}), 403
 
+        from app.models.resource_mapping import ResourceMapping
+        affected_user_ids = {current_user.id, tool.created_by_user_id} | {
+            m.user_id for m in ResourceMapping.query.filter_by(resource_type='api', resource_id=tool.id).all()
+        }
+
+        tool_id = tool.id
         db.session.delete(tool)
         db.session.commit()
 
         log_event('api_connector_deleted', company_code=current_user.company_code, user_id=current_user.id,
-                   resource_type='api', resource_id=tool.id, details={'integration_name': integration_name})
+                   resource_type='api', resource_id=tool_id, details={'integration_name': integration_name})
+
+        from app.services.automated_metamind import generate_router_config
+        for uid in affected_user_ids:
+            generate_router_config(user_id=uid, force=True)
 
         return jsonify({
             "status": "success",
@@ -209,16 +222,27 @@ def get_tools():
 def process_tool(integration_name):
     """
     Explicit process action for a saved API tool.
-    Triggers router config regeneration only when user clicks Process.
+    Triggers router config regeneration (for whoever can currently see
+    this tool) only when the user clicks Process.
     """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
     try:
-        exists = ApiConnector.query.filter_by(integration_name=integration_name).first() is not None
-        if not exists:
+        tool = ApiConnector.query.filter_by(integration_name=integration_name).first()
+        if not tool:
             return jsonify({"status": "error", "message": "This tool could not be found."}), 404
+
+        from app.models.resource_mapping import ResourceMapping
+        affected_user_ids = {current_user.id, tool.created_by_user_id} | {
+            m.user_id for m in ResourceMapping.query.filter_by(resource_type='api', resource_id=tool.id).all()
+        }
 
         from app.services.automated_metamind import generate_router_config
         try:
-            generate_router_config(force=True)
+            for uid in affected_user_ids:
+                generate_router_config(user_id=uid, force=True)
             return jsonify({"status": "success", "message": "Tool is now active and ready to use."})
         except Exception as e:
             print(f"❌ Error regenerating router config for '{integration_name}': {e}")

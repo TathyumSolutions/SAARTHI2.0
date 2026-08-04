@@ -30,7 +30,6 @@ history first, then the router config.
 import json
 import os
 import math
-import threading
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -72,7 +71,6 @@ def _count_tokens(text: str) -> int:
 # ============================================================
 _SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
 _GENERAL_CONFIG_PATH = os.path.join(_SERVICE_DIR, "general_knowledge_config.json")
-_ROUTER_CONFIG_PATH = os.path.join(_SERVICE_DIR, "metamind_router_config.json")
 
 # Router-context token budget. gpt-4o-mini's real window is much larger than
 # this — this cap exists to keep every routing call cheap and fast, not
@@ -131,12 +129,23 @@ def classify_query_heuristic(user_query: str) -> str | None:
 # ============================================================
 # ROUTER CONFIG LOADING + TRIMMING
 # ============================================================
-def _load_router_config() -> dict:
-    """Always reads fresh from disk — freshness of this file is handled by
-    generate_router_config() elsewhere; this function just reflects whatever
-    is currently on disk at call time."""
-    with open(_ROUTER_CONFIG_PATH, "r") as f:
-        return json.load(f)
+def _load_router_config(user_id: int) -> dict:
+    """
+    Loads this specific user's router config from their router_configs row
+    - not a shared file, so different users can see entirely different
+    datasources/tables/tools depending on what they created or were
+    granted via Resource Mapping. Freshness is handled by
+    generate_router_config() elsewhere; this just reflects whatever is
+    currently saved for this user at call time. Returns an empty routing
+    menu if this user has never had one generated yet, rather than
+    raising - the router degrades to GENERAL-only routing in that case.
+    """
+    from app.models.router_config import RouterConfig
+
+    row = RouterConfig.query.filter_by(user_id=user_id).first()
+    if not row or not row.config:
+        return {"routing_menu": {"datasources": {}, "routing_rules": {}, "instructions": ""}}
+    return row.config
 
 
 def _trim_router_config(config: dict, max_tables: int, max_cols: int,
@@ -652,29 +661,14 @@ def _push_router_done(session_id: str, is_sql: bool = False) -> None:
 class RouterService:
 
     def __init__(self):
-        # generate_router_config() introspects every table in the DB (row
-        # counts, plus a separate COUNT(DISTINCT ...)/null-count query and a
-        # 5-sample-value query per column - real round trips to Postgres),
-        # the API DB, Qdrant, and the spreadsheet manifest. This class is
-        # instantiated at blueprint import time (chat_routes.py and
-        # api_v1_routes.py both do `router_service = RouterService()` at
-        # module scope, which runs during create_app()), so doing this work
-        # synchronously here used to block the entire app from accepting
-        # any request - including the login page - until a full schema
-        # scan finished (twice, once per blueprint). It's safe to run in
-        # the background instead: metamind_router_config.json already
-        # holds the last known-good schema on disk, and
-        # _load_router_config() always re-reads that file fresh on every
-        # request, so requests just use the current file while this catches
-        # up, then pick up any drift once it finishes.
-        def _sync_in_background():
-            try:
-                print("Running Router Schema Configuration Sync Check (background)...")
-                generate_router_config(force=False)
-            except Exception as e:
-                print(f"[SCHEMA SYNC]: Failed to check structural drifts: {e}")
-
-        threading.Thread(target=_sync_in_background, daemon=True).start()
+        # Router configs are per-user now (router_configs table, one row
+        # per user_id) - there's no single "the" config to eagerly warm at
+        # app-boot time the way the old shared metamind_router_config.json
+        # was. Regeneration instead happens per user: explicitly whenever
+        # that user's resources change (create/delete a connection, API
+        # connector, or Resource Mapping grant - see the relevant routes),
+        # and lazily in get_smart_response() below if a user has no row
+        # yet at all.
         _load_general_config()
 
     def get_smart_response(
@@ -710,7 +704,16 @@ class RouterService:
             # ------------------------------------------------
             # LAYER 2: Load config + tools, build token-budgeted messages
             # ------------------------------------------------
-            router_config = _load_router_config()
+            from app.models.router_config import RouterConfig
+            if not RouterConfig.query.filter_by(user_id=user_id).first():
+                # First time this user has ever reached the router - build
+                # their config now instead of leaving it empty until they
+                # happen to trigger an explicit resource change.
+                try:
+                    generate_router_config(user_id=user_id, force=True)
+                except Exception as e:
+                    print(f"[ROUTER CONFIG] Lazy generation failed for user {user_id}: {e}")
+            router_config = _load_router_config(user_id)
             active_db_tools = fetch_and_translate_tools()
             live_tools_summary = "\n".join(
                 f"- Tool: '{t.get('function', {}).get('name')}' -> {t.get('function', {}).get('description')}"
