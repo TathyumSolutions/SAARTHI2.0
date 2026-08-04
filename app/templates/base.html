@@ -572,6 +572,28 @@
         });
 
         // ==========================================
+        // "Configure New Model" (LHS sidebar, AI & Models section)
+        // Was only ever wired up inside index.html's own script, opening a
+        // modal that also only exists on that page - so on every other
+        // page (Settings, API Integrations, ...) clicking it in the LHS
+        // menu did nothing at all. Opens that modal where it exists;
+        // everywhere else, hands off to the full Configure New Model page.
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', function () {
+            const plusModelBtn = document.getElementById('plusModelBtn');
+            if (!plusModelBtn) return;
+            plusModelBtn.onclick = function () {
+                const modal = document.getElementById('modelModal');
+                if (modal) {
+                    modal.classList.add('active');
+                    modal.style.display = 'flex';
+                } else {
+                    window.location.href = '/models/configure-new';
+                }
+            };
+        });
+
+        // ==========================================
         // MODE SELECTOR ACTIVE-STATE
         // Driven purely by window.location.pathname, on every page that
         // extends base.html. This is the fix for "API mode top menu keeps

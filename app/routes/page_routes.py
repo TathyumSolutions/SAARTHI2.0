@@ -27,6 +27,11 @@ def settings_page():
     """Settings page"""
     return render_template('settings.html')
 
+@bp.route('/verify-email')
+def verify_email_page():
+    """Landing page for the signup verification email link"""
+    return render_template('verify_email.html')
+
 @bp.route('/api_mode')
 def api_mode():
     """API Mode page showing Swagger docs inside the app layout."""

@@ -63,6 +63,17 @@ def init_auth_database(base_database_url):
             ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user';
         """)
         print("[Auth DB Setup] Columns 'company_code' and 'role' verified on 'users' table.")
+        # Default TRUE so this one-time backfill grandfathers in accounts
+        # that registered before email verification existed - they already
+        # signed up successfully and shouldn't be locked out of login by
+        # this migration. New signups always pass email_verified=FALSE
+        # explicitly in their INSERT, so this default never affects them.
+        cursor.execute("""
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token VARCHAR(255);
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token_expires TIMESTAMP;
+        """)
+        print("[Auth DB Setup] Columns 'email_verified', 'verification_token' and 'verification_token_expires' verified on 'users' table.")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_resource_mapping (
                 id SERIAL PRIMARY KEY,
