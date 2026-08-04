@@ -1,13 +1,18 @@
+"""
+Response Feedback Model - Self-Learning Mode like/dislike data, used to
+build a company-scoped feedback context for the router.
+"""
 from app import db
 from datetime import datetime
 
 
 class ResponseFeedback(db.Model):
+    __bind_key__ = 'workspace'
     __tablename__ = 'response_feedback'
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('app_users.id'), nullable=False)
-    company_name = db.Column(db.String(150), nullable=True, index=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    company_code = db.Column(db.String(50), nullable=True, index=True)
 
     question = db.Column(db.Text, nullable=False)
     answer = db.Column(db.Text, nullable=False)

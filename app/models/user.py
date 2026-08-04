@@ -1,43 +1,68 @@
 """
-User Model
+User Model - single source of truth for authentication and tenancy.
+
+Replaces the old split between an unused SQLAlchemy `app_users` table and
+the raw-SQL `users` table in a separate saarthi_auth_db - everything
+(login, signup, resource ownership, resource mapping, feedback) now goes
+through this one model in the core database.
 """
 from app import db
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
+ROLE_ADMIN = 'admin'
+ROLE_USER = 'user'
+
+STATUS_ACTIVE = 'active'
+STATUS_PENDING = 'pending'
+STATUS_REJECTED = 'rejected'
+
+
 class User(db.Model):
-    """User model for authentication and authorization"""
-    __tablename__ = 'app_users'
-    
+    """
+    A user's `company_code` is nullable: NULL means an individual account
+    (always role=admin over themselves, nothing ever shared with anyone).
+    A non-null company_code ties the user to a pre-provisioned Company -
+    new signups against an existing company start as role=user,
+    status=pending until an existing admin of that company approves them.
+    """
+    __bind_key__ = 'core'
+    __tablename__ = 'users'
+
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     name = db.Column(db.String(100), nullable=False)
-    company_name = db.Column(db.String(150), nullable=True, index=True)
+    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default='viewer')  # admin, editor, viewer, analyst
-    status = db.Column(db.String(20), default='active')  # active, inactive, suspended
-    
-    # Timestamps
+
+    company_code = db.Column(db.String(50), db.ForeignKey('companies.company_code'), nullable=True, index=True)
+    role = db.Column(db.String(20), nullable=False, default=ROLE_ADMIN)  # 'admin' | 'user'
+    status = db.Column(db.String(20), nullable=False, default=STATUS_ACTIVE)  # 'active' | 'pending' | 'rejected'
+
+    email_verified = db.Column(db.Boolean, nullable=False, default=False)
+    verification_token = db.Column(db.String(255), nullable=True)
+    verification_token_expires = db.Column(db.DateTime, nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    last_login = db.Column(db.DateTime)
-    
-    # Relationships
-    workspaces = db.relationship('Workspace', backref='owner', lazy=True)
-    chat_sessions = db.relationship('ChatSession', backref='user', lazy=True)
-    queries = db.relationship('Query', backref='user', lazy=True)
-    
+    last_login = db.Column(db.DateTime, nullable=True)
+
     def set_password(self, password):
-        """Hash and set password"""
-        # TODO: Implement password hashing
-        pass
-    
+        self.password_hash = generate_password_hash(password, method='scrypt')
+
     def check_password(self, password):
-        """Check password against hash"""
-        # TODO: Implement password verification
-        pass
-    
+        return check_password_hash(self.password_hash, password)
+
+    def is_admin_of_company(self, company_code):
+        return self.role == ROLE_ADMIN and self.company_code == company_code
+
     def to_dict(self):
-        """Convert user to dictionary"""
-        # TODO: Implement serialization
-        pass
+        return {
+            'id': self.id,
+            'name': self.name,
+            'email': self.email,
+            'company_code': self.company_code,
+            'role': self.role,
+            'status': self.status,
+            'email_verified': self.email_verified,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }

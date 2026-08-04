@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Company Provisioning - Saarthi{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px;">
+    <h1 style="font-size: 24px; margin-bottom: 8px; color: var(--text-primary);">Company Provisioning</h1>
+    <p style="color: var(--text-secondary); margin-bottom: 20px;">Superadmin only. Create a company_code before anyone can sign up under it.</p>
+
+    <div style="background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 24px; margin-bottom: 20px;">
+        <h2 style="font-size: 16px; margin-bottom: 16px; color: var(--accent-green);">New Company</h2>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+            <div>
+                <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Company Code</label>
+                <input id="companyCode" type="text" style="width: 100%; padding: 10px; background: var(--dark-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;" placeholder="e.g. TATHYUM2026">
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Company Name</label>
+                <input id="companyName" type="text" style="width: 100%; padding: 10px; background: var(--dark-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;" placeholder="e.g. Tathyum Solutions">
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Founding Admin Email (optional)</label>
+                <input id="initialAdminEmail" type="email" style="width: 100%; padding: 10px; background: var(--dark-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;" placeholder="admin@company.com">
+            </div>
+        </div>
+        <button id="createCompanyBtn" style="margin-top: 16px; padding: 10px 20px; background: var(--primary-blue); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Create Company</button>
+        <span id="createStatus" style="margin-left: 12px; font-size: 13px;"></span>
+    </div>
+
+    <div style="background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 24px;">
+        <h2 style="font-size: 16px; margin-bottom: 16px; color: var(--accent-green);">Existing Companies</h2>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <th style="text-align: left; padding: 10px; color: var(--text-secondary); font-size: 12px;">CODE</th>
+                    <th style="text-align: left; padding: 10px; color: var(--text-secondary); font-size: 12px;">NAME</th>
+                    <th style="text-align: left; padding: 10px; color: var(--text-secondary); font-size: 12px;">CREATED</th>
+                </tr>
+            </thead>
+            <tbody id="companiesTableBody">
+                <tr><td colspan="3" style="padding: 12px; color: var(--text-secondary);">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function loadCompanies() {
+        const tbody = document.getElementById('companiesTableBody');
+        try {
+            const res = await authFetch('/api/platform/companies');
+            const data = await res.json();
+            if (!res.ok) {
+                tbody.innerHTML = `<tr><td colspan="3" style="padding: 12px; color: #F48771;">${data.message || 'Failed to load companies (superadmin access required)'}</td></tr>`;
+                return;
+            }
+            if (!data.companies.length) {
+                tbody.innerHTML = '<tr><td colspan="3" style="padding: 12px; color: var(--text-secondary);">No companies yet</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.companies.map(c => `
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; color: var(--text-primary);">${c.company_code}</td>
+                    <td style="padding: 10px; color: var(--text-primary);">${c.company_name}</td>
+                    <td style="padding: 10px; color: var(--text-secondary);">${c.created_at || ''}</td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="3" style="padding: 12px; color: #F48771;">Failed to reach server</td></tr>';
+        }
+    }
+
+    document.getElementById('createCompanyBtn').addEventListener('click', async function () {
+        const company_code = document.getElementById('companyCode').value.trim();
+        const company_name = document.getElementById('companyName').value.trim();
+        const initial_admin_email = document.getElementById('initialAdminEmail').value.trim();
+        const statusEl = document.getElementById('createStatus');
+
+        if (!company_code || !company_name) {
+            statusEl.textContent = 'Company code and name are required.';
+            statusEl.style.color = '#F48771';
+            return;
+        }
+
+        try {
+            const res = await authFetch('/api/platform/companies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ company_code, company_name, initial_admin_email })
+            });
+            const data = await res.json();
+            statusEl.textContent = data.message || (res.ok ? 'Created' : 'Failed');
+            statusEl.style.color = res.ok ? 'var(--accent-green)' : '#F48771';
+            if (res.ok) {
+                document.getElementById('companyCode').value = '';
+                document.getElementById('companyName').value = '';
+                document.getElementById('initialAdminEmail').value = '';
+                loadCompanies();
+            }
+        } catch (e) {
+            statusEl.textContent = 'Failed to reach server';
+            statusEl.style.color = '#F48771';
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', loadCompanies);
+</script>
+{% endblock %}

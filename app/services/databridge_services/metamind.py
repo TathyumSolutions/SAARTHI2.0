@@ -263,38 +263,33 @@ def get_sap_schema_with_comments(host, port, dbname, user, password, schema="pub
     return db_schema
 
 
-#if __name__ == "__main__":
-#    schema = get_sap_schema_with_comments(
-#        host="localhost",
-#        port=5432,
-#        dbname="data-bridge2",
-#        user="postgres",
-#        password="postgres"
-#    )
-
 if __name__ == "__main__":
-    # Point directly to your local Ollama from inside Docker
-    #client = Client(host='http://host.docker.internal:11434')
-    client = Client(host='http://ollama:11434')
+    # Connects to whichever external database db.py just seeded - the
+    # same DATABRIDGE_TARGET_* env vars, set from a registered Database
+    # Connection's credentials by run_agentic_process(). No app-internal
+    # fallback: this only ever introspects that external database.
+    _missing = [v for v in ("DATABRIDGE_TARGET_HOST", "DATABRIDGE_TARGET_DBNAME", "DATABRIDGE_TARGET_USER") if not os.getenv(v)]
+    if _missing:
+        raise SystemExit(
+            f"Missing required environment variable(s): {', '.join(_missing)}. "
+            "This script introspects an external database and has no default host."
+        )
+
+    client = Client(host=os.getenv("OLLAMA_URL", "http://ollama:11434"))
 
     schema = get_sap_schema_with_comments(
-        host=os.getenv("DATABRIDGE_DB_HOST", os.getenv("PGHOST", "db")),
-        port=int(os.getenv("DATABRIDGE_DB_PORT", os.getenv("PGPORT", "5432"))),
-        dbname=os.getenv("DATABRIDGE_DB_NAME", os.getenv("PGDATABASE", "databrige_db")),
-        user=os.getenv("DATABRIDGE_DB_USER", os.getenv("PGUSER", "saarthi")),
-        password=os.getenv("DATABRIDGE_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
+        host=os.getenv("DATABRIDGE_TARGET_HOST"),
+        port=int(os.getenv("DATABRIDGE_TARGET_PORT", "5432")),
+        dbname=os.getenv("DATABRIDGE_TARGET_DBNAME"),
+        user=os.getenv("DATABRIDGE_TARGET_USER"),
+        password=os.getenv("DATABRIDGE_TARGET_PASSWORD", ""),
     )
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     save_path = os.path.join(BASE_DIR, "sap_schema_with_sap_comments.json")
 
-    # Save schema
     with open(save_path, "w") as f:
         json.dump(schema, f, indent=2)
 
-    print("✅ Success! JSON created in databrige_db.")
-
-    # Save schema with SAP-aware comments
-    #with open("sap_schema_with_sap_comments.json", "w") as f:
-    #    json.dump(schema, f, indent=2)
+    print("✅ Success! Schema snapshot written to sap_schema_with_sap_comments.json")
 
     #print("✅ SAP schema with domain-specific comments saved to sap_schema_with_sap_comments.json")

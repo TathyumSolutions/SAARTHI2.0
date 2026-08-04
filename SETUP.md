@@ -52,19 +52,10 @@ nano .env  # or use your preferred editor
 - `ANTHROPIC_API_KEY` - Anthropic API key (if using Claude)
 
 ### 5. Setup Database
-```bash
-# Create database
-createdb saarthi_db
-
-# Initialize Flask-Migrate
-flask db init
-
-# Create migration
-flask db migrate -m "Initial migration"
-
-# Apply migration
-flask db upgrade
-```
+No manual setup needed - on startup the app connects to your `DATABASE_URL`
+server and automatically creates its 3 logical databases (core, resources,
+workspace - see `app/services/db_bootstrap.py`) and their tables if they
+don't exist yet.
 
 ### 6. Run the Application
 ```bash

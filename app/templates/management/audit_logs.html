@@ -4,75 +4,56 @@
 
 {% block content %}
 <div style="max-width: 1200px;">
-    <h1 style="font-size: 28px; margin-bottom: 20px; color: var(--text-primary);">Audit Logs</h1>
-    
-    <div style="background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 24px; margin-bottom: 20px;">
-        <p style="color: var(--text-secondary); line-height: 1.6;">
-            Welcome to the Audit Logs page. This interface allows you to manage and interact with audit logs.
-        </p>
-    </div>
+    <h1 style="font-size: 24px; margin-bottom: 8px; color: var(--text-primary);">Audit Logs</h1>
+    <p style="color: var(--text-secondary); margin-bottom: 20px;">Admin only. Signup, approval, and resource activity for your company.</p>
 
-    <!-- Configuration Panel -->
     <div style="background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 24px; margin-bottom: 20px;">
-        <h2 style="font-size: 18px; margin-bottom: 16px; color: var(--accent-green);">Configuration</h2>
-        <p style="color: var(--text-secondary); margin-bottom: 16px;">Configure settings and parameters for audit logs.</p>
-        
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: end;">
             <div>
-                <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Setting 1</label>
-                <input type="text" style="width: 100%; padding: 10px; background: var(--dark-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;" placeholder="Enter value">
+                <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Action</label>
+                <select id="actionFilter" style="width: 100%; padding: 10px; background: var(--dark-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+                    <option value="">All actions</option>
+                    <option value="user_registered">user_registered</option>
+                    <option value="login_success">login_success</option>
+                    <option value="login_blocked">login_blocked</option>
+                    <option value="employee_approved">employee_approved</option>
+                    <option value="employee_rejected">employee_rejected</option>
+                    <option value="database_connection_created">database_connection_created</option>
+                    <option value="file_uploaded">file_uploaded</option>
+                    <option value="api_connector_saved">api_connector_saved</option>
+                    <option value="resource_mapping_grant">resource_mapping_grant</option>
+                    <option value="resource_mapping_revoke">resource_mapping_revoke</option>
+                </select>
             </div>
             <div>
-                <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Setting 2</label>
-                <input type="text" style="width: 100%; padding: 10px; background: var(--dark-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;" placeholder="Enter value">
+                <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Resource Type</label>
+                <select id="resourceTypeFilter" style="width: 100%; padding: 10px; background: var(--dark-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+                    <option value="">All types</option>
+                    <option value="database">database</option>
+                    <option value="file">file</option>
+                    <option value="api">api</option>
+                    <option value="user">user</option>
+                </select>
+            </div>
+            <div>
+                <button id="refreshBtn" style="padding: 10px 20px; background: var(--primary-blue); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Refresh</button>
             </div>
         </div>
-        
-        <button style="margin-top: 16px; padding: 10px 20px; background: var(--primary-blue); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Save Configuration</button>
     </div>
 
-    <!-- Data Table -->
     <div style="background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 24px;">
-        <h2 style="font-size: 18px; margin-bottom: 16px; color: var(--accent-green);">Data Overview</h2>
-        <p style="color: var(--text-secondary); margin-bottom: 16px;">View and manage your data for audit logs.</p>
-        
         <table style="width: 100%; border-collapse: collapse;">
             <thead>
                 <tr style="border-bottom: 1px solid var(--border-color);">
-                    <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 600;">NAME</th>
-                    <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 600;">STATUS</th>
-                    <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 600;">LAST UPDATED</th>
-                    <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 600;">ACTIONS</th>
+                    <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 600;">WHEN</th>
+                    <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 600;">ACTION</th>
+                    <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 600;">USER ID</th>
+                    <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 600;">RESOURCE</th>
+                    <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 600;">DETAILS</th>
                 </tr>
             </thead>
-            <tbody>
-                <tr style="border-bottom: 1px solid var(--border-color);">
-                    <td style="padding: 12px; color: var(--text-primary);">Sample Item 1</td>
-                    <td style="padding: 12px;"><span style="background: var(--accent-green); color: var(--dark-bg); padding: 4px 8px; border-radius: 3px; font-size: 11px;">Active</span></td>
-                    <td style="padding: 12px; color: var(--text-secondary);">2 hours ago</td>
-                    <td style="padding: 12px;">
-                        <button style="padding: 6px 12px; background: var(--hover-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Edit</button>
-                        <button style="padding: 6px 12px; background: var(--hover-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
-                    </td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--border-color);">
-                    <td style="padding: 12px; color: var(--text-primary);">Sample Item 2</td>
-                    <td style="padding: 12px;"><span style="background: var(--accent-green); color: var(--dark-bg); padding: 4px 8px; border-radius: 3px; font-size: 11px;">Active</span></td>
-                    <td style="padding: 12px; color: var(--text-secondary);">1 day ago</td>
-                    <td style="padding: 12px;">
-                        <button style="padding: 6px 12px; background: var(--hover-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Edit</button>
-                        <button style="padding: 6px 12px; background: var(--hover-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
-                    </td>
-                </tr>
-                <tr>
-                    <td style="padding: 12px; color: var(--text-primary);">Sample Item 3</td>
-                    <td style="padding: 12px;"><span style="background: var(--text-secondary); color: var(--dark-bg); padding: 4px 8px; border-radius: 3px; font-size: 11px;">Inactive</span></td>
-                    <td style="padding: 12px; color: var(--text-secondary);">3 days ago</td>
-                    <td style="padding: 12px;">
-                        <button style="padding: 6px 12px; background: var(--hover-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Edit</button>
-                        <button style="padding: 6px 12px; background: var(--hover-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px;">Delete</button>
-                    </td>
-                </tr>
+            <tbody id="logsTableBody">
+                <tr><td colspan="5" style="padding: 12px; color: var(--text-secondary);">Loading...</td></tr>
             </tbody>
         </table>
     </div>
@@ -81,7 +62,45 @@
 
 {% block extra_scripts %}
 <script>
-    // Page-specific JavaScript can be added here
-    console.log('Audit Logs page loaded');
+    async function loadLogs() {
+        const tbody = document.getElementById('logsTableBody');
+        const action = document.getElementById('actionFilter').value;
+        const resourceType = document.getElementById('resourceTypeFilter').value;
+
+        const params = new URLSearchParams();
+        if (action) params.set('action', action);
+        if (resourceType) params.set('resource_type', resourceType);
+
+        tbody.innerHTML = '<tr><td colspan="5" style="padding: 12px; color: var(--text-secondary);">Loading...</td></tr>';
+
+        try {
+            const res = await authFetch('/api/history/audit?' + params.toString());
+            const data = await res.json();
+            if (!res.ok) {
+                tbody.innerHTML = `<tr><td colspan="5" style="padding: 12px; color: #F48771;">${data.message || 'Failed to load logs (admin access required)'}</td></tr>`;
+                return;
+            }
+            if (!data.logs.length) {
+                tbody.innerHTML = '<tr><td colspan="5" style="padding: 12px; color: var(--text-secondary);">No log entries yet</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.logs.map(log => `
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 10px; color: var(--text-secondary); white-space: nowrap;">${log.created_at ? new Date(log.created_at).toLocaleString() : ''}</td>
+                    <td style="padding: 10px; color: var(--text-primary);">${log.action}</td>
+                    <td style="padding: 10px; color: var(--text-secondary);">${log.user_id ?? ''}</td>
+                    <td style="padding: 10px; color: var(--text-secondary);">${log.resource_type ? (log.resource_type + ' #' + log.resource_id) : ''}</td>
+                    <td style="padding: 10px; color: var(--text-secondary); font-size: 12px;">${log.details ? JSON.stringify(log.details) : ''}</td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="5" style="padding: 12px; color: #F48771;">Failed to reach server</td></tr>';
+        }
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', loadLogs);
+    document.getElementById('actionFilter').addEventListener('change', loadLogs);
+    document.getElementById('resourceTypeFilter').addEventListener('change', loadLogs);
+    document.addEventListener('DOMContentLoaded', loadLogs);
 </script>
 {% endblock %}
