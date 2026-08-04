@@ -824,7 +824,9 @@
 
     // ==========================================
     // "Configure New Model" click, opened from the LHS sidebar
-    // (#plusModelBtn lives in base.html now, so we still find it by id)
+    // (#plusModelBtn lives in base.html now; base.html's own handler
+    // opens this same modal when it's present and otherwise sends
+    // other pages to the full Configure New Model page instead)
     // ==========================================
     document.addEventListener('click', function (e) {
         const target = e.target.closest('.sub-item');
@@ -890,17 +892,6 @@
                     window.activeBackendModelName = "";
                 }
             });
-        }
-
-        const plusModelBtn = document.getElementById('plusModelBtn');
-        if (plusModelBtn) {
-            plusModelBtn.onclick = function () {
-                const modal = document.getElementById('modelModal');
-                if (modal) {
-                    modal.classList.add('active');
-                    modal.style.display = 'flex';
-                }
-            };
         }
 
         if (typeof loadSavedDatabaseModels === "function") {

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saarthi — Verify Email</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-deep:      #07091A;
+      --bg-card:      #0F1230;
+      --border:       #1F2348;
+      --accent:       #3B5BFF;
+      --accent-glow:  rgba(59,91,255,0.22);
+      --teal:         #00D4C8;
+      --text-hi:      #ECEEF8;
+      --text-mid:     #8D90B5;
+      --success:      #22D3A0;
+      --danger:       #FF5F57;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-deep);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px 36px;
+      text-align: center;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+    }
+
+    .brand-mark {
+      width: 54px; height: 54px;
+      border-radius: 14px;
+      margin: 0 auto 20px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%);
+      display: grid; place-items: center;
+    }
+
+    .icon {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      margin: 0 auto 18px;
+      display: grid; place-items: center;
+      font-size: 22px;
+    }
+    .icon.pending { background: rgba(139,144,181,0.12); color: var(--text-mid); }
+    .icon.success { background: rgba(34,211,160,0.12); color: var(--success); }
+    .icon.error   { background: rgba(255,95,87,0.12); color: var(--danger); }
+
+    h1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 22px; font-weight: 700;
+      color: var(--text-hi);
+      margin-bottom: 10px;
+    }
+
+    p {
+      font-size: 14px;
+      color: var(--text-mid);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    .btn-continue {
+      display: none;
+      width: 100%; padding: 13px;
+      border-radius: 10px; border: none;
+      background: linear-gradient(135deg, var(--accent) 0%, #5A78FF 100%);
+      color: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14.5px; font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .btn-continue.show { display: inline-block; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 22px; height: 22px;
+      border: 2.5px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      margin: 0 auto 18px;
+      animation: spin 0.8s linear infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand-mark">
+      <svg width="26" height="26" viewBox="0 0 22 22" fill="none">
+        <path d="M11 2L18.5 6.5V15.5L11 20L3.5 15.5V6.5L11 2Z" stroke="white" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M7.5 11h7M11 7.5v7" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div class="spinner" id="spinner"></div>
+    <div class="icon" id="statusIcon" style="display:none;"></div>
+
+    <h1 id="statusTitle">Verifying your email…</h1>
+    <p id="statusMessage">Hang tight while we confirm your verification link.</p>
+
+    <a href="/" class="btn-continue" id="continueBtn">Continue to Sign In</a>
+  </div>
+
+  <script>
+    async function verify() {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+
+      const spinner = document.getElementById('spinner');
+      const icon = document.getElementById('statusIcon');
+      const title = document.getElementById('statusTitle');
+      const message = document.getElementById('statusMessage');
+      const continueBtn = document.getElementById('continueBtn');
+
+      function finish(ok, text) {
+        spinner.style.display = 'none';
+        icon.style.display = 'grid';
+        icon.className = 'icon ' + (ok ? 'success' : 'error');
+        icon.textContent = ok ? '✓' : '✕';
+        title.textContent = ok ? 'Email verified' : 'Verification failed';
+        message.textContent = text;
+        continueBtn.classList.add('show');
+      }
+
+      if (!token) {
+        finish(false, 'This verification link is missing its token. Please use the link from your email.');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/verify-email?token=' + encodeURIComponent(token));
+        const result = await res.json();
+        finish(res.ok && result.status === 'success', result.message || (res.ok ? 'Your email has been verified.' : 'Could not verify this link.'));
+      } catch (err) {
+        finish(false, 'Could not reach the server. Please try again in a moment.');
+      }
+    }
+
+    verify();
+  </script>
+</body>
+</html>

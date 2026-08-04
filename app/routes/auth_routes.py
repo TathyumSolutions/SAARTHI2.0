@@ -147,12 +147,17 @@ Authentication API Routes
 Handles user login, logout, registration, and token management
 """
 import os
+import secrets
+from datetime import datetime, timedelta
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import limiter
+from app.services.email_service import send_verification_email
+
+VERIFICATION_TOKEN_TTL = timedelta(hours=24)
 
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
@@ -221,18 +226,26 @@ def register():
         # Hash password securely before database write
         password_hash = generate_password_hash(password, method='scrypt')
 
+        verification_token = secrets.token_urlsafe(32)
+        verification_token_expires = datetime.utcnow() + VERIFICATION_TOKEN_TTL
+
         # Insert user into PostgreSQL table
         cursor.execute(
-            "INSERT INTO users (name, email, password_hash, company_code, role) VALUES (%s, %s, %s, %s, %s);",
-            (name, email, password_hash, company_code, role)
+            """INSERT INTO users
+               (name, email, password_hash, company_code, role, email_verified, verification_token, verification_token_expires)
+               VALUES (%s, %s, %s, %s, %s, FALSE, %s, %s);""",
+            (name, email, password_hash, company_code, role, verification_token, verification_token_expires)
         )
         conn.commit()
         cursor.close()
         conn.close()
 
+        verification_link = f"{request.host_url.rstrip('/')}/verify-email?token={verification_token}"
+        send_verification_email(email, name, verification_link)
+
         return jsonify({
-            "status": "success", 
-            "message": "User registered successfully"
+            "status": "success",
+            "message": "Account created! Check your email for a verification link, then sign in."
         }), 201
 
     except psycopg2.errors.UniqueViolation:
@@ -242,6 +255,100 @@ def register():
     except Exception as e:
         print(f"Registration DB Error: {e}")
         return jsonify({"status": "error", "message": "Internal server registration failure."}), 500
+
+
+@bp.route('/verify-email', methods=['GET'])
+def verify_email():
+    """
+    Confirms a signup verification token (visited from the link in the
+    verification email) and marks the account as verified.
+    """
+    token = request.args.get('token', '')
+    if not token:
+        return jsonify({"status": "error", "message": "Missing verification token."}), 400
+
+    try:
+        conn = get_auth_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            "SELECT id, email_verified, verification_token_expires FROM users WHERE verification_token = %s;",
+            (token,)
+        )
+        user = cursor.fetchone()
+
+        if not user:
+            cursor.close()
+            conn.close()
+            return jsonify({"status": "error", "message": "Invalid or already-used verification link."}), 400
+
+        if user['email_verified']:
+            cursor.close()
+            conn.close()
+            return jsonify({"status": "success", "message": "Email already verified - you can sign in."}), 200
+
+        if user['verification_token_expires'] and user['verification_token_expires'] < datetime.utcnow():
+            cursor.close()
+            conn.close()
+            return jsonify({"status": "error", "message": "This verification link has expired. Please request a new one."}), 400
+
+        cursor.execute(
+            "UPDATE users SET email_verified = TRUE, verification_token = NULL, verification_token_expires = NULL WHERE id = %s;",
+            (user['id'],)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({"status": "success", "message": "Email verified! You can now sign in."}), 200
+
+    except Exception as e:
+        print(f"Email Verification DB Error: {e}")
+        return jsonify({"status": "error", "message": "Internal verification failure."}), 500
+
+
+@bp.route('/resend-verification', methods=['POST'])
+@limiter.limit("5 per hour")
+def resend_verification():
+    """Regenerates and re-sends the verification email for an unverified account."""
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or request.form.get("email") or "").strip().lower()
+
+    if not email:
+        return jsonify({"status": "error", "message": "Missing email field."}), 400
+
+    try:
+        conn = get_auth_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("SELECT id, name, email_verified FROM users WHERE email = %s;", (email,))
+        user = cursor.fetchone()
+
+        # Don't reveal whether the account exists - respond the same way either way.
+        if not user or user['email_verified']:
+            cursor.close()
+            conn.close()
+            return jsonify({"status": "success", "message": "If that account needs verifying, a new email has been sent."}), 200
+
+        verification_token = secrets.token_urlsafe(32)
+        verification_token_expires = datetime.utcnow() + VERIFICATION_TOKEN_TTL
+
+        cursor.execute(
+            "UPDATE users SET verification_token = %s, verification_token_expires = %s WHERE id = %s;",
+            (verification_token, verification_token_expires, user['id'])
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        verification_link = f"{request.host_url.rstrip('/')}/verify-email?token={verification_token}"
+        send_verification_email(email, user['name'], verification_link)
+
+        return jsonify({"status": "success", "message": "Verification email sent - check your inbox."}), 200
+
+    except Exception as e:
+        print(f"Resend Verification DB Error: {e}")
+        return jsonify({"status": "error", "message": "Internal server failure."}), 500
 
 
 @bp.route('/login', methods=['POST'])
@@ -267,7 +374,7 @@ def login():
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         # Lookup user profile by email
-        cursor.execute("SELECT id, name, email, password_hash FROM users WHERE email = %s;", (email,))
+        cursor.execute("SELECT id, name, email, password_hash, email_verified FROM users WHERE email = %s;", (email,))
         user = cursor.fetchone()
         cursor.close()
         conn.close()
@@ -275,6 +382,13 @@ def login():
         # Check if user exists and verify password hash match
         if not user or not check_password_hash(user['password_hash'], password):
             return jsonify({"status": "error", "message": "Invalid email or password combination."}), 401
+
+        if not user['email_verified']:
+            return jsonify({
+                "status": "error",
+                "reason": "email_not_verified",
+                "message": "Please verify your email before signing in."
+            }), 403
 
         # Generate enterprise JWT secure access token string
         access_token = create_access_token(identity=str(user['id']))
