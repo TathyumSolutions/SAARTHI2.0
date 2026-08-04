@@ -256,13 +256,13 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def _build_company_feedback_context(company_name: str, user_query: str, top_k: int = 4) -> str:
-    if not company_name or not user_query:
+def _build_company_feedback_context(company_code: str, user_query: str, top_k: int = 4) -> str:
+    if not company_code or not user_query:
         return ""
 
     candidates = (
         ResponseFeedback.query
-        .filter(ResponseFeedback.company_name == company_name)
+        .filter(ResponseFeedback.company_code == company_code)
         .filter(ResponseFeedback.question.isnot(None))
         .filter(ResponseFeedback.answer.isnot(None))
         .order_by(ResponseFeedback.created_at.desc())
@@ -685,7 +685,7 @@ class RouterService:
         custom_key: str = "",
         system_instructions: str = "",
         chat_history: Optional[list] = None,
-        company_name: Optional[str] = None,
+        company_code: Optional[str] = None,
         user_id: int = 1,
     ) -> dict:
 
@@ -719,10 +719,10 @@ class RouterService:
 
             self_learning_enabled = bool(load_rag_config().get("self_learning", {}).get("enabled", False))
             company_feedback_context = ""
-            if self_learning_enabled and company_name:
-                company_feedback_context = _build_company_feedback_context(company_name, user_query)
+            if self_learning_enabled and company_code:
+                company_feedback_context = _build_company_feedback_context(company_code, user_query)
                 if company_feedback_context:
-                    print(f"ðŸ§  [SELF-LEARNING] Injected company feedback context for company: {company_name}")
+                    print(f"ðŸ§  [SELF-LEARNING] Injected company feedback context for company: {company_code}")
 
             messages = _build_router_messages(
                 user_query,

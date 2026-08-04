@@ -228,8 +228,9 @@ Key environment variables (see `.env.example`):
 SECRET_KEY=your-secret-key
 FLASK_ENV=development
 
-# Database
-DATABASE_URL=postgresql://user:pass@localhost/saarthi_db
+# Database (base connection - the app derives its 3 logical databases,
+# saarthi_core_db/saarthi_resources_db/saarthi_workspace_db, from this)
+DATABASE_URL=postgresql://user:pass@localhost/postgres
 
 # JWT
 JWT_SECRET_KEY=your-jwt-secret

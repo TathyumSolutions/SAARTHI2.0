@@ -227,6 +227,16 @@ def system_logs():
 def power_automate():
     return render_template('management/power_automate.html')
 
+@bp.route('/management/pending-approvals')
+def pending_approvals_page():
+    """Company admin screen to approve/reject employees requesting to join with their company_code"""
+    return render_template('management/pending_approvals.html')
+
+@bp.route('/platform/companies')
+def platform_companies_page():
+    """Superadmin-only screen to provision new companies"""
+    return render_template('management/platform_companies.html')
+
 @bp.route('/management/rpa-workflows')
 def rpa_workflows():
     return render_template('management/rpa_workflows.html')

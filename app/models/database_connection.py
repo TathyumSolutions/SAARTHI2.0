@@ -1,40 +1,42 @@
 """
-Database Connection Model
+Database Connection Model - a registered external database (real customer
+systems like SAP, or the demo SAP database once it's registered like any
+other external connection).
 """
 from app import db
 from datetime import datetime
-from typing import Optional, Dict, Any
+
 
 class DatabaseConnection(db.Model):
-    """Database connection configuration"""
+    __bind_key__ = 'resources'
     __tablename__ = 'database_connections'
-    
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    type = db.Column(db.String(50), nullable=False)  # PostgreSQL, MySQL, MongoDB, etc.
-    
-    # Connection details (encrypted)
+    type = db.Column(db.String(50), nullable=False)  # PostgreSQL, MySQL, SAP HANA, etc.
+
+    # Connection details (password stored encrypted - see app/utils/crypto.py)
     host = db.Column(db.String(255))
     port = db.Column(db.Integer)
     database = db.Column(db.String(100))
     username = db.Column(db.String(100))
-    password = db.Column(db.Text)  # Encrypted
-    connection_string = db.Column(db.Text)  # For complex connections
-    
-    # Configuration
+    password = db.Column(db.Text)
+    connection_string = db.Column(db.Text)
+
     config = db.Column(db.JSON, default={})
     status = db.Column(db.String(20), default='active')  # active, inactive, error
-    
-    # Relationships
-    workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'), nullable=False)
-    
-    # Timestamps
+
+    # Tenancy: which company this resource belongs to (NULL = individual
+    # user's private resource, never visible to anyone else) and who
+    # created it.
+    company_code = db.Column(db.String(50), nullable=True, index=True)
+    created_by_user_id = db.Column(db.Integer, nullable=False)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_tested = db.Column(db.DateTime)
-    
+
     def to_dict(self, include_password=False):
-        """Convert to dictionary (exclude sensitive data)"""
         data = {
             'id': self.id,
             'name': self.name,
@@ -43,51 +45,12 @@ class DatabaseConnection(db.Model):
             'port': self.port,
             'database': self.database,
             'username': self.username,
-            'workspace_id': self.workspace_id,
             'status': self.status,
-            'created_at': self.created_at,
-            'updated_at': self.updated_at,
-            'last_tested': self.last_tested
+            'company_code': self.company_code,
+            'created_by_user_id': self.created_by_user_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'last_tested': self.last_tested.isoformat() if self.last_tested else None,
         }
-        
-        if include_password:
-            data['password'] = self.password
-        else:
-            data['password'] = '********'
-        
-        # Include additional attributes
-        for key, value in self.__dict__.items():
-            if key not in data and not key.startswith('_'):
-                data[key] = value
-        
+        data['password'] = self.password if include_password else '********'
         return data
-    
-    def update(self, **kwargs):
-        """Update connection fields"""
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-        self.updated_at = datetime.now().isoformat()
-    
-    @classmethod
-    def create(cls, **kwargs):
-        """Create and save a new connection"""
-        connection = cls(**kwargs)
-        cls._connections.append(connection)
-        return connection
-    
-    @classmethod
-    def get_all(cls):
-        """Get all connections"""
-        return cls._connections
-    
-    @classmethod
-    def get_by_id(cls, connection_id: int):
-        """Get connection by ID"""
-        return next((conn for conn in cls._connections if conn.id == connection_id), None)
-    
-    @classmethod
-    def delete_by_id(cls, connection_id: int):
-        """Delete connection by ID"""
-        cls._connections = [conn for conn in cls._connections if conn.id != connection_id]
-        return True

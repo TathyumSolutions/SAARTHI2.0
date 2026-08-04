@@ -1,7 +1,8 @@
 """
 Auto-generates metamind_router_config.json by introspecting:
-1. databrige_db (PostgreSQL)   -> DB datasource (SAP-style tables)
-2. saarthi_api_db (PostgreSQL) -> API datasource (registered API tools/endpoints)
+1. The external SAP demo database, if DATABRIDGE_TARGET_* env vars are
+   set (PostgreSQL) -> DB datasource (SAP-style tables)
+2. saarthi_resources_db (PostgreSQL) -> API datasource (registered API connectors)
 3. Qdrant                      -> FILES datasource (RAG document collection)
 
 Features:
@@ -32,18 +33,22 @@ except ImportError:
 # CONFIG - Environment-driven DB credentials
 # ============================================================
 
+# The SAP demo database is external (see app/services/databridge_services/db.py) -
+# no fallback to the app's own Postgres here. If DATABRIDGE_TARGET_HOST
+# isn't set, the connect attempt below fails fast and is caught, same as
+# any other unreachable/unconfigured datasource.
 DB_CONFIG = {
-    "host": os.getenv("DATABRIDGE_DB_HOST", os.getenv("PGHOST", "db")),
-    "port": os.getenv("DATABRIDGE_DB_PORT", os.getenv("PGPORT", "5432")),
-    "dbname": os.getenv("DATABRIDGE_DB_NAME", os.getenv("PGDATABASE", "saarthi_db")),
-    "user": os.getenv("DATABRIDGE_DB_USER", os.getenv("PGUSER", "saarthi")),
-    "password": os.getenv("DATABRIDGE_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
+    "host": os.getenv("DATABRIDGE_TARGET_HOST"),
+    "port": os.getenv("DATABRIDGE_TARGET_PORT", "5432"),
+    "dbname": os.getenv("DATABRIDGE_TARGET_DBNAME"),
+    "user": os.getenv("DATABRIDGE_TARGET_USER"),
+    "password": os.getenv("DATABRIDGE_TARGET_PASSWORD", ""),
 }
 
 API_DB_CONFIG = {
     "host": os.getenv("API_DB_HOST", os.getenv("PGHOST", "db")),
     "port": os.getenv("API_DB_PORT", os.getenv("PGPORT", "5432")),
-    "dbname": os.getenv("API_DB_NAME", "saarthi_api_db"),
+    "dbname": os.getenv("API_DB_NAME", "saarthi_resources_db"),
     "user": os.getenv("API_DB_USER", os.getenv("PGUSER", "saarthi")),
     "password": os.getenv("API_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
 }
@@ -69,7 +74,7 @@ INTERNAL_SYSTEM_TABLES = {
 
 
 # ============================================================
-# STEP 1: INTROSPECT databrige_db -> DB datasource
+# STEP 1: INTROSPECT the external SAP database -> DB datasource
 # ============================================================
 
 # Tables larger than this are still counted, but skipped for the
@@ -103,7 +108,7 @@ def _safe_fetchall(cur, conn, query, params=None, context="query"):
 
 def introspect_databridge_db():
     """
-    Connects to databrige_db and pulls every table + column + simple
+    Connects to the external SAP database and pulls every table + column + simple
     description (derived from PostgreSQL comments if present, else generic),
     plus:
     - row_count: total rows in the table
@@ -113,7 +118,7 @@ def introspect_databridge_db():
     try:
         conn = psycopg2.connect(**DB_CONFIG, connect_timeout=5)
     except Exception as e:
-        print(f"⚠️ [DB] Could not connect to databrige_db: {e}")
+        print(f"⚠️ [DB] Could not connect to the external SAP database: {e}")
         return None
 
     tables_out = {}
@@ -263,16 +268,16 @@ def introspect_databridge_db():
                 }
 
     except Exception as e:
-        print(f"⚠️ [DB] Error introspecting databrige_db: {e}")
+        print(f"⚠️ [DB] Error introspecting the external SAP database: {e}")
         return None
     finally:
         conn.close()
 
     if not tables_out:
-        print("⚠️ [DB] No tables found in databrige_db, skipping DB datasource.")
+        print("⚠️ [DB] No tables found in the external SAP database, skipping DB datasource.")
         return None
 
-    print(f"✅ [DB] Found {len(tables_out)} tables in databrige_db")
+    print(f"✅ [DB] Found {len(tables_out)} tables in the external SAP database")
     return tables_out
 
 
@@ -356,18 +361,18 @@ def _get_table_constraints(cur, conn, table_name):
 
 
 # ============================================================
-# STEP 2: INTROSPECT saarthi_api_db -> API datasource (DYNAMIC)
+# STEP 2: INTROSPECT saarthi_resources_db -> API datasource (DYNAMIC)
 # ============================================================
 
 def introspect_api_db():
     """
-    Connects to saarthi_api_db, targets tool registries dynamically,
+    Connects to saarthi_resources_db, targets tool registries dynamically,
     and reads data by order position to stay robust against custom schemas.
     """
     try:
         conn = psycopg2.connect(**API_DB_CONFIG, connect_timeout=5)
     except Exception as e:
-        print(f"⚠️ [API] Could not connect to saarthi_api_db: {e}")
+        print(f"⚠️ [API] Could not connect to saarthi_resources_db: {e}")
         return None
 
     tools_out = []
@@ -383,13 +388,13 @@ def introspect_api_db():
             candidate_tables = [r["table_name"] for r in cur.fetchall()]
 
             likely_names = [
-                "registered_tools", "api_tools", "registered_apis", 
+                "api_connectors", "registered_tools", "api_tools", "registered_apis",
                 "api_endpoints", "api_configs", "api_registry", "tools"
             ]
             target_table = next((t for t in likely_names if t in candidate_tables), None)
 
             if not target_table:
-                print("⚠️ [API] No recognizable API registry table found in saarthi_api_db.")
+                print("⚠️ [API] No recognizable API registry table found in saarthi_resources_db.")
                 return None
 
             cur.execute(f"SELECT * FROM {target_table};")
@@ -434,7 +439,7 @@ def introspect_api_db():
                 })
 
     except Exception as e:
-        print(f"⚠️ [API] Error introspecting saarthi_api_db: {e}")
+        print(f"⚠️ [API] Error introspecting saarthi_resources_db: {e}")
         return None
     finally:
         conn.close()
@@ -443,7 +448,7 @@ def introspect_api_db():
         print("⚠️ [API] No registered API tools found, skipping API datasource.")
         return None
 
-    print(f"✅ [API] Found {len(tools_out)} registered API tools in saarthi_api_db")
+    print(f"✅ [API] Found {len(tools_out)} registered API tools in saarthi_resources_db")
     return tools_out
 
 

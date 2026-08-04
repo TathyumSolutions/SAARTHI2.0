@@ -1,11 +1,13 @@
-from flask import Blueprint, render_template, request, jsonify,current_app
+from flask import Blueprint, render_template, request, jsonify
 from flask_jwt_extended import jwt_required
 import requests
-import psycopg2
-from urllib.parse import urlparse
+from app import db, limiter
+from app.models.api_connector import ApiConnector
 from app.utils.crypto import encrypt, decrypt
 from app.utils.network_guard import is_safe_url
-from app import limiter
+from app.utils.auth_helpers import get_current_user
+from app.services.audit_service import log_event
+
 # 1. Define the separate blueprint for API data sources
 bp = Blueprint('api_connectors', __name__)
 
@@ -19,7 +21,6 @@ def submit_feedback_alias():
 @bp.route('/api_connectors/rest_apis')
 def rest_apis_page():
     """Renders the REST API custom tool registration dashboard"""
-    print("Rendering api_connectors/rest_apis.html from dedicated file")
     return render_template('api_connectors/rest_apis.html')
 
 @bp.route('/api_connectors/test_connection', methods=['POST'])
@@ -39,7 +40,6 @@ def test_connection():
         return jsonify({"status": "error", "message": reason}), 400
 
     try:
-        # Perform a live mock request with a short timeout
         response = requests.request(method=method, url=full_url, timeout=5)
         return jsonify({
             "status": "success",
@@ -57,22 +57,22 @@ def test_connection():
 @jwt_required()
 @limiter.limit("20 per minute")
 def save_tool():
-    """Receives form data to save the configured API tool"""
+    """Registers (or updates) an API connector tool."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
     data = request.get_json() or {}
 
-    # Extract form fields sent by the frontend
     integration_name = data.get('integrationName')
     base_url = data.get('baseUrl')
     endpoint = data.get('endpoint')
     method = data.get('method')
     auth_type = data.get('authType')
-    # Encrypted at rest. An empty value here means "leave the existing
-    # token alone" (the frontend never re-sends a previously-saved token
-    # back to the client, so on edit this field is blank unless the user
-    # is deliberately setting a new one) - handled via COALESCE/NULLIF
-    # below rather than overwriting a real token with an empty string.
-    api_token = encrypt(data.get('apiToken') or '')
     api_description = data.get('apiDescription')
+    # Empty means "leave the existing token alone" on edit - the frontend
+    # never re-sends a previously-saved token back to the client.
+    new_token = data.get('apiToken') or ''
 
     if not integration_name or not base_url or not endpoint:
         return jsonify({"status": "error", "message": "Missing required fields"}), 400
@@ -82,46 +82,42 @@ def save_tool():
     if not safe:
         return jsonify({"status": "error", "message": reason}), 400
 
-    # Dynamically extract your exact container credentials directly from the app configuration
-    base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-
-    # Parse the host/credentials to build the targeted DSN to your custom database room
     try:
-        from urllib.parse import urlparse
-        result = urlparse(base_uri)
-        dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
+        tool = ApiConnector.query.filter_by(integration_name=integration_name).first()
+        if tool:
+            tool.base_url = base_url
+            tool.endpoint = endpoint
+            tool.method = method
+            tool.auth_type = auth_type
+            tool.api_description = api_description
+            if new_token:
+                tool.api_token = encrypt(new_token)
+        else:
+            tool = ApiConnector(
+                integration_name=integration_name,
+                base_url=base_url,
+                endpoint=endpoint,
+                method=method,
+                auth_type=auth_type,
+                api_token=encrypt(new_token) if new_token else None,
+                api_description=api_description,
+                company_code=current_user.company_code,
+                created_by_user_id=current_user.id,
+            )
+            db.session.add(tool)
 
-        # Connect and insert the row cleanly
-        conn = psycopg2.connect(dsn)
-        cursor = conn.cursor()
+        db.session.commit()
+        log_event('api_connector_saved', company_code=current_user.company_code, user_id=current_user.id,
+                   resource_type='api', resource_id=tool.id, details={'integration_name': integration_name})
 
-        insert_query = """
-        INSERT INTO registered_tools (integration_name, base_url, endpoint, method, auth_type, api_token, api_description)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (integration_name)
-        DO UPDATE SET
-            base_url = EXCLUDED.base_url,
-            endpoint = EXCLUDED.endpoint,
-            method = EXCLUDED.method,
-            auth_type = EXCLUDED.auth_type,
-            api_token = COALESCE(NULLIF(EXCLUDED.api_token, ''), registered_tools.api_token),
-            api_description = EXCLUDED.api_description;
-        """
-        
-        cursor.execute(insert_query, (integration_name, base_url, endpoint, method, auth_type, api_token, api_description))
-        conn.commit()
-        
-        cursor.close()
-        conn.close()
-        
-        print(f"🔥 Successfully written tool to registry: {integration_name} -> {base_url}{endpoint}")
         return jsonify({
             "status": "success",
             "message": f"'{integration_name}' was saved successfully."
         })
 
     except Exception as e:
-        print(f"❌ Error inserting tool record: {e}")
+        db.session.rollback()
+        print(f"❌ Error saving tool record: {e}")
         return jsonify({
             "status": "error",
             "message": "Something went wrong while saving this tool. Please try again."
@@ -130,83 +126,75 @@ def save_tool():
 @bp.route('/api_connectors/delete_tool/<string:integration_name>', methods=['DELETE'])
 @jwt_required()
 def delete_tool(integration_name):
-    """Deletes a registered API tool from saarthi_api_db by its unique name"""
-    base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-    
+    """Deletes a registered API tool by its unique name"""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
     try:
-        from urllib.parse import urlparse
-        result = urlparse(base_uri)
-        dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
-        
-        conn = psycopg2.connect(dsn)
-        cursor = conn.cursor()
-        
-        delete_query = "DELETE FROM registered_tools WHERE integration_name = %s;"
-        cursor.execute(delete_query, (integration_name,))
-        conn.commit()
-        
-        cursor.close()
-        conn.close()
-        
-        print(f"🗑️ Successfully deleted tool from registry: {integration_name}")
+        tool = ApiConnector.query.filter_by(integration_name=integration_name).first()
+        if not tool:
+            return jsonify({"status": "error", "message": "Tool not found."}), 404
+
+        if tool.created_by_user_id != current_user.id and current_user.role != 'admin':
+            return jsonify({"status": "error", "message": "Only the creator or a company admin can delete this tool"}), 403
+
+        db.session.delete(tool)
+        db.session.commit()
+
+        log_event('api_connector_deleted', company_code=current_user.company_code, user_id=current_user.id,
+                   resource_type='api', resource_id=tool.id, details={'integration_name': integration_name})
+
         return jsonify({
             "status": "success",
             "message": f"'{integration_name}' was removed successfully."
         })
 
     except Exception as e:
+        db.session.rollback()
         print(f"❌ Error deleting tool record: {e}")
         return jsonify({
             "status": "error",
             "message": "Something went wrong while removing this tool. Please try again."
         }), 500
-    
+
 @bp.route('/api_connectors/get_tools', methods=['GET'])
 @jwt_required()
 def get_tools():
-    """Retrieves all registered custom active endpoints directly out of saarthi_api_db"""
-    base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-    
+    """
+    Lists API connectors the current user created, plus any explicitly
+    granted to them via Resource Mapping - nothing is auto-shared.
+    """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
     try:
-        from urllib.parse import urlparse
-        result = urlparse(base_uri)
-        dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
-        
-        conn = psycopg2.connect(dsn)
-        cursor = conn.cursor()
-        
-        select_query = """
-        SELECT integration_name, base_url, endpoint, method, auth_type, api_token, api_description 
-        FROM registered_tools 
-        ORDER BY created_at DESC;
-        """
-        cursor.execute(select_query)
-        rows = cursor.fetchall()
-        
-        # Format database rows cleanly into digestible objects for the frontend fetch query.
-        # The stored token is never sent back to the browser once saved -
-        # only whether one exists, so the edit form can show that state
-        # without re-exposing the secret on every list load.
+        own_tools = ApiConnector.query.filter_by(created_by_user_id=current_user.id).all()
+
+        from app.models.resource_mapping import ResourceMapping
+        granted_ids = [
+            m.resource_id for m in ResourceMapping.query.filter_by(
+                resource_type='api', user_id=current_user.id
+            ).all()
+        ]
+        granted_tools = ApiConnector.query.filter(ApiConnector.id.in_(granted_ids)).all() if granted_ids else []
+
+        seen_ids = set()
         tools_list = []
-        for row in rows:
-            tools_list.append({
-                "integration_name": row[0],
-                "base_url": row[1],
-                "endpoint": row[2],
-                "method": row[3],
-                "auth_type": row[4],
-                "has_token": bool(row[5]),
-                "api_description": row[6]
-            })
-            
-        cursor.close()
-        conn.close()
-        
+        for tool in own_tools + granted_tools:
+            if tool.id not in seen_ids:
+                seen_ids.add(tool.id)
+                d = tool.to_dict()
+                d['has_token'] = bool(tool.api_token)
+                del d['api_token']
+                tools_list.append(d)
+
         return jsonify({
             "status": "success",
             "tools": tools_list
         })
-        
+
     except Exception as e:
         print(f"❌ Error fetching tool records: {e}")
         return jsonify({
@@ -223,19 +211,8 @@ def process_tool(integration_name):
     Explicit process action for a saved API tool.
     Triggers router config regeneration only when user clicks Process.
     """
-    base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-
     try:
-        result = urlparse(base_uri)
-        dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
-
-        conn = psycopg2.connect(dsn)
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM registered_tools WHERE integration_name = %s;", (integration_name,))
-        exists = cursor.fetchone() is not None
-        cursor.close()
-        conn.close()
-
+        exists = ApiConnector.query.filter_by(integration_name=integration_name).first() is not None
         if not exists:
             return jsonify({"status": "error", "message": "This tool could not be found."}), 404
 
@@ -249,11 +226,3 @@ def process_tool(integration_name):
     except Exception as e:
         print(f"❌ Error processing tool '{integration_name}': {e}")
         return jsonify({"status": "error", "message": "Something went wrong while activating this tool. Please try again."}), 500
-
-    # Connect your DB execution helper here (e.g., db.execute or models.save)
-    #print(f"Saving new tool to registry: {integration_name} -> {base_url}{endpoint}")
-
-    #return jsonify({
-    #    "status": "success", 
-    #    "message": f"Tool '{integration_name}' successfully registered to Saarthi core!"
-    #})

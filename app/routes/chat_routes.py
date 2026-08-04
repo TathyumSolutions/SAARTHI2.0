@@ -14,21 +14,11 @@ from app.services.stream_manager import stream_manager
 from app.models.model_config import ModelConfiguration
 from app.models.feedback import ResponseFeedback
 from app.models.user import User
+from app.models.chat import ChatSession
 import os  # 👈 Fixes the 'environ' underline
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from app.services.updated_router_services import RouterService
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
-
-def get_chats_db_connection():
-    # Fallback default connection URI pointing to the postgres container if not set in environment
-    base_uri = os.environ.get('ENVIRONMENT_DATABASE_URL') or "postgresql://saarthi:password@db:5432/saarthi_db"
-    if "saarthi_db" in base_uri:
-        chats_db_uri = base_uri.replace("saarthi_db", "saarthi_chats_db")
-    else:
-        chats_db_uri = "postgresql://saarthi:password@db:5432/saarthi_chats_db"
-    return psycopg2.connect(chats_db_uri)
 
 
 def _resolve_feedback_user():
@@ -83,7 +73,7 @@ def submit_feedback():
     try:
         fb = ResponseFeedback(
             user_id=current_user.id,
-            company_name=current_user.company_name,
+            company_code=current_user.company_code,
             question=data.get('question'),
             answer=data.get('answer'),
             sql_query=data.get('sql_query'),
@@ -104,28 +94,40 @@ def submit_feedback():
 @jwt_required()
 def get_chat_sessions():
     """
-    Get all chat sessions from saarthi_chats_db ordered chronologically.
+    Get the current user's chat sessions, ordered chronologically. Chat
+    history is personal, not a shared company resource - each user only
+    ever sees their own sessions here regardless of company.
     Response: { "sessions": [{session_id, title, updated_at}] }
     """
+    current_user = _resolve_feedback_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
     try:
-        conn = get_chats_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT session_id, title, updated_at FROM chat_sessions ORDER BY updated_at DESC;")
-        sessions = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return jsonify({"sessions": sessions})
+        sessions = (
+            ChatSession.query
+            .filter_by(user_id=current_user.id)
+            .order_by(ChatSession.updated_at.desc())
+            .all()
+        )
+        return jsonify({"sessions": [
+            {"session_id": s.session_id, "title": s.title, "updated_at": s.updated_at.isoformat() if s.updated_at else None}
+            for s in sessions
+        ]})
     except Exception as e:
-        print(f"Error fetching audit sessions: {e}")
-        return jsonify({"error": "Failed to load audit logs"}), 500
+        print(f"Error fetching chat sessions: {e}")
+        return jsonify({"error": "Failed to load chat sessions"}), 500
 
 @bp.route('/sessions', methods=['POST'])
 @jwt_required()
 def create_chat_session():
     """
-    Save or Update a chat session's visual layout HTML string inside saarthi_chats_db.
+    Save or update a chat session's visual layout HTML string.
     Request body: { "session_id": "...", "title": "...", "chat_history": "..." }
     """
+    current_user = _resolve_feedback_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+
     data = request.get_json() or {}
     session_id = data.get('session_id')
     title = data.get('title', 'New Chat Session')
@@ -135,21 +137,26 @@ def create_chat_session():
         return jsonify({"error": "Session ID token required"}), 400
 
     try:
-        conn = get_chats_db_connection()
-        cursor = conn.cursor()
-        # Upsert query configuration: Update if session exists, else Insert new
-        query = """
-        INSERT INTO chat_sessions (session_id, title, chat_history, updated_at)
-        VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-        ON CONFLICT (session_id) 
-        DO UPDATE SET title = EXCLUDED.title, chat_history = EXCLUDED.chat_history, updated_at = CURRENT_TIMESTAMP;
-        """
-        cursor.execute(query, (session_id, title, chat_history))
-        conn.commit()
-        cursor.close()
-        conn.close()
+        session = ChatSession.query.filter_by(session_id=session_id).first()
+        if session and session.user_id != current_user.id:
+            return jsonify({"error": "Session not found"}), 404
+
+        if session:
+            session.title = title
+            session.chat_history = chat_history
+        else:
+            session = ChatSession(
+                session_id=session_id,
+                title=title,
+                chat_history=chat_history,
+                company_code=current_user.company_code,
+                user_id=current_user.id,
+            )
+            db.session.add(session)
+        db.session.commit()
         return jsonify({"status": "success", "message": "Session saved persistently"})
     except Exception as e:
+        db.session.rollback()
         print(f"Error saving chat history log: {e}")
         return jsonify({"error": "Failed to update persistent history trail"}), 500
 
@@ -159,17 +166,14 @@ def get_chat_session(session_id):
     """
     Get a specific chat session's layout logs to rebuild the workspace window.
     """
+    current_user = _resolve_feedback_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
     try:
-        conn = get_chats_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT session_id, title, chat_history FROM chat_sessions WHERE session_id = %s;", (session_id,))
-        session = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        if not session:
+        session = ChatSession.query.filter_by(session_id=session_id).first()
+        if not session or session.user_id != current_user.id:
             return jsonify({"error": "Historical trail item not found"}), 404
-        return jsonify({"session": session})
+        return jsonify({"session": session.to_dict()})
     except Exception as e:
         print(f"Error viewing single chat trace: {e}")
         return jsonify({"error": "Failed to open conversation node"}), 500
@@ -178,24 +182,23 @@ def get_chat_session(session_id):
 @jwt_required()
 def delete_chat_session(session_id):
     """
-    🗑️ Delete a chat session permanently from the Audit Trail database.
+    Delete a chat session permanently.
     """
+    current_user = _resolve_feedback_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
     try:
-        conn = get_chats_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM chat_sessions WHERE session_id = %s;", (session_id,))
-        conn.commit()
-        deleted_count = cursor.rowcount
-        cursor.close()
-        conn.close()
-        
-        if deleted_count == 0:
+        session = ChatSession.query.filter_by(session_id=session_id).first()
+        if not session or session.user_id != current_user.id:
             return jsonify({"error": "Session not found"}), 404
-            
+
+        db.session.delete(session)
+        db.session.commit()
         return jsonify({"status": "success", "message": "Session deleted from audit records"})
     except Exception as e:
+        db.session.rollback()
         print(f"Error removing audit target frame: {e}")
-        return jsonify({"error": "Failed to drop session tracking state"}), 500    
+        return jsonify({"error": "Failed to drop session tracking state"}), 500
 
 # @bp.route('/sessions', methods=['GET'])
 # @jwt_required()
@@ -327,7 +330,7 @@ def send_message():
         #ai_response = llm_service.answer_from_docs(user_query)
         current_user = _resolve_feedback_user()
         user_id = current_user.id if current_user else 1
-        company_name = current_user.company_name if current_user else None
+        company_code = current_user.company_code if current_user else None
 
         ai_response = router_service.get_smart_response(
             user_query,
@@ -335,7 +338,7 @@ def send_message():
             model_name=model_name,
             custom_key=custom_key,
             system_instructions=system_instructions,
-            company_name=company_name,
+            company_code=company_code,
             user_id=user_id,
         )
         print(f"DEBUG: AI Response from Service: {ai_response}")

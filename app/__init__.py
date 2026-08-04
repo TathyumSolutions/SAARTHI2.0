@@ -11,11 +11,7 @@ from flask_limiter.util import get_remote_address
 from flasgger import Swagger
 from config.config import config
 import os
-#from app.routes.auth_routes import bp as auth_blueprint
-from  app.services.api_db__init__ import initialize_api_database
-from app.services.chat_db__init__ import initialize_chats_database
-from app.services.auth_db__init__ import init_auth_database
-
+from app.services.db_bootstrap import bootstrap_databases
 
 
 # Initialize extensions
@@ -30,12 +26,12 @@ jwt = JWTManager()
 # rather than failing app startup over it.
 limiter = Limiter(key_func=get_remote_address, default_limits=["200 per minute"])
 
-print("Working on upload folder")
-print("Current file path:", os.path.abspath(__file__))
-
-# Set up upload folder
-UPLOAD_FOLDER = "/workspaces/SAARTHI2.0/uploads"
+# Uploaded files land next to wherever the app actually runs from, not a
+# hardcoded container path - the same "assumed one specific machine's
+# layout" mistake that broke the SAP data seeding script.
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 
 def create_app(config_name='development'):
     """Create and configure the Flask application"""
@@ -60,16 +56,6 @@ def create_app(config_name='development'):
               "Set ALLOWED_ORIGINS to a comma-separated list of trusted origins if a "
               "separately-hosted frontend needs to call this API.")
 
-    print("👉 FLASK IS CURRENTLY CONNECTING TO DATABASE:", app.config.get('SQLALCHEMY_DATABASE_URI'))
-    # 🚀 Extract the exact live URI from your configuration
-    live_db_uri = app.config.get('SQLALCHEMY_DATABASE_URI')
-    print("👉 FLASK IS CURRENTLY CONNECTING TO DATABASE:", live_db_uri)
-
-    # 🚀 Run the separate database creator using that exact verified connection string!
-    initialize_api_database(live_db_uri)
-    initialize_chats_database(live_db_uri)
-    init_auth_database(live_db_uri)
-   # app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://saarthi:password@db:5432/saarthi_db"
     if config_name == 'production' and app.config.get('SECRET_KEY') in (None, 'dev-secret-key'):
         raise RuntimeError(
             "SECRET_KEY is not set. Refusing to start in production with the "
@@ -78,7 +64,13 @@ def create_app(config_name='development'):
         )
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 
-    print("Working on initialisation")
+    # The app is split across 3 logical databases (core / resources /
+    # workspace - see config/config.py SQLALCHEMY_BINDS). Create whichever
+    # of them don't exist yet on the target Postgres server before
+    # SQLAlchemy tries to use them.
+    print("[DB Bootstrap] Ensuring core/resources/workspace databases exist...")
+    bootstrap_databases(app.config['SQLALCHEMY_BINDS'])
+
     # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
@@ -98,12 +90,12 @@ def create_app(config_name='development'):
         }
     }
     Swagger(app, template=swagger_template)
-    print("Initialisation completed")
-    
+
     # Register blueprints
     from app.routes import (
         page_routes,
         auth_routes,
+        platform_routes,
         workspace_routes,
         api_routes,
         api_v1_routes,
@@ -122,11 +114,12 @@ def create_app(config_name='development'):
         resource_mapping_routes,
         warehouse_routes
     )
-    
+
     # HTML page routes (no prefix)
     app.register_blueprint(page_routes.bp)
     # API routes
     app.register_blueprint(auth_routes.bp)
+    app.register_blueprint(platform_routes.bp)
     app.register_blueprint(workspace_routes.bp)
     app.register_blueprint(llm_routes.bp)
     app.register_blueprint(database_routes.bp)
@@ -143,240 +136,27 @@ def create_app(config_name='development'):
     app.register_blueprint(settings_routes.bp)
     app.register_blueprint(resource_mapping_routes.bp)
     app.register_blueprint(warehouse_routes.bp)
-    
+
     from app.routes.upload_routes import upload_bp
     app.register_blueprint(upload_bp)
-    
-    # Import models to ensure they're registered with SQLAlchemy
-    #from app.models import (
-    #    database_connection,
-    #    workspace,
-    #    user,
-    #    chat,
-    #    query,
-    #    analytics,
-    #    audit,
-    #    datasource,
-    #    model_config
-    #)
 
-    from app import models
-    
-    # Create database tables
-    
-    #with app.app_context():
-    #    try:
-    #        print("Creating database tables...")
-    #        db.create_all()
-            
-            # Create default workspace if none exists
-    #        from app.models.workspace import Workspace
-    #        if not Workspace.query.first():
-    #            default_workspace = Workspace(
-    #                name='Default Workspace',
-    #                description='Default workspace for database connections',
-    #                owner_id=1  # Will need to create users too
-    #            )
-    #            db.session.add(default_workspace)
-    #            db.session.commit()
-    #            print("✓ Created default workspace")
-            
-    #        print("✓ Database tables created successfully")
-    #    except Exception as e:
-    #        print(f"⚠ Error creating tables: {str(e)}")
-
-    # Create database tables
-    #with app.app_context():
-    #    try:
-    #        print("Creating database tables...")
-    #        db.create_all()
-            
-    #        from app.models.user import User
-    #        from app.models.workspace import Workspace
-
-            # STEP 1: Create the User first so the 'owner_id' has someone to point to
-    #        if not User.query.get(1):
-    #            print("Creating missing admin user...")
-    #            admin = User(id=1, name='admin', email='admin@saarthi.ai',password_hash='scrypt:32768:8:1$dummyhash',
-    #            role='viewer',
-    #            status='active')
-    #            db.session.add(admin)
-    #            db.session.commit()
-
-            # STEP 2: Now create the workspace
-    #        if not Workspace.query.first():
-    #            default_workspace = Workspace(
-    #                name='Default Workspace',
-    #                description='Default workspace for database connections',
-    #                owner_id=1  # This now works because User 1 exists!
-    #            )
-    #            db.session.add(default_workspace)
-    #            db.session.commit()
-    #            print("✓ Database and User initialized successfully")
-                
-    #    except Exception as e:
-    #       print(f"⚠ Error: {str(e)}")
-    #        db.session.rollback()
-
-    #with app.app_context():
-    #    try:
-    #        print("Creating database tables...")
-    #        # This creates tables only if they don't exist
-    #        db.create_all()
-            
-    #        from app.models.user import User
-    #        from app.models.workspace import Workspace
-
-    #        # STEP 1: Create the User first
-    #        admin = User.query.get(1)
-    #        if not admin:
-    #            print("Creating missing admin user...")
-    #           admin = User(
-    #                id=1, 
-    #                name='admin', 
-    #                email='admin@saarthi.ai',
-    #                password_hash='scrypt:32768:8:1$dummyhash',
-    #                role='viewer',
-    #                status='active'
-                #)
-    #            db.session.add(admin)
-    #            db.session.commit()
-
-     #       # STEP 2: Create the workspace
-     #       if not Workspace.query.first():
-     #           default_workspace = Workspace(
-     #               name='Default Workspace',
-     #               description='Default workspace for database connections',
-     #               owner_id=1 
-     #           )
-     #           db.session.add(default_workspace)
-     #           db.session.commit()
-     #           print("✓ Database and User initialized successfully")
-                
-     #   except Exception as e:
-            # This print will tell us exactly what is wrong if it still fails
-     #       print(f"⚠ Database sync notice: {str(e)}")
-     #       db.session.rollback()
-
-
-    #with app.app_context():
-    #    try:
-    #        from sqlalchemy import text
-    #        print("Cleaning up old types...")
-    #        with db.engine.connect() as conn:
-                # This prevents the CASCADE/Duplicate errors from previous screenshots
-    #            conn.execute(text("DROP TYPE IF EXISTS user_role CASCADE"))
-    #            conn.execute(text("DROP TYPE IF EXISTS user_status CASCADE"))
-    #            conn.commit()
-            
-    #        print("Creating database tables...")
-    #        db.create_all()
-
-    #with app.app_context():
-    #    try:
-            # 1. Force SQLAlchemy to recognize all relationships before creation
-    #        from sqlalchemy.orm import configure_mappers
-    #        configure_mappers()
-            
-    #        print("Synchronizing database schema...")
-            # create_all will build any missing tables (like database_connections)
-    #        db.create_all() 
-            
-            # 2. Verify the table exists by performing a quick check
-    #        from sqlalchemy import inspect
-    #        inspector = inspect(db.engine)
-    #        if 'database_connections' in inspector.get_table_names():
-    #            print("✓ Table 'database_connections' is ready.")
-            
-    #        db.session.commit()
-    #    except Exception as e:
-    #        print(f"⚠ Database Sync Error: {str(e)}")
-    #        db.session.rollback()        
-            
-    #        from app.models.user import User
-    #        from app.models.workspace import Workspace
-
-            # Check for existing admin
-    #        admin = User.query.get(1)
-    #        if not admin:
-    #            print("Creating missing admin user...")
-    #            admin = User(
-    #                id=1,
-    #                name='admin',
-    #                email='admin@saarthi.ai',
-    #                password_hash='scrypt:32768:8:1$dummyhash',
-    #                role='viewer',
-    #                status='active'
-    #            )
-    #            db.session.add(admin)
-    #            db.session.commit()
-
-    #        if not Workspace.query.first():
-    #            print("Creating default workspace...")
-    #            default_workspace = Workspace(
-    #                name='Default Workspace',
-    #                description='Default workspace for database connections',
-    #                owner_id=1
-    #           )
-    #            db.session.add(default_workspace)
-    #            db.session.commit()
-    #           print("✓ Database and User initialized successfully")
-
-    #    except Exception as e:
-    #        print(f"⚠ Database initialization notice: {str(e)}")
-    #        db.session.rollback()
-    
+    # Import models so they're registered with SQLAlchemy before create_all()
+    from app import models  # noqa: F401
 
     with app.app_context():
         try:
-            # 1. Force SQLAlchemy to recognize all relationships before creation
             from sqlalchemy.orm import configure_mappers
             configure_mappers()
-            
-            print("Synchronizing database schema...")
-            db.create_all() 
-            
-            # 2. ONLY attempt data initialization if tables were created successfully
-            from app.models.user import User
-            from app.models.workspace import Workspace
-
-            # Check/Create Admin
-            admin = User.query.get(1)
-            if not admin:
-                print("Creating missing admin user...")
-                admin = User(
-                    id=1,
-                    name='admin',
-                    email='admin@saarthi.ai',
-                    password_hash='scrypt:32768:8:1$dummyhash',
-                    role='viewer',
-                    status='active'
-                )
-                db.session.add(admin)
-                db.session.commit()
-
-            # Check/Create Workspace
-            if not Workspace.query.first():
-                print("Creating default workspace...")
-                default_workspace = Workspace(
-                    name='Default Workspace',
-                    description='Default workspace for database connections',
-                    owner_id=1
-                )
-                db.session.add(default_workspace)
-                db.session.commit()
-            
-            print("✓ Database and User initialized successfully")
-
+            print("[DB Bootstrap] Synchronizing schema across core/resources/workspace...")
+            db.create_all()
+            print("[DB Bootstrap] Schema is up to date.")
         except Exception as e:
-            # This prevents a second crash if a table (like 'reports') is still broken
-            print(f"⚠ Database Setup Error: {str(e)}")
+            print(f"[DB Bootstrap] Schema sync error: {e}")
             db.session.rollback()
-    
-    print("Working on the blue print part")
+
     # Health check endpoint
     @app.route('/health')
     def health_check():
         return {'status': 'healthy', 'service': 'Saarthi Enterprise API'}, 200
-    
+
     return app

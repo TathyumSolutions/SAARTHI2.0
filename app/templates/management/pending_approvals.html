@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Pending Approvals - Saarthi{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px;">
+    <h1 style="font-size: 24px; margin-bottom: 8px; color: var(--text-primary);">Pending Employee Approvals</h1>
+    <p style="color: var(--text-secondary); margin-bottom: 20px;">People who signed up with your company code, waiting for you to approve their access. Admin only.</p>
+
+    <div style="background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 24px;">
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <th style="text-align: left; padding: 10px; color: var(--text-secondary); font-size: 12px;">NAME</th>
+                    <th style="text-align: left; padding: 10px; color: var(--text-secondary); font-size: 12px;">EMAIL</th>
+                    <th style="text-align: left; padding: 10px; color: var(--text-secondary); font-size: 12px;">REQUESTED</th>
+                    <th style="text-align: left; padding: 10px; color: var(--text-secondary); font-size: 12px;">ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody id="pendingTableBody">
+                <tr><td colspan="4" style="padding: 12px; color: var(--text-secondary);">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function loadPending() {
+        const tbody = document.getElementById('pendingTableBody');
+        try {
+            const res = await authFetch('/api/auth/pending-approvals');
+            const data = await res.json();
+            if (!res.ok) {
+                tbody.innerHTML = `<tr><td colspan="4" style="padding: 12px; color: #F48771;">${data.message || 'Failed to load (admin access required)'}</td></tr>`;
+                return;
+            }
+            if (!data.pending_users.length) {
+                tbody.innerHTML = '<tr><td colspan="4" style="padding: 12px; color: var(--text-secondary);">No pending requests</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.pending_users.map(u => `
+                <tr style="border-bottom: 1px solid var(--border-color);" data-user-id="${u.id}">
+                    <td style="padding: 10px; color: var(--text-primary);">${u.name}</td>
+                    <td style="padding: 10px; color: var(--text-primary);">${u.email}</td>
+                    <td style="padding: 10px; color: var(--text-secondary);">${u.created_at || ''}</td>
+                    <td style="padding: 10px;">
+                        <button class="approve-btn" data-id="${u.id}" style="padding: 6px 12px; background: var(--accent-green); color: var(--dark-bg); border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 8px;">Approve</button>
+                        <button class="reject-btn" data-id="${u.id}" style="padding: 6px 12px; background: var(--hover-bg); color: #F48771; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px;">Reject</button>
+                    </td>
+                </tr>
+            `).join('');
+
+            tbody.querySelectorAll('.approve-btn').forEach(btn => btn.addEventListener('click', () => actOn(btn.dataset.id, 'approve')));
+            tbody.querySelectorAll('.reject-btn').forEach(btn => btn.addEventListener('click', () => actOn(btn.dataset.id, 'reject')));
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="4" style="padding: 12px; color: #F48771;">Failed to reach server</td></tr>';
+        }
+    }
+
+    async function actOn(userId, action) {
+        try {
+            await authFetch(`/api/auth/${action}/${userId}`, { method: 'POST' });
+            loadPending();
+        } catch (e) {
+            console.error('Failed to ' + action, e);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadPending);
+</script>
+{% endblock %}
