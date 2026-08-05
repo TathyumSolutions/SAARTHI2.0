@@ -1168,19 +1168,9 @@
       </div>
 
       <div class="field signup-only">
-        <label for="company_code">Company code</label>
+        <label for="company_code">Company code (optional)</label>
         <div class="input-wrap">
-          <input type="text" id="company_code" placeholder="e.g. TATHYUM2026" autocomplete="organization" />
-        </div>
-      </div>
-
-      <div class="field signup-only">
-        <label for="role">Role</label>
-        <div class="input-wrap">
-          <select id="role">
-            <option value="user" selected>User</option>
-            <option value="admin">Admin</option>
-          </select>
+          <input type="text" id="company_code" placeholder="Leave blank for an individual account" autocomplete="organization" />
         </div>
       </div>
 
@@ -1420,10 +1410,14 @@
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       const confirm_password = document.getElementById('confirm_password')?.value;
+      // Company code is optional - leaving it blank creates a standalone
+      // individual account (auto-admin of themselves, nothing shared).
+      // Role is never chosen at signup: the backend derives it from
+      // whether company_code is given/matches a company's founding-admin
+      // email, so there's no role field here to fill in.
       const company_code = document.getElementById('company_code')?.value?.trim();
-      const role = document.getElementById('role')?.value || 'user';
 
-      if (!name || !email || !password || !confirm_password || !company_code) {
+      if (!name || !email || !password || !confirm_password) {
           showFormMessage("Please fill out all fields to register.", 'error');
           return;
       }
@@ -1437,7 +1431,7 @@
           const response = await fetch('/api/auth/register', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email, password, confirm_password, company_code, role })
+            body: JSON.stringify({ name, email, password, confirm_password, company_code })
           });
 
           const result = await response.json();
