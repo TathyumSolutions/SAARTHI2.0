@@ -2,9 +2,9 @@
 Builds each user's personal router config (saved to their row in
 router_configs, see app/models/router_config.py - not a shared file) by
 introspecting:
-1. The external SAP demo database, if DATABRIDGE_TARGET_* env vars (or an
-   explicit sap_db_config) are set (PostgreSQL) -> DB datasource
-   (SAP-style tables). Still global for now, not yet scoped per user.
+1. This user's own + resource-mapped PostgreSQL database connections
+   (falling back to the legacy DATABRIDGE_TARGET_* env vars if this user
+   has none registered) -> DB datasource (SAP-style tables)
 2. This user's own + resource-mapped API connectors (saarthi_resources_db,
    via the ApiConnector ORM model) -> API datasource
 3. This user's own + resource-mapped spreadsheet-backed tables -> SPREADSHEET datasource
@@ -279,6 +279,38 @@ def introspect_databridge_db(db_config=None):
     return tables_out
 
 
+def to_sql_agent_schema(db_tables: dict) -> dict:
+    """
+    Converts introspect_databridge_db()'s output shape into the
+    {"tables": {name: {"description", "columns": {col: {...}}, "foreign_keys"}}}
+    shape the LangGraph SQL agents (databridge_services/agents/*) expect -
+    columns keyed by name rather than a list, and foreign keys flattened to
+    "table.column" references. Used to feed those agents this specific
+    user's own introspected schema (from their router_configs row) instead
+    of a static, global schema file.
+    """
+    tables = {}
+    for table_name, table_data in (db_tables or {}).items():
+        columns = {
+            col["name"]: {
+                "type": col.get("data_type"),
+                "nullable": col.get("nullable"),
+                "example_values": col.get("sample_values", []),
+            }
+            for col in table_data.get("columns", [])
+        }
+        foreign_keys = [
+            {"column": fk["column"], "references": f"{fk['references_table']}.{fk['references_column']}"}
+            for fk in (table_data.get("constraints") or {}).get("foreign_keys", [])
+        ]
+        tables[table_name] = {
+            "description": table_data.get("description", ""),
+            "columns": columns,
+            "foreign_keys": foreign_keys,
+        }
+    return {"tables": tables}
+
+
 def _get_table_constraints(cur, conn, table_name):
     """
     Returns primary key, foreign key, and unique constraint info for one
@@ -396,6 +428,58 @@ def visible_document_codes(user_id):
         (FileResource.created_by_user_id == user_id) | (FileResource.id.in_(granted_ids or [-1]))
     ).all()
     return [r.document_code for r in resources]
+
+
+def _introspect_visible_databases(user_id, sap_db_config=None):
+    """
+    Introspects the external SAP-style database(s) this user can actually
+    see - their own PostgreSQL database connections plus any granted via
+    Resource Mapping (same "own + granted" rule as everywhere else),
+    merging their tables into one DB datasource.
+
+    If sap_db_config is given explicitly, it's used as-is instead (see
+    introspect_databridge_db's docstring) - this is how the Process button
+    and run_agentic_process ask for one *specific* connection to be
+    (re)introspected right after testing/seeding it, without this broader
+    per-user lookup. Every other caller (creating/updating/deleting a
+    connection, resource mapping changes, file uploads, etc.) doesn't know
+    - and shouldn't need to know - which connection to use, so they rely
+    on this lookup instead of passing sap_db_config themselves.
+
+    Falls back to the legacy DATABRIDGE_TARGET_* env vars (via
+    introspect_databridge_db(None)) only if this user has no PostgreSQL
+    connection registered at all - the standalone/dev CLI use case
+    documented on DB_CONFIG above.
+    """
+    if sap_db_config is not None:
+        return introspect_databridge_db(sap_db_config)
+
+    from app.models.database_connection import DatabaseConnection
+    from app.utils.crypto import decrypt
+
+    granted_ids = _visible_resource_ids(user_id, 'database')
+    connections = DatabaseConnection.query.filter(
+        DatabaseConnection.type == 'PostgreSQL',
+        (DatabaseConnection.created_by_user_id == user_id) | (DatabaseConnection.id.in_(granted_ids or [-1]))
+    ).all()
+
+    if not connections:
+        return introspect_databridge_db(None)
+
+    merged_tables = {}
+    for connection in connections:
+        config = {
+            "host": connection.host,
+            "port": connection.port or 5432,
+            "dbname": connection.database,
+            "user": connection.username,
+            "password": decrypt(connection.password) if connection.password else "",
+        }
+        tables = introspect_databridge_db(config)
+        if tables:
+            merged_tables.update(tables)
+
+    return merged_tables or None
 
 
 def introspect_api_db(user_id):
@@ -764,11 +848,12 @@ def generate_router_config(user_id, force=False, sap_db_config=None):
     router_configs (saarthi_workspace_db), not a shared global file, so
     two users never see each other's private resources through routing.
 
-    The external SAP-style database (introspect_databridge_db) is still
-    global for now - not yet scoped per resource-mapping the way API
-    connectors, spreadsheets, and Qdrant documents are.
-    sap_db_config, if given, is passed straight through to
-    introspect_databridge_db() - see that function's docstring.
+    The external SAP-style database is resolved from this user's own
+    PostgreSQL connections (own + resource-mapped) unless sap_db_config is
+    given explicitly - see _introspect_visible_databases()'s docstring.
+    Qdrant documents (introspect_qdrant) are scoped the same way, via
+    visible_document_codes() - so every datasource here now reflects only
+    what this user created or was granted, not the whole company/system.
     """
     from app import db
     from app.models.user import User
@@ -782,7 +867,7 @@ def generate_router_config(user_id, force=False, sap_db_config=None):
     print(f"🧠 METAMIND ROUTER CONFIG GENERATOR (user_id={user_id})")
     print("=" * 60)
 
-    db_tables = introspect_databridge_db(sap_db_config)
+    db_tables = _introspect_visible_databases(user_id, sap_db_config)
     api_tools = introspect_api_db(user_id)
     files_info = introspect_qdrant(user_id)
     spreadsheet_tables = introspect_spreadsheets(user_id)
