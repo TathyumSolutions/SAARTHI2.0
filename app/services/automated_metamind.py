@@ -411,6 +411,58 @@ def _visible_resource_ids(user_id, resource_type):
     return granted
 
 
+def _introspect_visible_databases(user_id, sap_db_config=None):
+    """
+    Introspects the external SAP-style database(s) this user can actually
+    see - their own PostgreSQL database connections plus any granted via
+    Resource Mapping (same "own + granted" rule as everywhere else),
+    merging their tables into one DB datasource.
+
+    If sap_db_config is given explicitly, it's used as-is instead (see
+    introspect_databridge_db's docstring) - this is how the Process button
+    and run_agentic_process ask for one *specific* connection to be
+    (re)introspected right after testing/seeding it, without this broader
+    per-user lookup. Every other caller (creating/updating/deleting a
+    connection, resource mapping changes, file uploads, etc.) doesn't know
+    - and shouldn't need to know - which connection to use, so they rely
+    on this lookup instead of passing sap_db_config themselves.
+
+    Falls back to the legacy DATABRIDGE_TARGET_* env vars (via
+    introspect_databridge_db(None)) only if this user has no PostgreSQL
+    connection registered at all - the standalone/dev CLI use case
+    documented on DB_CONFIG above.
+    """
+    if sap_db_config is not None:
+        return introspect_databridge_db(sap_db_config)
+
+    from app.models.database_connection import DatabaseConnection
+    from app.utils.crypto import decrypt
+
+    granted_ids = _visible_resource_ids(user_id, 'database')
+    connections = DatabaseConnection.query.filter(
+        DatabaseConnection.type == 'PostgreSQL',
+        (DatabaseConnection.created_by_user_id == user_id) | (DatabaseConnection.id.in_(granted_ids or [-1]))
+    ).all()
+
+    if not connections:
+        return introspect_databridge_db(None)
+
+    merged_tables = {}
+    for connection in connections:
+        config = {
+            "host": connection.host,
+            "port": connection.port or 5432,
+            "dbname": connection.database,
+            "user": connection.username,
+            "password": decrypt(connection.password) if connection.password else "",
+        }
+        tables = introspect_databridge_db(config)
+        if tables:
+            merged_tables.update(tables)
+
+    return merged_tables or None
+
+
 def introspect_api_db(user_id):
     """
     API connectors visible to this specific user - their own, plus any
@@ -756,11 +808,11 @@ def generate_router_config(user_id, force=False, sap_db_config=None):
     router_configs (saarthi_workspace_db), not a shared global file, so
     two users never see each other's private resources through routing.
 
-    The external SAP-style database (introspect_databridge_db) and Qdrant
-    (introspect_qdrant) are still global for now - not yet scoped per
-    resource-mapping the way API connectors and spreadsheets are.
-    sap_db_config, if given, is passed straight through to
-    introspect_databridge_db() - see that function's docstring.
+    The external SAP-style database is resolved from this user's own
+    PostgreSQL connections (own + resource-mapped) unless sap_db_config is
+    given explicitly - see _introspect_visible_databases()'s docstring.
+    Qdrant (introspect_qdrant) is still global for now - not yet scoped
+    per resource-mapping the way everything else here is.
     """
     from app import db
     from app.models.user import User
@@ -774,7 +826,7 @@ def generate_router_config(user_id, force=False, sap_db_config=None):
     print(f"🧠 METAMIND ROUTER CONFIG GENERATOR (user_id={user_id})")
     print("=" * 60)
 
-    db_tables = introspect_databridge_db(sap_db_config)
+    db_tables = _introspect_visible_databases(user_id, sap_db_config)
     api_tools = introspect_api_db(user_id)
     files_info = introspect_qdrant()
     spreadsheet_tables = introspect_spreadsheets(user_id)
