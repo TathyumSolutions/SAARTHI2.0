@@ -1,16 +1,20 @@
 """
-Auto-generates metamind_router_config.json by introspecting:
-1. databrige_db (PostgreSQL)   -> DB datasource (SAP-style tables)
-2. saarthi_api_db (PostgreSQL) -> API datasource (registered API tools/endpoints)
-3. Qdrant                      -> FILES datasource (RAG document collection)
+Builds each user's personal router config (saved to their row in
+router_configs, see app/models/router_config.py - not a shared file) by
+introspecting:
+1. The external SAP demo database, if DATABRIDGE_TARGET_* env vars (or an
+   explicit sap_db_config) are set (PostgreSQL) -> DB datasource
+   (SAP-style tables). Still global for now, not yet scoped per user.
+2. This user's own + resource-mapped API connectors (saarthi_resources_db,
+   via the ApiConnector ORM model) -> API datasource
+3. This user's own + resource-mapped spreadsheet-backed tables -> SPREADSHEET datasource
+4. Qdrant -> FILES datasource (RAG document collection). Still global for
+   now, not yet scoped per user.
 
 Features:
-- Completely dynamic database row position mapping (no hardcoded column lookups)
-- Automatically isolates target registry tables dynamically
-- Detects schema changes via a content hash (schema fingerprint)
+- Detects schema changes via a per-user content hash (fingerprint column)
 - Skips regeneration if nothing changed since last run
 - Skips any datasource that is unreachable/missing instead of failing
-- Output matches existing metamind_router_config.json structure
 """
 
 import os
@@ -32,29 +36,22 @@ except ImportError:
 # CONFIG - Environment-driven DB credentials
 # ============================================================
 
+# The SAP demo database is external (see app/services/databridge_services/db.py) -
+# no fallback to the app's own Postgres here. If DATABRIDGE_TARGET_HOST
+# isn't set, the connect attempt below fails fast and is caught, same as
+# any other unreachable/unconfigured datasource.
 DB_CONFIG = {
-    "host": os.getenv("DATABRIDGE_DB_HOST", os.getenv("PGHOST", "db")),
-    "port": os.getenv("DATABRIDGE_DB_PORT", os.getenv("PGPORT", "5432")),
-    "dbname": os.getenv("DATABRIDGE_DB_NAME", os.getenv("PGDATABASE", "saarthi_db")),
-    "user": os.getenv("DATABRIDGE_DB_USER", os.getenv("PGUSER", "saarthi")),
-    "password": os.getenv("DATABRIDGE_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
-}
-
-API_DB_CONFIG = {
-    "host": os.getenv("API_DB_HOST", os.getenv("PGHOST", "db")),
-    "port": os.getenv("API_DB_PORT", os.getenv("PGPORT", "5432")),
-    "dbname": os.getenv("API_DB_NAME", "saarthi_api_db"),
-    "user": os.getenv("API_DB_USER", os.getenv("PGUSER", "saarthi")),
-    "password": os.getenv("API_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
+    "host": os.getenv("DATABRIDGE_TARGET_HOST"),
+    "port": os.getenv("DATABRIDGE_TARGET_PORT", "5432"),
+    "dbname": os.getenv("DATABRIDGE_TARGET_DBNAME"),
+    "user": os.getenv("DATABRIDGE_TARGET_USER"),
+    "password": os.getenv("DATABRIDGE_TARGET_PASSWORD", ""),
 }
 
 QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "saarthi_unstructured")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_PATH = os.path.join(BASE_DIR, "metamind_router_config.json")
-SUMMARY_OUTPUT_PATH = os.path.join(BASE_DIR, "metamind_router_config_summary.json")
-HASH_PATH = os.path.join(BASE_DIR, ".router_config_hash")
 
 
 # These are Saarthi's own internal application tables - never show them
@@ -69,7 +66,7 @@ INTERNAL_SYSTEM_TABLES = {
 
 
 # ============================================================
-# STEP 1: INTROSPECT databrige_db -> DB datasource
+# STEP 1: INTROSPECT the external SAP database -> DB datasource
 # ============================================================
 
 # Tables larger than this are still counted, but skipped for the
@@ -101,19 +98,25 @@ def _safe_fetchall(cur, conn, query, params=None, context="query"):
         return []
 
 
-def introspect_databridge_db():
+def introspect_databridge_db(db_config=None):
     """
-    Connects to databrige_db and pulls every table + column + simple
+    Connects to the external SAP database and pulls every table + column + simple
     description (derived from PostgreSQL comments if present, else generic),
     plus:
     - row_count: total rows in the table
     - constraints: primary key / foreign keys / unique columns
     - per column: data_type, nullable, unique_values, null_count, sample_values
+
+    db_config, if given, overrides the module-level DB_CONFIG (which reads
+    DATABRIDGE_TARGET_* from this process's own environment) - used by
+    run_agentic_process() to introspect the exact connection it just
+    seeded, using that connection's stored credentials directly rather
+    than relying on env vars that were only ever set for a subprocess.
     """
     try:
-        conn = psycopg2.connect(**DB_CONFIG, connect_timeout=5)
+        conn = psycopg2.connect(**(db_config or DB_CONFIG), connect_timeout=5)
     except Exception as e:
-        print(f"⚠️ [DB] Could not connect to databrige_db: {e}")
+        print(f"⚠️ [DB] Could not connect to the external SAP database: {e}")
         return None
 
     tables_out = {}
@@ -263,16 +266,16 @@ def introspect_databridge_db():
                 }
 
     except Exception as e:
-        print(f"⚠️ [DB] Error introspecting databrige_db: {e}")
+        print(f"⚠️ [DB] Error introspecting the external SAP database: {e}")
         return None
     finally:
         conn.close()
 
     if not tables_out:
-        print("⚠️ [DB] No tables found in databrige_db, skipping DB datasource.")
+        print("⚠️ [DB] No tables found in the external SAP database, skipping DB datasource.")
         return None
 
-    print(f"✅ [DB] Found {len(tables_out)} tables in databrige_db")
+    print(f"✅ [DB] Found {len(tables_out)} tables in the external SAP database")
     return tables_out
 
 
@@ -356,94 +359,54 @@ def _get_table_constraints(cur, conn, table_name):
 
 
 # ============================================================
-# STEP 2: INTROSPECT saarthi_api_db -> API datasource (DYNAMIC)
+# STEP 2: INTROSPECT saarthi_resources_db -> API datasource (DYNAMIC)
 # ============================================================
 
-def introspect_api_db():
+def _visible_resource_ids(user_id, resource_type):
     """
-    Connects to saarthi_api_db, targets tool registries dynamically,
-    and reads data by order position to stay robust against custom schemas.
+    IDs of resources of the given type visible to this user - their own,
+    plus anything explicitly granted via Resource Mapping. Same "own +
+    granted" rule used everywhere else in the app; nothing is auto-shared
+    just for sharing a company_code.
     """
-    try:
-        conn = psycopg2.connect(**API_DB_CONFIG, connect_timeout=5)
-    except Exception as e:
-        print(f"⚠️ [API] Could not connect to saarthi_api_db: {e}")
+    from app.models.resource_mapping import ResourceMapping
+
+    granted = {
+        m.resource_id for m in ResourceMapping.query.filter_by(
+            resource_type=resource_type, user_id=user_id
+        ).all()
+    }
+    return granted
+
+
+def introspect_api_db(user_id):
+    """
+    API connectors visible to this specific user - their own, plus any
+    explicitly granted via Resource Mapping.
+    """
+    from app.models.api_connector import ApiConnector
+
+    granted_ids = _visible_resource_ids(user_id, 'api')
+    tools = ApiConnector.query.filter(
+        (ApiConnector.created_by_user_id == user_id) | (ApiConnector.id.in_(granted_ids or [-1])),
+        ApiConnector.status == 'Active',
+    ).all()
+
+    if not tools:
+        print(f"⚠️ [API] No API tools visible to user {user_id}, skipping API datasource.")
         return None
 
-    tools_out = []
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = 'public'
-                  AND table_type = 'BASE TABLE'
-                ORDER BY table_name;
-            """)
-            candidate_tables = [r["table_name"] for r in cur.fetchall()]
+    tools_out = [
+        {
+            "name": tool.integration_name,
+            "description": tool.api_description or f"API integration: {tool.integration_name}",
+            "method": tool.method,
+            "endpoint": tool.endpoint,
+        }
+        for tool in tools
+    ]
 
-            likely_names = [
-                "registered_tools", "api_tools", "registered_apis", 
-                "api_endpoints", "api_configs", "api_registry", "tools"
-            ]
-            target_table = next((t for t in likely_names if t in candidate_tables), None)
-
-            if not target_table:
-                print("⚠️ [API] No recognizable API registry table found in saarthi_api_db.")
-                return None
-
-            cur.execute(f"SELECT * FROM {target_table};")
-            rows = cur.fetchall()
-
-            for row in rows:
-                col_keys = list(row.keys())
-                if not col_keys:
-                    continue
-
-                # Position-based assignments mapped from your SQL shape
-                name = row[col_keys[1]] if len(col_keys) > 1 else "unnamed_api"
-                endpoint = row[col_keys[3]] if len(col_keys) > 3 else ""
-                method = row[col_keys[4]] if len(col_keys) > 4 else "GET"
-
-                # Prefer an explicitly-named description column when the
-                # schema has one (this app's own registered_tools table
-                # does, via api_description) - only guess the longest
-                # non-URL string as a last resort for unfamiliar table
-                # shapes, since that guess can grab the endpoint or base
-                # URL instead of the real business description.
-                description = None
-                for key in col_keys:
-                    if key.lower() in ("api_description", "description", "desc"):
-                        val = row[key]
-                        if isinstance(val, str) and val.strip():
-                            description = val.strip()
-                            break
-
-                if not description:
-                    description = f"API integration: {name}"
-                    for col in col_keys:
-                        val = row[col]
-                        if isinstance(val, str) and len(val) > len(description) and "http" not in str(val):
-                            description = val
-
-                tools_out.append({
-                    "name": name,
-                    "description": description,
-                    "method": method,
-                    "endpoint": endpoint
-                })
-
-    except Exception as e:
-        print(f"⚠️ [API] Error introspecting saarthi_api_db: {e}")
-        return None
-    finally:
-        conn.close()
-
-    if not tools_out:
-        print("⚠️ [API] No registered API tools found, skipping API datasource.")
-        return None
-
-    print(f"✅ [API] Found {len(tools_out)} registered API tools in saarthi_api_db")
+    print(f"✅ [API] Found {len(tools_out)} API tool(s) visible to user {user_id}")
     return tools_out
 
 
@@ -525,12 +488,14 @@ def introspect_qdrant():
 # STEP 3.5: INTROSPECT spreadsheet-backed tables -> SPREADSHEET datasource
 # ============================================================
 
-def introspect_spreadsheets():
+def introspect_spreadsheets(user_id):
     """
     Reads the Parquet-backed table manifest (spreadsheet_service.py) - not
     a database - for Excel/CSV uploads that deliberately never got written
     into Postgres. Mirrors the DB datasource's shape closely enough that
     the router prompt and the SPREADSHEET query path can both work off it.
+    Only tables from a database_connections row (Excel uploads create one
+    per file) visible to this user - own or resource-mapped - are included.
     """
     try:
         from app.services.spreadsheet_service import list_all_tables
@@ -547,15 +512,29 @@ def introspect_spreadsheets():
     if not tables:
         return None
 
+    from app.models.database_connection import DatabaseConnection
+    granted_ids = _visible_resource_ids(user_id, 'database')
+    visible_connection_ids = {
+        conn.id for conn in DatabaseConnection.query.filter(
+            (DatabaseConnection.created_by_user_id == user_id) | (DatabaseConnection.id.in_(granted_ids or [-1]))
+        ).all()
+    }
+
     tables_out = {}
     for table in tables:
+        if table.get("connection_id") not in visible_connection_ids:
+            continue
         tables_out[table["table"]] = {
             "description": table.get("description") or f"Spreadsheet table storing {table['table']} records.",
             "row_count": table.get("row_count"),
             "columns": table.get("columns", []),
         }
 
-    print(f"✅ [SPREADSHEET] Found {len(tables_out)} spreadsheet-backed table(s).")
+    if not tables_out:
+        print(f"⚠️ [SPREADSHEET] No spreadsheet-backed tables visible to user {user_id}.")
+        return None
+
+    print(f"✅ [SPREADSHEET] Found {len(tables_out)} spreadsheet-backed table(s) visible to user {user_id}.")
     return tables_out
 
 
@@ -662,16 +641,15 @@ def compute_fingerprint(db_tables, api_tools, files_info, spreadsheet_tables=Non
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def load_previous_hash():
-    if os.path.exists(HASH_PATH):
-        with open(HASH_PATH, "r") as f:
-            return f.read().strip()
-    return None
+def _get_or_create_router_config_row(user_id):
+    from app import db
+    from app.models.router_config import RouterConfig
 
-
-def save_hash(new_hash):
-    with open(HASH_PATH, "w") as f:
-        f.write(new_hash)
+    row = RouterConfig.query.filter_by(user_id=user_id).first()
+    if not row:
+        row = RouterConfig(user_id=user_id)
+        db.session.add(row)
+    return row
 
 
 # ============================================================
@@ -738,52 +716,72 @@ def build_routing_menu_summary(menu: dict) -> dict:
     }
 
 
-def generate_router_config_summary(menu: dict):
-    """Writes the trimmed summary JSON to disk. Call this only after the
-    full menu has already been built/written by generate_router_config."""
-    summary = build_routing_menu_summary(menu)
-    with open(SUMMARY_OUTPUT_PATH, "w") as f:
-        json.dump(summary, f, indent=2)
-    print(f"✅ Router config summary regenerated -> {SUMMARY_OUTPUT_PATH}")
-    return SUMMARY_OUTPUT_PATH
+def generate_router_config(user_id, force=False, sap_db_config=None):
+    """
+    Builds and saves this specific user's router config - which
+    datasources/tables/API tools/spreadsheets the smart router considers
+    when answering their questions. Saved to that user's row in
+    router_configs (saarthi_workspace_db), not a shared global file, so
+    two users never see each other's private resources through routing.
 
-def generate_router_config(force=False):
-    print("\n" + "=" * 60)
-    print("🧠 METAMIND ROUTER CONFIG GENERATOR")
-    print("=" * 60)
+    The external SAP-style database (introspect_databridge_db) and Qdrant
+    (introspect_qdrant) are still global for now - not yet scoped per
+    resource-mapping the way API connectors and spreadsheets are.
+    sap_db_config, if given, is passed straight through to
+    introspect_databridge_db() - see that function's docstring.
+    """
+    from app import db
+    from app.models.user import User
 
-    db_tables = introspect_databridge_db()
-    api_tools = introspect_api_db()
-    files_info = introspect_qdrant()
-    spreadsheet_tables = introspect_spreadsheets()
-
-    if not db_tables and not api_tools and not files_info and not spreadsheet_tables:
-        print("❌ All datasources are unreachable or empty. Nothing to generate.")
+    user = User.query.get(user_id)
+    if not user:
+        print(f"❌ Unknown user_id={user_id}, cannot generate router config.")
         return None
 
-    new_hash = compute_fingerprint(db_tables, api_tools, files_info, spreadsheet_tables)
-    previous_hash = load_previous_hash()
+    print("\n" + "=" * 60)
+    print(f"🧠 METAMIND ROUTER CONFIG GENERATOR (user_id={user_id})")
+    print("=" * 60)
 
-    if not force and new_hash == previous_hash and os.path.exists(OUTPUT_PATH):
+    db_tables = introspect_databridge_db(sap_db_config)
+    api_tools = introspect_api_db(user_id)
+    files_info = introspect_qdrant()
+    spreadsheet_tables = introspect_spreadsheets(user_id)
+
+    if not db_tables and not api_tools and not files_info and not spreadsheet_tables:
+        print(f"❌ No datasources visible to user {user_id}. Nothing to generate.")
+        return None
+
+    row = _get_or_create_router_config_row(user_id)
+
+    new_hash = compute_fingerprint(db_tables, api_tools, files_info, spreadsheet_tables)
+    if not force and new_hash == row.fingerprint and row.config:
         print("✅ No schema changes detected since last run. Skipping regeneration.")
-        print(f"   Existing config remains at: {OUTPUT_PATH}")
-        return OUTPUT_PATH
+        return row
 
     menu = build_routing_menu(db_tables, api_tools, files_info, spreadsheet_tables)
+    summary = build_routing_menu_summary(menu)
 
-    with open(OUTPUT_PATH, "w") as f:
-        json.dump(menu, f, indent=2)
+    row.company_code = user.company_code
+    row.config = menu
+    row.summary = summary
+    row.fingerprint = new_hash
+    db.session.commit()
 
-    generate_router_config_summary(menu)
-
-    save_hash(new_hash)
-
-    print(f"✅ Router config regenerated -> {OUTPUT_PATH}")
+    print(f"✅ Router config regenerated for user {user_id}")
     print(f"   Active datasources: {list(menu['routing_menu']['datasources'].keys())}")
-    return OUTPUT_PATH
+    return row
 
 
 if __name__ == "__main__":
-    import sys
-    force_flag = "--force" in sys.argv
-    generate_router_config(force=force_flag)
+    # Manual/dev use only - the live app always calls generate_router_config()
+    # as a function, in-process, with a real Flask app context already active.
+    import argparse
+    parser = argparse.ArgumentParser(description="Regenerate a user's router config.")
+    parser.add_argument("--user-id", type=int, required=True)
+    parser.add_argument("--force", action="store_true")
+    args = parser.parse_args()
+
+    from app import create_app
+    app = create_app()
+    with app.app_context():
+        generate_router_config(user_id=args.user_id, force=args.force)

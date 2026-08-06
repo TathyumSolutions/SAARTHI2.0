@@ -15,6 +15,7 @@ from app.services.warehouse_generator import (
     generate_script,
     get_discovered_tables,
 )
+from app.utils.auth_helpers import get_current_user
 
 bp = Blueprint("warehouse", __name__)
 
@@ -33,7 +34,7 @@ def _serialize_target_connection(conn: DatabaseConnection) -> Dict[str, Any]:
         "port": conn.port,
         "database": conn.database,
         "username": conn.username,
-        "workspace_id": conn.workspace_id,
+        "company_code": conn.company_code,
         "status": conn.status,
         "updated_at": conn.updated_at.isoformat() if conn.updated_at else None,
     }
@@ -42,8 +43,11 @@ def _serialize_target_connection(conn: DatabaseConnection) -> Dict[str, Any]:
 @bp.route("/api/warehouse/tables", methods=["GET"])
 @jwt_required()
 def warehouse_tables():
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required", "tables": []}), 401
     try:
-        return jsonify({"tables": get_discovered_tables()}), 200
+        return jsonify({"tables": get_discovered_tables(current_user.id)}), 200
     except Exception as exc:
         return jsonify({"error": str(exc), "tables": []}), 500
 
@@ -51,14 +55,16 @@ def warehouse_tables():
 @bp.route("/api/warehouse/targets", methods=["GET"])
 @jwt_required()
 def warehouse_targets():
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required", "connections": []}), 401
     try:
-        workspace_id = request.args.get("workspace_id", type=int)
-
-        query = DatabaseConnection.query
-        if workspace_id:
-            query = query.filter_by(workspace_id=workspace_id)
-
-        all_connections = query.order_by(DatabaseConnection.updated_at.desc()).all()
+        all_connections = (
+            DatabaseConnection.query
+            .filter_by(created_by_user_id=current_user.id)
+            .order_by(DatabaseConnection.updated_at.desc())
+            .all()
+        )
         targets = [conn for conn in all_connections if _is_warehouse_target(conn)]
 
         return jsonify({
@@ -150,6 +156,9 @@ def warehouse_history():
 @bp.route("/api/warehouse/generate", methods=["POST"])
 @jwt_required()
 def generate_warehouse_script():
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
     try:
         data = request.get_json() or {}
 
@@ -176,6 +185,7 @@ def generate_warehouse_script():
             schema_generator=schema_generator,
             incremental_load=incremental_load,
             full_load=full_load,
+            user_id=current_user.id,
         )
 
         return send_file(

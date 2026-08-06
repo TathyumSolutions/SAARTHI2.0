@@ -1,245 +1,15 @@
-# import psycopg2
-# import os
-# import json
-# from dotenv import load_dotenv
-
-# # Load environment variables
-# load_dotenv()
-
-# DB_CONFIG = {
-#     "host": os.getenv("PGHOST"),
-#     "port": os.getenv("PGPORT"),
-#     "dbname": os.getenv("PGDATABASE"),
-#     "user": os.getenv("PGUSER"),
-#     "password": os.getenv("PGPASSWORD")
-# }
-
-# # === Full SAP-style schema ===
-# schema = {
-#     "tables": {
-#         "bkpf": {
-#             "comment": "Accounting document header table (contains general information for each financial document).",
-#             "columns": {
-#                 "document_number": {"type": "character varying(10)", "nullable": False, "comment": "Unique accounting document number (header identifier)."},
-#                 "company_code": {"type": "character varying(4)", "nullable": True, "comment": "Company code to which the document belongs."},
-#                 "fiscal_year": {"type": "integer", "nullable": True, "comment": "Fiscal year in which the document is posted."},
-#                 "document_type": {"type": "character varying(2)", "nullable": True, "comment": "SAP document type (e.g., SA, KR, DR)."},
-#                 "document_date": {"type": "date", "nullable": True, "comment": "Date on which the document was created."},
-#                 "posting_date": {"type": "date", "nullable": True, "comment": "Date the document was posted to accounting."},
-#                 "currency": {"type": "character varying(3)", "nullable": True, "comment": "Currency used in the document."},
-#                 "reference": {"type": "text", "nullable": True, "comment": "Reference text or external document number."}
-#             },
-#             "primary_key": ["document_number"],
-#             "foreign_keys": []
-#         },
-#         "bseg": {
-#             "comment": "Accounting document line items table (contains detailed posting information per document).",
-#             "columns": {
-#                 "item_id": {"type": "integer", "nullable": False, "comment": "Unique line item identifier within an accounting document."},
-#                 "document_number": {"type": "character varying(10)", "nullable": True, "comment": "Reference to accounting document header (BKPF)."},
-#                 "posting_key": {"type": "character varying(2)", "nullable": True, "comment": "Posting key defining debit/credit and account type."},
-#                 "account_type": {"type": "character varying(1)", "nullable": True, "comment": "Account type (C=Customer, D=Vendor, S=GL)."},
-#                 "account_number": {"type": "character varying(10)", "nullable": True, "comment": "Account number (customer/vendor/GL)."},
-#                 "amount": {"type": "numeric", "nullable": True, "comment": "Transaction amount for this line item."},
-#                 "tax_code": {"type": "character varying(2)", "nullable": True, "comment": "Tax code applied to this posting."},
-#                 "cost_center": {"type": "character varying(10)", "nullable": True, "comment": "Cost center associated with the posting."},
-#                 "profit_center": {"type": "character varying(10)", "nullable": True, "comment": "Profit center associated with the posting."},
-#                 "text": {"type": "text", "nullable": True, "comment": "Line item text or description."}
-#             },
-#             "primary_key": ["item_id"],
-#             "foreign_keys": [{"column": "document_number", "references": "bkpf.document_number"}]
-#         },
-#         "kna1": {
-#             "comment": "Customer master (general data).",
-#             "columns": {
-#                 "customer_id": {"type": "character varying(10)", "nullable": False, "comment": "Unique customer identifier."},
-#                 "name": {"type": "character varying(100)", "nullable": True, "comment": "Customer full name."},
-#                 "country": {"type": "character varying(3)", "nullable": True, "comment": "Country code of the customer."},
-#                 "city": {"type": "character varying(50)", "nullable": True, "comment": "City of the customer."},
-#                 "postal_code": {"type": "character varying(10)", "nullable": True, "comment": "Postal code of the customer."}
-#             },
-#             "primary_key": ["customer_id"],
-#             "foreign_keys": []
-#         },
-#         "lfa1": {
-#             "comment": "Vendor master (general data).",
-#             "columns": {
-#                 "vendor_id": {"type": "character varying(10)", "nullable": False, "comment": "Unique vendor identifier."},
-#                 "name": {"type": "character varying(100)", "nullable": True, "comment": "Vendor name."},
-#                 "country": {"type": "character varying(3)", "nullable": True, "comment": "Country code of the vendor."},
-#                 "city": {"type": "character varying(50)", "nullable": True, "comment": "City of the vendor."},
-#                 "postal_code": {"type": "character varying(10)", "nullable": True, "comment": "Postal code of the vendor."}
-#             },
-#             "primary_key": ["vendor_id"],
-#             "foreign_keys": []
-#         },
-#         "mara": {
-#             "comment": "Material master (general data).",
-#             "columns": {
-#                 "material_id": {"type": "character varying(18)", "nullable": False, "comment": "Unique material identifier."},
-#                 "description": {"type": "character varying(100)", "nullable": True, "comment": "Material description."},
-#                 "base_unit": {"type": "character varying(3)", "nullable": True, "comment": "Base unit of measure for the material."},
-#                 "material_group": {"type": "character varying(4)", "nullable": True, "comment": "Material group classification."}
-#             },
-#             "primary_key": ["material_id"],
-#             "foreign_keys": []
-#         },
-#         "vbak": {
-#             "comment": "Sales document header data.",
-#             "columns": {
-#                 "sales_document": {"type": "character varying(10)", "nullable": False, "comment": "Unique sales document number."},
-#                 "customer_id": {"type": "character varying(10)", "nullable": True, "comment": "Customer placing the order."},
-#                 "document_date": {"type": "date", "nullable": True, "comment": "Sales document creation date."},
-#                 "total_amount": {"type": "numeric", "nullable": True, "comment": "Total sales document amount."}
-#             },
-#             "primary_key": ["sales_document"],
-#             "foreign_keys": [{"column": "customer_id", "references": "kna1.customer_id"}]
-#         },
-#         "vbap": {
-#             "comment": "Sales document item data.",
-#             "columns": {
-#                 "item_number": {"type": "integer", "nullable": False, "comment": "Item number within the sales document."},
-#                 "sales_document": {"type": "character varying(10)", "nullable": True, "comment": "Reference to sales document (VBAK)."},
-#                 "material_id": {"type": "character varying(18)", "nullable": True, "comment": "Material number."},
-#                 "quantity": {"type": "numeric", "nullable": True, "comment": "Quantity ordered."}
-#             },
-#             "primary_key": ["item_number"],
-#             "foreign_keys": [
-#                 {"column": "sales_document", "references": "vbak.sales_document"},
-#                 {"column": "material_id", "references": "mara.material_id"}
-#             ]
-#         },
-#         "likp": {
-#             "comment": "Delivery document header data.",
-#             "columns": {
-#                 "delivery_number": {"type": "character varying(10)", "nullable": False, "comment": "Unique delivery document number."},
-#                 "sales_document": {"type": "character varying(10)", "nullable": True, "comment": "Linked sales document (VBAK)."},
-#                 "delivery_date": {"type": "date", "nullable": True, "comment": "Date of delivery."}
-#             },
-#             "primary_key": ["delivery_number"],
-#             "foreign_keys": [{"column": "sales_document", "references": "vbak.sales_document"}]
-#         },
-#         "lips": {
-#             "comment": "Delivery document item data.",
-#             "columns": {
-#                 "item_number": {"type": "integer", "nullable": False, "comment": "Item number in delivery document."},
-#                 "delivery_number": {"type": "character varying(10)", "nullable": True, "comment": "Reference to delivery document (LIKP)."},
-#                 "material_id": {"type": "character varying(18)", "nullable": True, "comment": "Material being delivered."},
-#                 "quantity": {"type": "numeric", "nullable": True, "comment": "Delivered quantity."}
-#             },
-#             "primary_key": ["item_number"],
-#             "foreign_keys": [
-#                 {"column": "delivery_number", "references": "likp.delivery_number"},
-#                 {"column": "material_id", "references": "mara.material_id"}
-#             ]
-#         },
-#         "vbrk": {
-#             "comment": "Billing document header data.",
-#             "columns": {
-#                 "billing_number": {"type": "character varying(10)", "nullable": False, "comment": "Unique billing document number."},
-#                 "sales_document": {"type": "character varying(10)", "nullable": True, "comment": "Linked sales document (VBAK)."},
-#                 "billing_date": {"type": "date", "nullable": True, "comment": "Date of billing."},
-#                 "total_amount": {"type": "numeric", "nullable": True, "comment": "Total billing amount."}
-#             },
-#             "primary_key": ["billing_number"],
-#             "foreign_keys": [{"column": "sales_document", "references": "vbak.sales_document"}]
-#         },
-#         "vbrp": {
-#             "comment": "Billing document item data.",
-#             "columns": {
-#                 "item_number": {"type": "integer", "nullable": False, "comment": "Item number in billing document."},
-#                 "billing_number": {"type": "character varying(10)", "nullable": True, "comment": "Reference to billing document (VBRK)."},
-#                 "material_id": {"type": "character varying(18)", "nullable": True, "comment": "Material being billed."},
-#                 "quantity": {"type": "numeric", "nullable": True, "comment": "Billed quantity."}
-#             },
-#             "primary_key": ["item_number"],
-#             "foreign_keys": [
-#                 {"column": "billing_number", "references": "vbrk.billing_number"},
-#                 {"column": "material_id", "references": "mara.material_id"}
-#             ]
-#         },
-#         "ska1": {
-#             "comment": "G/L account master (chart of accounts).",
-#             "columns": {
-#                 "gl_account": {"type": "character varying(10)", "nullable": False, "comment": "General ledger account number."},
-#                 "account_name": {"type": "character varying(100)", "nullable": True, "comment": "Account description."},
-#                 "account_group": {"type": "character varying(4)", "nullable": True, "comment": "G/L account group."}
-#             },
-#             "primary_key": ["gl_account"],
-#             "foreign_keys": []
-#         },
-#         "skb1": {
-#             "comment": "G/L account master (company code-specific data).",
-#             "columns": {
-#                 "gl_account": {"type": "character varying(10)", "nullable": False, "comment": "General ledger account number."},
-#                 "company_code": {"type": "character varying(4)", "nullable": False, "comment": "Company code to which the G/L account belongs."},
-#                 "currency": {"type": "character varying(3)", "nullable": True, "comment": "Account currency."}
-#             },
-#             "primary_key": ["gl_account", "company_code"],
-#             "foreign_keys": [{"column": "gl_account", "references": "ska1.gl_account"}]
-#         }
-#     }
-# }
-
-
-# def create_tables(schema, cursor):
-#     for table_name, table_data in schema["tables"].items():
-#         cols = []
-#         for name, col in table_data["columns"].items():
-#             null_str = "NOT NULL" if not col["nullable"] else ""
-#             cols.append(f'"{name}" {col["type"]} {null_str}')
-#         cols_sql = ",\n    ".join(cols)
-
-#         pk_sql = ""
-#         if "primary_key" in table_data:
-#             pk = ", ".join(f'"{c}"' for c in table_data["primary_key"])
-#             pk_sql = f",\n    PRIMARY KEY ({pk})"
-
-#         fk_sql = ""
-#         if "foreign_keys" in table_data:
-#             fks = [
-#                 f'FOREIGN KEY ("{fk["column"]}") REFERENCES "{fk["references"].split(".")[0]}"("{fk["references"].split(".")[1]}")'
-#                 for fk in table_data["foreign_keys"]
-#             ]
-#             if fks:
-#                 fk_sql = ",\n    " + ",\n    ".join(fks)
-
-#         create_sql = f"""
-#         CREATE TABLE IF NOT EXISTS "{table_name}" (
-#             {cols_sql}
-#             {pk_sql}
-#             {fk_sql}
-#         );
-#         """
-#         cursor.execute(create_sql)
-#         print(f"✅ Created table: {table_name}")
-
-#         if "comment" in table_data:
-#             cursor.execute(f'COMMENT ON TABLE "{table_name}" IS %s;', (table_data["comment"],))
-#         for col, cdata in table_data["columns"].items():
-#             if "comment" in cdata:
-#                 cursor.execute(f'COMMENT ON COLUMN "{table_name}"."{col}" IS %s;', (cdata["comment"],))
-
-
-# def main():
-#     try:
-#         conn = psycopg2.connect(**DB_CONFIG)
-#         conn.autocommit = True
-#         cursor = conn.cursor()
-#         print(f"🔗 Connected to PostgreSQL database: {DB_CONFIG['dbname']}")
-#         create_tables(schema, cursor)
-#         cursor.close()
-#         conn.close()
-#         print("🎉 All tables created successfully!")
-#     except Exception as e:
-#         print("❌ Error:", e)
-
-
-# if __name__ == "__main__":
-#     main()
-
-
-
+"""
+Seeds a standalone SAP-style demo dataset into an EXTERNAL Postgres
+database - one that lives outside this app's own Docker footprint,
+exactly like a real customer's SAP system would. This script never
+touches the app's own databases and has no fallback to any of them: it
+only ever connects to whatever DATABRIDGE_TARGET_* env vars point at,
+same as app/routes/database_routes.py's run_agentic_process() sets when
+it invokes this as a subprocess using a registered Database Connection's
+credentials. Run standalone (e.g. `python db.py`), those env vars must be
+set explicitly first - there is no default host to fall back to.
+"""
+import sys
 import psycopg2
 import os
 import random
@@ -250,20 +20,21 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-#DB_CONFIG = {
-#    "host": os.getenv("PGHOST"),
-#    "port": os.getenv("PGPORT"),
-#    "dbname": os.getenv("PGDATABASE"),
-#    "user": os.getenv("PGUSER"),
-#    "password": os.getenv("PGPASSWORD")
-#}
-# Environment-driven connection for databridge DB
+_REQUIRED_ENV_VARS = ("DATABRIDGE_TARGET_HOST", "DATABRIDGE_TARGET_DBNAME", "DATABRIDGE_TARGET_USER")
+_missing = [v for v in _REQUIRED_ENV_VARS if not os.getenv(v)]
+if _missing:
+    sys.exit(
+        f"Missing required environment variable(s): {', '.join(_missing)}. "
+        "This script seeds an external database and has no default host - "
+        "set DATABRIDGE_TARGET_HOST/PORT/DBNAME/USER/PASSWORD first."
+    )
+
 DB_CONFIG = {
-    "host": os.getenv("DATABRIDGE_DB_HOST", os.getenv("PGHOST", "db")),
-    "port": os.getenv("DATABRIDGE_DB_PORT", os.getenv("PGPORT", "5432")),
-    "dbname": os.getenv("DATABRIDGE_DB_NAME", os.getenv("PGDATABASE", "saarthi_db")),
-    "user": os.getenv("DATABRIDGE_DB_USER", os.getenv("PGUSER", "saarthi")),
-    "password": os.getenv("DATABRIDGE_DB_PASSWORD", os.getenv("PGPASSWORD", "password")),
+    "host": os.getenv("DATABRIDGE_TARGET_HOST"),
+    "port": os.getenv("DATABRIDGE_TARGET_PORT", "5432"),
+    "dbname": os.getenv("DATABRIDGE_TARGET_DBNAME"),
+    "user": os.getenv("DATABRIDGE_TARGET_USER"),
+    "password": os.getenv("DATABRIDGE_TARGET_PASSWORD", ""),
 }
 
 fake = Faker()
@@ -463,6 +234,18 @@ def insert_data():
     conn = psycopg2.connect(**DB_CONFIG)
     conn.autocommit = True
     cursor = conn.cursor()
+
+    # Re-running this script against an already-seeded database used to
+    # crash partway through with a primary-key UniqueViolation (no
+    # ON CONFLICT / truncate guard). Skip cleanly instead - this is a
+    # one-time seed, not something meant to accumulate duplicate rows.
+    cursor.execute("SELECT COUNT(*) FROM kna1;")
+    if cursor.fetchone()[0] > 0:
+        print("⏭️  Demo data already present in this database - skipping seed (tables are non-empty).")
+        cursor.close()
+        conn.close()
+        return
+
     print("🔗 Connected. Generating synthetic data...")
 
     # --- Master data ---

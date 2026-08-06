@@ -610,7 +610,8 @@
 
     input[type="email"],
     input[type="password"],
-    input[type="text"] {
+    input[type="text"],
+    select {
       width: 100%;
       background: var(--bg-input);
       border: 1px solid var(--border);
@@ -625,12 +626,42 @@
 
     input::placeholder { color: var(--text-lo); }
 
-    input:focus {
+    input:focus, select:focus {
       border-color: var(--border-focus);
       box-shadow: 0 0 0 3px var(--accent-glow);
     }
 
+    select { cursor: pointer; }
+
     .input-wrap:focus-within .ico { color: var(--accent); }
+
+    /* Inline form feedback - replaces blocking alert() popups so
+       sign in / sign up errors and confirmations read like part of
+       the form instead of an OS dialog. */
+    .form-message {
+      display: none;
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 18px;
+    }
+    .form-message.show { display: block; }
+    .form-message.success {
+      background: rgba(34,211,160,0.08);
+      border: 1px solid rgba(34,211,160,0.3);
+      color: var(--success);
+    }
+    .form-message.error {
+      background: rgba(255,95,87,0.08);
+      border: 1px solid rgba(255,95,87,0.3);
+      color: #FF8A82;
+    }
+    .form-message a {
+      color: inherit;
+      font-weight: 600;
+      text-decoration: underline;
+    }
 
     .show-btn {
       position: absolute;
@@ -1082,8 +1113,10 @@
     <h2 class="form-title" id="formTitle">Welcome back</h2>
     <p class="form-sub" id="formSub">Sign in to ask anything, across every connected source.</p>
 
+    <div class="form-message" id="formMessage"></div>
+
     <!-- <form onsubmit="handleSignIn(event);"> -->
-    <form onsubmit="handleFormSubmit(event);"> 
+    <form onsubmit="handleFormSubmit(event);">
       <div class="field signup-only">
         <label for="fullname">Full name</label>
         <div class="input-wrap">
@@ -1135,19 +1168,9 @@
       </div>
 
       <div class="field signup-only">
-        <label for="company_code">Company code</label>
+        <label for="company_code">Company code (optional)</label>
         <div class="input-wrap">
-          <input type="text" id="company_code" placeholder="e.g. TATHYUM2026" autocomplete="organization" />
-        </div>
-      </div>
-
-      <div class="field signup-only">
-        <label for="role">Role</label>
-        <div class="input-wrap">
-          <select id="role" style="width: 100%; background: transparent; border: none; color: inherit; font: inherit;">
-            <option value="user" selected>User</option>
-            <option value="admin">Admin</option>
-          </select>
+          <input type="text" id="company_code" placeholder="Leave blank for an individual account" autocomplete="organization" />
         </div>
       </div>
 
@@ -1231,6 +1254,8 @@
     const submitBtn = document.getElementById('submitBtn');
     const footer = document.getElementById('formFooter');
 
+    clearFormMessage();
+
     if (mode === 'signup') {
       wrap.classList.add('show-signup');
       tabSignup.classList.add('active');
@@ -1286,6 +1311,20 @@
   runDemo();
   if (!reduced) setInterval(runDemo, 11500);
 
+  /* Inline form feedback, replacing blocking alert() popups */
+  function showFormMessage(text, type) {
+    const el = document.getElementById('formMessage');
+    if (!el) return;
+    el.innerHTML = text;
+    el.className = 'form-message show ' + (type || 'error');
+  }
+  function clearFormMessage() {
+    const el = document.getElementById('formMessage');
+    if (!el) return;
+    el.className = 'form-message';
+    el.innerHTML = '';
+  }
+
   /* Central Form Submission Router */
   async function handleFormSubmit(event) {
       event.preventDefault();
@@ -1300,10 +1339,11 @@
   }
 
   async function handleSignIn() {
+      clearFormMessage();
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       if (!email || !password) {
-          alert("Please enter both email and password.");
+          showFormMessage("Please enter both email and password.", 'error');
           return;
       }
       try {
@@ -1322,30 +1362,68 @@
               // restoring whatever conversation was left over in storage.
               localStorage.removeItem('saarthi_chat_history');
               window.location.href = '/index';
+          } else if (result.reason === 'email_not_verified') {
+              showFormMessage(
+                  (result.message || "Please verify your email before signing in.") +
+                  ' <a href="#" id="resendVerificationLink">Resend verification email</a>',
+                  'error'
+              );
+              const link = document.getElementById('resendVerificationLink');
+              if (link) {
+                  link.addEventListener('click', function (e) {
+                      e.preventDefault();
+                      resendVerificationEmail(email);
+                  });
+              }
           } else {
-              alert(result.message || "Invalid credentials.");
+              showFormMessage(result.message || "Invalid credentials.", 'error');
           }
       } catch (error) {
           console.error("Login Connection Error:", error);
-          alert("Could not connect to the backend server.");
+          showFormMessage("Could not connect to the backend server.", 'error');
+      }
+  }
+
+  async function resendVerificationEmail(email) {
+      try {
+          const response = await fetch('/api/auth/resend-verification', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email })
+          });
+          const result = await response.json();
+          showFormMessage(
+              result.message || (response.ok
+                  ? "Verification email sent - check your inbox."
+                  : "Could not resend verification email."),
+              response.ok ? 'success' : 'error'
+          );
+      } catch (error) {
+          console.error("Resend Verification Connection Error:", error);
+          showFormMessage("Could not reach backend application server.", 'error');
       }
   }
 
   async function handleSignUp() {
+      clearFormMessage();
       const name = document.getElementById('name')?.value?.trim();
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       const confirm_password = document.getElementById('confirm_password')?.value;
+      // Company code is optional - leaving it blank creates a standalone
+      // individual account (auto-admin of themselves, nothing shared).
+      // Role is never chosen at signup: the backend derives it from
+      // whether company_code is given/matches a company's founding-admin
+      // email, so there's no role field here to fill in.
       const company_code = document.getElementById('company_code')?.value?.trim();
-      const role = document.getElementById('role')?.value || 'user';
 
-      if (!name || !email || !password || !confirm_password || !company_code) {
-          alert("Please fill out all fields to register.");
+      if (!name || !email || !password || !confirm_password) {
+          showFormMessage("Please fill out all fields to register.", 'error');
           return;
       }
 
       if (password !== confirm_password) {
-          alert("Passwords do not match.");
+          showFormMessage("Passwords do not match.", 'error');
           return;
       }
 
@@ -1353,21 +1431,25 @@
           const response = await fetch('/api/auth/register', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email, password, confirm_password, company_code, role })
+            body: JSON.stringify({ name, email, password, confirm_password, company_code })
           });
 
           const result = await response.json();
 
           if (response.ok && result.status === "success") {
-              alert("Account created successfully! Switching to login screen.");
-              // Automatically switch tabs and let them sign in
+              // Standard app UX: land back on the sign-in screen with an
+              // inline confirmation instead of a blocking alert() popup.
               switchTab('signin');
+              showFormMessage(
+                  result.message || "Account created! Check your email for a verification link, then sign in.",
+                  'success'
+              );
           } else {
-              alert(result.message || "Registration failed.");
+              showFormMessage(result.message || "Registration failed.", 'error');
           }
       } catch (error) {
           console.error("Registration Connection Error:", error);
-          alert("Could not reach backend application server.");
+          showFormMessage("Could not reach backend application server.", 'error');
       }
   }
 

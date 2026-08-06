@@ -1,329 +1,284 @@
-# """
-# Authentication API Routes
-# Handles user login, logout, registration, and token management
-# """
-# from flask import Blueprint, request, jsonify
-# from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-
-# bp = Blueprint('auth', __name__, url_prefix='/api/auth')
-
-# @bp.route('/login', methods=['POST'])
-# def login():
-#     """
-#     User login endpoint
-#     Request: { "email": "user@example.com", "password": "password123" }
-#     Response: { "status": "success", "user_id": 42, "email": "..." }
-#     """
-#     data = request.get_json() or {}
-#     email = data.get("email")
-#     password = data.get("password")
-
-#     # Guard clause: ensure data was received
-#     if not email or not password:
-#         return jsonify({"status": "error", "message": "Missing email or password fields."}), 400
-
-#     # Simple local check for testing and demo phases
-#     if email == "sahith@example.com" and password == "password123":
-#         return jsonify({
-#             "status": "success",
-#             "message": "Authentication successful",
-#             "user_id": 42,  # This ID will become the conversation session_id
-#             "email": email
-#         }), 200
-    
-#     # Return an unauthorized error status if text doesn't match
-#     return jsonify({"status": "error", "message": "Invalid email or password combination."}), 401
-
-
-# """
-# Authentication API Routes
-# Handles user login, logout, registration, and token management
-# """
-# from flask import Blueprint, request, jsonify
-# from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-
-# bp = Blueprint('auth', __name__, url_prefix='/api/auth')
-
-# @bp.route('/login', methods=['POST'])
-# def login():
-#     """
-#     User login endpoint
-#     Validates default login credentials for the sign-in screen
-#     """
-#     # Robust data extraction: checks for JSON first, falls back to Form data
-#     data = request.get_json(silent=True) or {}
-    
-#     email = data.get("email") or request.form.get("email")
-#     password = data.get("password") or request.form.get("password")
-
-#     # Guard clause: ensure credentials were sent
-#     if not email or not password:
-#         return jsonify({
-#             "status": "error", 
-#             "message": "Missing email or password fields."
-#         }), 400
-
-#     # Default login credentials validation check
-#     if email == "sahith@example.com" and password == "password123":
-#         return jsonify({
-#             "status": "success",
-#             "message": "Authentication successful",
-#             "user_id": 42,  # Becomes the active conversation session_id
-#             "email": email
-#         }), 200
-    
-#     # Return unauthorized error if credentials do not match
-#     return jsonify({
-#         "status": "error", 
-#         "message": "Invalid email or password combination."
-#     }), 401
-
-
-# #@bp.route('/login', methods=['POST'])
-# #def login():
-# #    """
-# #    User login endpoint
-# #    Request: { "email": "user@example.com", "password": "password123" }
-# #    Response: { "access_token": "...", "user": {...} }
-# #    """
-#     # : Implement login logic
-# #    pass
-
-# @bp.route('/register', methods=['POST'])
-# def register():
-#     """
-#     User registration endpoint
-#     Request: { "email": "user@example.com", "password": "password123", "name": "John Doe" }
-#     Response: { "message": "User registered successfully", "user": {...} }
-#     """
-#     # TODO: Implement registration logic
-#     pass
-
-# @bp.route('/logout', methods=['POST'])
-# @jwt_required()
-# def logout():
-#     """
-#     User logout endpoint
-#     Response: { "message": "Logged out successfully" }
-#     """
-#     # TODO: Implement logout logic (blacklist token)
-#     pass
-
-# @bp.route('/refresh', methods=['POST'])
-# @jwt_required()
-# def refresh_token():
-#     """
-#     Refresh access token
-#     Response: { "access_token": "..." }
-#     """
-#     # TODO: Implement token refresh logic
-#     pass
-
-# @bp.route('/profile', methods=['GET'])
-# @jwt_required()
-# def get_profile():
-#     """
-#     Get current user profile
-#     Response: { "user": {...} }
-#     """
-#     # TODO: Implement get profile logic
-#     pass
-
-# @bp.route('/profile', methods=['PUT'])
-# @jwt_required()
-# def update_profile():
-#     """
-#     Update user profile
-#     Request: { "name": "John Doe", "preferences": {...} }
-#     Response: { "message": "Profile updated", "user": {...} }
-#     """
-#     # TODO: Implement update profile logic
-#     pass
-
-
-
 """
 Authentication API Routes
-Handles user login, logout, registration, and token management
+Handles user login, logout, registration, email verification, and the
+company employee-approval workflow.
 """
-import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import secrets
+from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from werkzeug.security import generate_password_hash, check_password_hash
-from app import limiter
+from app import db, limiter
+from app.models.user import User, ROLE_ADMIN, ROLE_USER, STATUS_ACTIVE, STATUS_PENDING, STATUS_REJECTED
+from app.models.company import Company
+from app.services.email_service import send_verification_email
+from app.services.audit_service import log_event
+from app.utils.decorators import admin_required
+
+VERIFICATION_TOKEN_TTL = timedelta(hours=24)
 
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
-
-# def get_auth_db_connection():
-#     """Establishes an isolated connection to the authentication database."""
-#     base_uri = os.environ.get('ENVIRONMENT_DATABASE_URL') or "postgresql://saarthi:password@db:5432/saarthi_db"
-#     if "saarthi_db" in base_uri:
-#         auth_db_uri = base_uri.replace("saarthi_db", "saarthi_chats_db")
-#     else:
-#         auth_db_uri = "postgresql://saarthi:password@db:5432/saarthi_chats_db"
-#     return psycopg2.connect(auth_db_uri)
-
-def get_auth_db_connection():
-    base_uri = os.environ.get('ENVIRONMENT_DATABASE_URL') or "postgresql://saarthi:password@db:5432/saarthi_db"
-    if "saarthi_db" in base_uri:
-        auth_db_uri = base_uri.replace("saarthi_db", "saarthi_auth_db")
-    else:
-        auth_db_uri = "postgresql://saarthi:password@db:5432/saarthi_auth_db"
-    return psycopg2.connect(auth_db_uri)
 
 
 @bp.route('/register', methods=['POST'])
 @limiter.limit("10 per hour")
 def register():
     """
-    User registration endpoint
-    Extracts Name, Email, Password, and Confirm Password from JSON or Forms.
+    User registration.
+
+    - No company_code -> individual account: role=admin, status=active,
+      nothing ever shared with anyone.
+    - company_code given but no matching Company exists -> rejected
+      outright (companies are pre-provisioned by a superadmin, never
+      auto-created here).
+    - company_code matches an existing Company -> role=user,
+      status=pending, blocked from logging in until an admin of that
+      company approves them.
     """
     data = request.get_json(silent=True) or {}
-    
+
     name = data.get("name") or request.form.get("name")
     email = data.get("email") or request.form.get("email")
     password = data.get("password") or request.form.get("password")
     confirm_password = data.get("confirm_password") or request.form.get("confirm_password")
+    company_code = (data.get("company_code") or request.form.get("company_code") or "").strip()
 
-    # Normalize email so different casing maps to one account identity.
     if email:
         email = email.strip().lower()
-    company_code = (data.get("company_code") or request.form.get("company_code") or "").strip()
-    role = (data.get("role") or request.form.get("role") or "user").strip().lower()
 
-    # Guard clause: Verify all inputs are present
-    if not all([name, email, password, confirm_password, company_code]):
+    if not all([name, email, password, confirm_password]):
         return jsonify({"status": "error", "message": "Missing required registration fields."}), 400
 
-    if role not in ("admin", "user"):
-        return jsonify({"status": "error", "message": "Role must be either 'admin' or 'user'."}), 400
-
-    # Guard clause: Match verification passwords
     if password != confirm_password:
         return jsonify({"status": "error", "message": "Passwords do not match."}), 400
 
-    try:
-        conn = get_auth_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # Check if email is already taken
-        cursor.execute("SELECT id FROM users WHERE email = %s;", (email,))
-        existing_user = cursor.fetchone()
-
-        if existing_user:
-            cursor.close()
-            conn.close()
-            return jsonify({"status": "error", "message": "An account with this email already exists."}), 400
-
-        # Hash password securely before database write
-        password_hash = generate_password_hash(password, method='scrypt')
-
-        # Insert user into PostgreSQL table
-        cursor.execute(
-            "INSERT INTO users (name, email, password_hash, company_code, role) VALUES (%s, %s, %s, %s, %s);",
-            (name, email, password_hash, company_code, role)
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({
-            "status": "success", 
-            "message": "User registered successfully"
-        }), 201
-
-    except psycopg2.errors.UniqueViolation:
-        conn.rollback()
+    if User.query.filter_by(email=email).first():
         return jsonify({"status": "error", "message": "An account with this email already exists."}), 400
 
+    if company_code:
+        company = Company.query.get(company_code)
+        if not company:
+            return jsonify({"status": "error", "message": "Unknown company code. Ask your company admin for the correct code."}), 400
+        if company.initial_admin_email and company.initial_admin_email.lower() == email:
+            role, status = ROLE_ADMIN, STATUS_ACTIVE
+        else:
+            role, status = ROLE_USER, STATUS_PENDING
+    else:
+        company = None
+        role = ROLE_ADMIN
+        status = STATUS_ACTIVE
+
+    verification_token = secrets.token_urlsafe(32)
+
+    user = User(
+        name=name,
+        email=email,
+        company_code=company.company_code if company else None,
+        role=role,
+        status=status,
+        email_verified=False,
+        verification_token=verification_token,
+        verification_token_expires=datetime.utcnow() + VERIFICATION_TOKEN_TTL,
+    )
+    user.set_password(password)
+
+    try:
+        db.session.add(user)
+        db.session.commit()
     except Exception as e:
+        db.session.rollback()
         print(f"Registration DB Error: {e}")
         return jsonify({"status": "error", "message": "Internal server registration failure."}), 500
+
+    verification_link = f"{request.host_url.rstrip('/')}/verify-email?token={verification_token}"
+    send_verification_email(email, name, verification_link)
+
+    log_event('user_registered', company_code=user.company_code, user_id=user.id,
+               details={'status': status, 'role': role})
+
+    if status == STATUS_PENDING:
+        message = "Account created! Check your email for a verification link. Your company admin will also need to approve your access before you can sign in."
+    else:
+        message = "Account created! Check your email for a verification link, then sign in."
+
+    return jsonify({"status": "success", "message": message}), 201
+
+
+@bp.route('/verify-email', methods=['GET'])
+def verify_email():
+    """Confirms a signup verification token and marks the account as verified."""
+    token = request.args.get('token', '')
+    if not token:
+        return jsonify({"status": "error", "message": "Missing verification token."}), 400
+
+    user = User.query.filter_by(verification_token=token).first()
+    if not user:
+        return jsonify({"status": "error", "message": "Invalid or already-used verification link."}), 400
+
+    if user.email_verified:
+        return jsonify({"status": "success", "message": "Email already verified - you can sign in."}), 200
+
+    if user.verification_token_expires and user.verification_token_expires < datetime.utcnow():
+        return jsonify({"status": "error", "message": "This verification link has expired. Please request a new one."}), 400
+
+    user.email_verified = True
+    user.verification_token = None
+    user.verification_token_expires = None
+    db.session.commit()
+
+    return jsonify({"status": "success", "message": "Email verified! You can now sign in."}), 200
+
+
+@bp.route('/resend-verification', methods=['POST'])
+@limiter.limit("5 per hour")
+def resend_verification():
+    """Regenerates and re-sends the verification email for an unverified account."""
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or request.form.get("email") or "").strip().lower()
+
+    if not email:
+        return jsonify({"status": "error", "message": "Missing email field."}), 400
+
+    user = User.query.filter_by(email=email).first()
+
+    # Don't reveal whether the account exists - respond the same way either way.
+    if not user or user.email_verified:
+        return jsonify({"status": "success", "message": "If that account needs verifying, a new email has been sent."}), 200
+
+    user.verification_token = secrets.token_urlsafe(32)
+    user.verification_token_expires = datetime.utcnow() + VERIFICATION_TOKEN_TTL
+    db.session.commit()
+
+    verification_link = f"{request.host_url.rstrip('/')}/verify-email?token={user.verification_token}"
+    send_verification_email(email, user.name, verification_link)
+
+    return jsonify({"status": "success", "message": "Verification email sent - check your inbox."}), 200
 
 
 @bp.route('/login', methods=['POST'])
 @limiter.limit("10 per minute")
 def login():
-    """
-    User login endpoint
-    Validates user credentials against Postgres and returns an enterprise JWT access token.
-    """
+    """Validates user credentials and returns a JWT access token."""
     data = request.get_json(silent=True) or {}
-    
+
     email = data.get("email") or request.form.get("email")
     password = data.get("password") or request.form.get("password")
 
     if not email or not password:
         return jsonify({"status": "error", "message": "Missing email or password fields."}), 400
 
-    # Same normalization as register() so login matches stored lowercase emails.
     email = email.strip().lower()
+    user = User.query.filter_by(email=email).first()
 
-    try:
-        conn = get_auth_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+    if not user or not user.check_password(password):
+        return jsonify({"status": "error", "message": "Invalid email or password combination."}), 401
 
-        # Lookup user profile by email
-        cursor.execute("SELECT id, name, email, password_hash FROM users WHERE email = %s;", (email,))
-        user = cursor.fetchone()
-        cursor.close()
-        conn.close()
-
-        # Check if user exists and verify password hash match
-        if not user or not check_password_hash(user['password_hash'], password):
-            return jsonify({"status": "error", "message": "Invalid email or password combination."}), 401
-
-        # Generate enterprise JWT secure access token string
-        access_token = create_access_token(identity=str(user['id']))
-
+    if not user.email_verified:
+        log_event('login_blocked', company_code=user.company_code, user_id=user.id, details={'reason': 'email_not_verified'})
         return jsonify({
-            "status": "success",
-            "message": "Authentication successful",
-            "access_token": access_token,
-            "user": {
-                "user_id": user['id'],
-                "name": user['name'],
-                "email": user['email']
-            }
-        }), 200
+            "status": "error",
+            "reason": "email_not_verified",
+            "message": "Please verify your email before signing in."
+        }), 403
 
-    except Exception as e:
-        print(f"Login DB Error: {e}")
-        return jsonify({"status": "error", "message": "Internal validation failure."}), 500
+    if user.status == STATUS_PENDING:
+        log_event('login_blocked', company_code=user.company_code, user_id=user.id, details={'reason': 'pending_approval'})
+        return jsonify({
+            "status": "error",
+            "reason": "pending_approval",
+            "message": "Your account is waiting for approval from your company admin."
+        }), 403
+
+    if user.status == STATUS_REJECTED:
+        log_event('login_blocked', company_code=user.company_code, user_id=user.id, details={'reason': 'rejected'})
+        return jsonify({
+            "status": "error",
+            "reason": "rejected",
+            "message": "Your access request was declined. Contact your company admin for details."
+        }), 403
+
+    user.last_login = datetime.utcnow()
+    db.session.commit()
+
+    access_token = create_access_token(identity=str(user.id))
+    log_event('login_success', company_code=user.company_code, user_id=user.id)
+
+    return jsonify({
+        "status": "success",
+        "message": "Authentication successful",
+        "access_token": access_token,
+        "user": {
+            "user_id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "company_code": user.company_code,
+        }
+    }), 200
 
 
 @bp.route('/logout', methods=['POST'])
 @jwt_required()
 def logout():
-    """
-    User logout endpoint
-    """
-    # Simply tell frontend to drop the token client-side
     return jsonify({"status": "success", "message": "Logged out successfully"}), 200
 
 
 @bp.route('/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
-    """
-    Get current logged-in user profile utilizing the secure JWT identity
-    """
+    """Get current logged-in user's profile."""
     current_user_id = get_jwt_identity()
-    try:
-        conn = get_auth_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT id, name, email, company_code, role, created_at FROM users WHERE id = %s;", (current_user_id,))
-        user = cursor.fetchone()
-        cursor.close()
-        conn.close()
+    user = User.query.get(int(current_user_id))
+    if not user:
+        return jsonify({"status": "error", "message": "User profile not found."}), 404
+    return jsonify({"status": "success", "user": user.to_dict()}), 200
 
-        if not user:
-            return jsonify({"status": "error", "message": "User profile not found."}), 404
 
-        return jsonify({"status": "success", "user": user}), 200
-    except Exception as e:
-        print(f"Profile Fetch Error: {e}")
-        return jsonify({"status": "error", "message": "Failed to load user info."}), 500
+@bp.route('/pending-approvals', methods=['GET'])
+@jwt_required()
+@admin_required
+def pending_approvals(current_user):
+    """Lists users pending approval in the acting admin's own company."""
+    if not current_user.company_code:
+        return jsonify({"status": "error", "message": "Individual accounts have no employees to approve."}), 400
+
+    pending = (
+        User.query
+        .filter_by(company_code=current_user.company_code, status=STATUS_PENDING)
+        .order_by(User.created_at.asc())
+        .all()
+    )
+    return jsonify({"status": "success", "pending_users": [u.to_dict() for u in pending]}), 200
+
+
+@bp.route('/approve/<int:user_id>', methods=['POST'])
+@jwt_required()
+@admin_required
+def approve_employee(current_user, user_id):
+    """Approves a pending employee in the acting admin's own company."""
+    target = User.query.get(user_id)
+    if not target or target.company_code != current_user.company_code:
+        return jsonify({"status": "error", "message": "User not found in your company."}), 404
+
+    target.status = STATUS_ACTIVE
+    db.session.commit()
+    log_event('employee_approved', company_code=current_user.company_code, user_id=current_user.id,
+               resource_type='user', resource_id=target.id)
+
+    return jsonify({"status": "success", "message": f"{target.name} has been approved."}), 200
+
+
+@bp.route('/reject/<int:user_id>', methods=['POST'])
+@jwt_required()
+@admin_required
+def reject_employee(current_user, user_id):
+    """Rejects a pending employee in the acting admin's own company."""
+    target = User.query.get(user_id)
+    if not target or target.company_code != current_user.company_code:
+        return jsonify({"status": "error", "message": "User not found in your company."}), 404
+
+    target.status = STATUS_REJECTED
+    db.session.commit()
+    log_event('employee_rejected', company_code=current_user.company_code, user_id=current_user.id,
+               resource_type='user', resource_id=target.id)
+
+    return jsonify({"status": "success", "message": f"{target.name}'s access request was declined."}), 200

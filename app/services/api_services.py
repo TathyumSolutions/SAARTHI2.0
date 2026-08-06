@@ -1,64 +1,37 @@
-import psycopg2
 from flask import current_app
 import os
 import time
 import requests
 import json
-from urllib.parse import urlparse
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.services.stream_manager import stream_manager
 from app.models.model_config import ModelConfiguration
 from app.utils.network_guard import is_safe_url
+from app.models.api_connector import ApiConnector
+
 
 def fetch_and_translate_tools():
     """
-    Connects to Postgres, reads all columns using SELECT *, and translates 
-    them into structured schemas using exact column index mapping.
+    Loads active API connectors and translates them into the structured
+    tool schema the LLM expects.
     """
-    # 1. Setup connection credentials to our isolated Docker database container
-    base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-    result = urlparse(base_uri)
-    dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
-    
-    # 2. Open the communication pipeline
-    conn = psycopg2.connect(dsn)
-    cursor = conn.cursor()
-    
-    # 3. Grab ALL columns matching your exact table layout
-    query = "SELECT * FROM registered_tools WHERE status = 'Active';"
-    cursor.execute(query)
-    rows = cursor.fetchall() 
-    
-    llm_tools_list = []
-    
-    # 4. Loop through each row using your precise table indexes
-    for row in rows:
-        # Based on your table layout: integration_name is index 1, description is index 7
-        tool_name = row[1]       
-        tool_description = row[7] 
-        
-        # Construct the exact schema package the LLM expects
-        llm_schema = {
+    tools = ApiConnector.query.filter_by(status='Active').all()
+
+    return [
+        {
             "type": "function",
             "function": {
-                "name": tool_name,
-                "description": tool_description,
+                "name": tool.integration_name,
+                "description": tool.api_description,
                 "parameters": {
                     "type": "object",
-                    "properties": {}  
+                    "properties": {}
                 }
             }
         }
-        
-        # Append this translated dictionary item to our master tools list
-        llm_tools_list.append(llm_schema)
-    
-    # 5. Clean up our database connection lines safely
-    cursor.close()
-    conn.close()
-    
-    return llm_tools_list
+        for tool in tools
+    ]
 
 
 def _resolve_model_runtime_settings(model_name: str):
@@ -220,19 +193,10 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                 if isinstance(tool_args, str):
                     tool_args = json.loads(tool_args)
 
-                base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-                result = urlparse(base_uri)
-                dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
+                tool = ApiConnector.query.filter_by(integration_name=target_name).first()
 
-                conn = psycopg2.connect(dsn)
-                cursor = conn.cursor()
-                cursor.execute("SELECT base_url, endpoint, method FROM registered_tools WHERE integration_name = %s LIMIT 1;", (target_name,))
-                api_meta = cursor.fetchone()
-                cursor.close()
-                conn.close()
-
-                if api_meta:
-                    base_url, endpoint, method = api_meta[0], api_meta[1], api_meta[2]
+                if tool:
+                    base_url, endpoint, method = tool.base_url, tool.endpoint, tool.method
                     full_target_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
 
                     # Re-checked here, not just at registration time - the

@@ -3,12 +3,14 @@ File Upload API Routes
 Handles unstructured data file uploads with document code generation
 """
 import os
-from flask import Blueprint, request, jsonify, current_app, send_file, send_from_directory
+from flask import Blueprint, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 from datetime import datetime
-import json
 from flask_jwt_extended import jwt_required
-from app import limiter
+from app import db, limiter
+from app.models.file_resource import FileResource
+from app.utils.auth_helpers import get_current_user
+from app.services.audit_service import log_event
 
 try:
     import magic
@@ -18,7 +20,6 @@ except ImportError:
 upload_bp = Blueprint('upload_bp', __name__)
 
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
-METADATA_FILE = os.path.join(UPLOAD_FOLDER, 'file_metadata.json')
 ALLOWED_EXTENSIONS = set(['pdf', 'docx', 'txt', 'md', 'jpg', 'png', 'gif', 'svg', 'mp4', 'avi', 'mov', 'mkv', 'mp3', 'wav', 'flac', 'm4a', 'eml', 'msg', 'mbox'])
 
 # Regardless of what extension a file claims, its actual bytes should
@@ -63,27 +64,15 @@ def sniff_dangerous_content(file_path):
         return mime
     return None
 
-def load_metadata():
-    """Load file metadata from JSON file"""
-    if os.path.exists(METADATA_FILE):
-        try:
-            with open(METADATA_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return []
-    return []
-
-def save_metadata(metadata):
-    """Save file metadata to JSON file"""
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER)
-    with open(METADATA_FILE, 'w') as f:
-        json.dump(metadata, f, indent=2)
 
 @upload_bp.route('/api/upload/unstructured', methods=['POST'])
 @jwt_required()
 @limiter.limit("20 per minute")
 def upload_unstructured():
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
+
     if 'files' not in request.files:
         return jsonify({'error': 'No files part'}), 400
 
@@ -95,117 +84,131 @@ def upload_unstructured():
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
 
-    # Load existing metadata
-    metadata = load_metadata()
-
     uploaded_files = []
     for file in files:
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            
-            # Generate unique filename if exists
-            base_name, ext = os.path.splitext(filename)
-            counter = 1
-            while os.path.exists(os.path.join(UPLOAD_FOLDER, filename)):
-                filename = f"{base_name}_{counter}{ext}"
-                counter += 1
-            
-            save_path = os.path.join(UPLOAD_FOLDER, filename)
-            file.save(save_path)
-
-            dangerous_mime = sniff_dangerous_content(save_path)
-            if dangerous_mime:
-                os.remove(save_path)
-                print(f"⚠️  Rejected upload '{file.filename}': sniffed as {dangerous_mime}")
-                return jsonify({'error': f"'{file.filename}' was rejected: its content doesn't match a safe file type."}), 400
-
-            file_size = os.path.getsize(save_path)
-            now = datetime.now()
-            date_str = now.strftime('%Y-%m-%d %H:%M')
-            code_prefix = {
-                'documents': 'DOC',
-                'images': 'IMG',
-                'videos': 'VID',
-                'audio': 'AUD',
-                'emails': 'EML'
-            }.get(file_type, 'FILE')
-            initials = filename[:3].upper()
-            doc_code = f"{code_prefix}-{initials}-{now.strftime('%Y%m%d-%H%M%S')}"
-            
-            file_info = {
-                'document_code': doc_code,
-                'file_name': filename,
-                'file_type': file_type,
-                'file_size': file_size,
-                'upload_date': date_str,
-                'file_path': save_path
-            }
-            
-            uploaded_files.append(file_info)
-            metadata.append(file_info)
-        else:
+        if not (file and allowed_file(file.filename)):
             return jsonify({'error': f'File type not allowed: {file.filename}'}), 400
 
-    # Save updated metadata
-    save_metadata(metadata)
+        filename = secure_filename(file.filename)
+
+        # Generate unique filename if exists
+        base_name, ext = os.path.splitext(filename)
+        counter = 1
+        while os.path.exists(os.path.join(UPLOAD_FOLDER, filename)):
+            filename = f"{base_name}_{counter}{ext}"
+            counter += 1
+
+        save_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(save_path)
+
+        dangerous_mime = sniff_dangerous_content(save_path)
+        if dangerous_mime:
+            os.remove(save_path)
+            print(f"⚠️  Rejected upload '{file.filename}': sniffed as {dangerous_mime}")
+            return jsonify({'error': f"'{file.filename}' was rejected: its content doesn't match a safe file type."}), 400
+
+        file_size = os.path.getsize(save_path)
+        now = datetime.now()
+        code_prefix = {
+            'documents': 'DOC',
+            'images': 'IMG',
+            'videos': 'VID',
+            'audio': 'AUD',
+            'emails': 'EML'
+        }.get(file_type, 'FILE')
+        initials = filename[:3].upper()
+        doc_code = f"{code_prefix}-{initials}-{now.strftime('%Y%m%d-%H%M%S')}"
+
+        resource = FileResource(
+            document_code=doc_code,
+            file_name=filename,
+            file_type=file_type,
+            file_size=file_size,
+            file_path=save_path,
+            company_code=current_user.company_code,
+            created_by_user_id=current_user.id,
+        )
+        db.session.add(resource)
+        db.session.commit()
+
+        log_event('file_uploaded', company_code=current_user.company_code, user_id=current_user.id,
+                   resource_type='file', resource_id=resource.id, details={'file_name': filename})
+
+        uploaded_files.append(resource.to_dict())
 
     return jsonify({'files': uploaded_files}), 200
+
 
 @upload_bp.route('/api/upload/files', methods=['GET'])
 @jwt_required()
 def get_uploaded_files():
-    """Get list of all uploaded files"""
-    metadata = load_metadata()
-    return jsonify({'files': metadata}), 200
+    """
+    Files a non-admin user uploads are private to them - nothing is
+    auto-shared. This lists files the current user created themselves,
+    plus any files a company admin has explicitly granted them access to
+    via Resource Mapping.
+    """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
+
+    own_files = FileResource.query.filter_by(created_by_user_id=current_user.id).all()
+
+    from app.models.resource_mapping import ResourceMapping
+    granted_ids = [
+        m.resource_id for m in ResourceMapping.query.filter_by(
+            resource_type='file', user_id=current_user.id
+        ).all()
+    ]
+    granted_files = FileResource.query.filter(FileResource.id.in_(granted_ids)).all() if granted_ids else []
+
+    seen_ids = set()
+    files = []
+    for f in own_files + granted_files:
+        if f.id not in seen_ids:
+            seen_ids.add(f.id)
+            files.append(f.to_dict())
+
+    return jsonify({'files': files}), 200
+
 
 @upload_bp.route('/api/files/view/<document_code>', methods=['GET'])
 @jwt_required()
 def view_file(document_code):
-    """View/download a file by document code"""
-    metadata = load_metadata()
-    
-    file_info = None
-    for item in metadata:
-        if item['document_code'] == document_code:
-            file_info = item
-            break
-    
-    if not file_info:
+    resource = FileResource.query.filter_by(document_code=document_code).first()
+    if not resource:
         return jsonify({'error': 'File not found'}), 404
-    
-    file_path = file_info.get('file_path')
-    if not file_path or not os.path.exists(file_path):
+
+    if not resource.file_path or not os.path.exists(resource.file_path):
         return jsonify({'error': 'File not found on disk'}), 404
-    
-    return send_file(file_path, as_attachment=False)
+
+    return send_file(resource.file_path, as_attachment=False)
+
 
 @upload_bp.route('/api/files/<document_code>', methods=['DELETE'])
 @jwt_required()
 def delete_file(document_code):
-    """Delete a file by document code"""
-    metadata = load_metadata()
-    
-    file_info = None
-    file_index = None
-    for idx, item in enumerate(metadata):
-        if item['document_code'] == document_code:
-            file_info = item
-            file_index = idx
-            break
-    
-    if not file_info:
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
+
+    resource = FileResource.query.filter_by(document_code=document_code).first()
+    if not resource:
         return jsonify({'error': 'File not found'}), 404
-    
-    # Delete physical file
-    file_path = file_info.get('file_path')
-    if file_path and os.path.exists(file_path):
+
+    if resource.created_by_user_id != current_user.id and current_user.role != 'admin':
+        return jsonify({'error': 'Only the uploader or a company admin can delete this file'}), 403
+
+    if resource.file_path and os.path.exists(resource.file_path):
         try:
-            os.remove(file_path)
+            os.remove(resource.file_path)
         except Exception as e:
             return jsonify({'error': f'Failed to delete file: {str(e)}'}), 500
-    
-    # Remove from metadata
-    metadata.pop(file_index)
-    save_metadata(metadata)
-    
+
+    db.session.delete(resource)
+    db.session.commit()
+
+    log_event('file_deleted', company_code=current_user.company_code, user_id=current_user.id,
+               resource_type='file', resource_id=resource.id)
+
     return jsonify({'message': 'File deleted successfully'}), 200

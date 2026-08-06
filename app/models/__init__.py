@@ -1,30 +1,35 @@
 """
 Database Models
+
+3 logical databases (see config/config.py SQLALCHEMY_BINDS):
+  - core:      Company, User, ResourceMapping, AuditLog
+  - resources: DatabaseConnection, ApiConnector, FileResource
+  - workspace: ChatSession, ModelConfiguration, ResponseFeedback, RouterConfig
 """
+from .company import Company
 from .user import User
-from .workspace import Workspace
+from .resource_mapping import ResourceMapping
+from .audit_log import AuditLog
+
 from .database_connection import DatabaseConnection
-from .datasource import Datasource
-from .query import Query, SavedQuery
-from .chat import ChatSession, ChatMessage
-from .analytics import Chart, Report
+from .api_connector import ApiConnector
+from .file_resource import FileResource
+
+from .chat import ChatSession
 from .model_config import ModelConfiguration
-from .audit import AuditLog, Activity
 from .feedback import ResponseFeedback
+from .router_config import RouterConfig
 
 __all__ = [
+    'Company',
     'User',
-    'Workspace',
-    'DatabaseConnection',
-    'Datasource',
-    'Query',
-    'SavedQuery',
-    'ChatSession',
-    'ChatMessage',
-    'Chart',
-    'Report',
-    'ModelConfiguration',
+    'ResourceMapping',
     'AuditLog',
-    'Activity',
-    'ResponseFeedback'
+    'DatabaseConnection',
+    'ApiConnector',
+    'FileResource',
+    'ChatSession',
+    'ModelConfiguration',
+    'ResponseFeedback',
+    'RouterConfig',
 ]

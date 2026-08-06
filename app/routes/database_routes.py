@@ -17,6 +17,8 @@ import pandas as pd
 import psycopg2
 from flask_jwt_extended import jwt_required
 from app.services import spreadsheet_service
+from app.utils.auth_helpers import get_current_user
+from app.services.audit_service import log_event
 
 bp = Blueprint('database', __name__, url_prefix='/api/databases')
 
@@ -55,7 +57,8 @@ def serialize_connection(conn):
             'username': conn.username,
             'password': '********',
             'config': conn.config or {},
-            'workspace_id': conn.workspace_id,
+            'company_code': conn.company_code,
+            'created_by_user_id': conn.created_by_user_id,
             'status': conn.status,
             'created_at': conn.created_at.isoformat() if conn.created_at else None,
             'updated_at': conn.updated_at.isoformat() if conn.updated_at else None,
@@ -69,23 +72,32 @@ def serialize_connection(conn):
 @jwt_required()
 def get_databases():
     """
-    Get all configured database connections
-    Query params: workspace_id
-    Response: { "databases": [{id, name, type, host, status}] }
+    Lists database connections the current user created, plus any
+    explicitly granted to them via Resource Mapping - nothing is
+    auto-shared just for belonging to the same company.
     """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required', 'databases': []}), 401
+
     try:
-        workspace_id = request.args.get('workspace_id', 1)
-        
-        try:
-            if workspace_id:
-                databases = DatabaseConnection.query.filter_by(workspace_id=workspace_id).all()
-            else:
-                databases = DatabaseConnection.query.all()
-        except Exception as query_error:
-            # If query fails (table might not exist), return empty list
-            print(f"Query error: {str(query_error)}")
-            databases = []
-        
+        own = DatabaseConnection.query.filter_by(created_by_user_id=current_user.id).all()
+
+        from app.models.resource_mapping import ResourceMapping
+        granted_ids = [
+            m.resource_id for m in ResourceMapping.query.filter_by(
+                resource_type='database', user_id=current_user.id
+            ).all()
+        ]
+        granted = DatabaseConnection.query.filter(DatabaseConnection.id.in_(granted_ids)).all() if granted_ids else []
+
+        seen_ids = set()
+        databases = []
+        for conn in own + granted:
+            if conn.id not in seen_ids:
+                seen_ids.add(conn.id)
+                databases.append(conn)
+
         return jsonify({
             'databases': [serialize_connection(conn) for conn in databases],
             'count': len(databases)
@@ -104,9 +116,13 @@ def create_database_connection():
                "port": 5432, "database": "mydb", "username": "...", "password": "..." }
     Response: { "database": {...}, "message": "Connection created" }
     """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
+
     try:
         data = request.get_json()
-        
+
         # Validate required fields based on database type
         db_type = data.get('type', '')
         
@@ -137,13 +153,20 @@ def create_database_connection():
             password=data.get('password'),
             connection_string=data.get('connection_string'),
             config=data.get('config', {}),
-            workspace_id=data.get('workspace_id', 1),
+            company_code=current_user.company_code,
+            created_by_user_id=current_user.id,
             status='connected'
         )
-        
+
         db.session.add(connection)
         db.session.commit()
-        
+
+        log_event('database_connection_created', company_code=current_user.company_code, user_id=current_user.id,
+                   resource_type='database', resource_id=connection.id, details={'name': connection.name, 'type': connection.type})
+
+        from app.services.automated_metamind import generate_router_config
+        generate_router_config(user_id=current_user.id, force=True)
+
         return jsonify({
             'database': serialize_connection(connection),
             'message': 'Connection created successfully'
@@ -168,6 +191,10 @@ def create_excel_database():
     Request: multipart/form-data with fields 'name' (connection name) and
     'file' (.xlsx/.xls/.csv)
     """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
+
     try:
         name = request.form.get('name', '').strip()
         file = request.files.get('file')
@@ -206,7 +233,8 @@ def create_excel_database():
             username=None,
             password=None,
             config={'source_tables': []},
-            workspace_id=int(request.form.get('workspace_id', 1) or 1),
+            company_code=current_user.company_code,
+            created_by_user_id=current_user.id,
             status='connected'
         )
         db.session.add(connection)
@@ -241,7 +269,10 @@ def create_excel_database():
         db.session.commit()
 
         from app.services.automated_metamind import generate_router_config
-        generate_router_config(force=True)
+        generate_router_config(user_id=current_user.id, force=True)
+
+        log_event('database_connection_created', company_code=current_user.company_code, user_id=current_user.id,
+                   resource_type='database', resource_id=connection.id, details={'name': connection.name, 'type': 'Excel'})
 
         table_summary = ', '.join(f'"{t["table"]}" ({t["row_count"]} rows)' for t in created_tables)
         return jsonify({
@@ -255,6 +286,19 @@ def create_excel_database():
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
+def _can_view_connection(user, connection):
+    if connection.created_by_user_id == user.id:
+        return True
+    from app.models.resource_mapping import ResourceMapping
+    return ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id, user_id=user.id).first() is not None
+
+
+def _can_modify_connection(user, connection):
+    if connection.created_by_user_id == user.id:
+        return True
+    return user.role == 'admin' and user.company_code and user.company_code == connection.company_code
+
+
 @bp.route('/<int:db_id>', methods=['GET'])
 @jwt_required()
 def get_database(db_id):
@@ -262,11 +306,14 @@ def get_database(db_id):
     Get specific database connection details
     Response: { "database": {...} }
     """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
     try:
         connection = DatabaseConnection.query.get(db_id)
-        if not connection:
+        if not connection or not _can_view_connection(current_user, connection):
             return jsonify({'error': 'Connection not found'}), 404
-        
+
         return jsonify({'database': serialize_connection(connection)}), 200
     except Exception as e:
         print(f"GET database error: {str(e)}")
@@ -281,20 +328,33 @@ def update_database_connection(db_id):
     Request: { "name": "...", "host": "...", ... }
     Response: { "database": {...}, "message": "Connection updated" }
     """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
     try:
         connection = DatabaseConnection.query.get(db_id)
-        if not connection:
+        if not connection or not _can_modify_connection(current_user, connection):
             return jsonify({'error': 'Connection not found'}), 404
-        
+
         data = request.get_json()
-        
+
         # Update fields
         for key in ['name', 'host', 'port', 'database', 'username', 'password', 'connection_string', 'type']:
             if key in data:
                 setattr(connection, key, data[key])
-        
+
         db.session.commit()
-        
+        log_event('database_connection_updated', company_code=current_user.company_code, user_id=current_user.id,
+                   resource_type='database', resource_id=connection.id)
+
+        from app.services.automated_metamind import generate_router_config
+        from app.models.resource_mapping import ResourceMapping
+        affected_user_ids = {current_user.id, connection.created_by_user_id} | {
+            m.user_id for m in ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id).all()
+        }
+        for uid in affected_user_ids:
+            generate_router_config(user_id=uid, force=True)
+
         return jsonify({
             'database': serialize_connection(connection),
             'message': 'Connection updated successfully'
@@ -312,17 +372,33 @@ def delete_database_connection(db_id):
     Delete database connection
     Response: { "message": "Connection deleted" }
     """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
     try:
         connection = DatabaseConnection.query.get(db_id)
-        if not connection:
+        if not connection or not _can_modify_connection(current_user, connection):
             return jsonify({'error': 'Connection not found'}), 404
 
+        from app.models.resource_mapping import ResourceMapping
+        affected_user_ids = {current_user.id, connection.created_by_user_id} | {
+            m.user_id for m in ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id).all()
+        }
+
         is_excel = (connection.type or '').lower() == 'excel'
+        connection_id = connection.id
         db.session.delete(connection)
         db.session.commit()
 
         if is_excel:
             spreadsheet_service.delete_connection_tables(db_id)
+
+        log_event('database_connection_deleted', company_code=current_user.company_code, user_id=current_user.id,
+                   resource_type='database', resource_id=connection_id)
+
+        from app.services.automated_metamind import generate_router_config
+        for uid in affected_user_ids:
+            generate_router_config(user_id=uid, force=True)
 
         return jsonify({'message': 'Connection deleted successfully'}), 200
     except Exception as e:
@@ -400,8 +476,8 @@ def _summarize_spreadsheet_table_for_metamind(table_name: str) -> str:
     contains (e.g. "Player roster with season-by-season performance
     stats") from its columns and a few sample rows, then stores that on
     the table's manifest record. automated_metamind.py's spreadsheet
-    introspection reads that description and uses it in
-    metamind_router_config.json - this is the one place that writes it."""
+    introspection reads that description and uses it when building each
+    user's router config - this is the one place that generates it."""
     df = spreadsheet_service.get_table_df(table_name)
     sample = df.head(5)
     sample_text = "\n".join(
@@ -442,14 +518,21 @@ def process_database_connection(db_id):
     For Excel/CSV connections, generates a content-aware summary of each
     table (via LLM) and stores it as the table's description so the router
     can tell what it's actually useful for - then regenerates the router
-    config either way.
+    config (for whoever can currently see this connection) either way.
     """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
     try:
         connection = DatabaseConnection.query.get(db_id)
-        if not connection:
+        if not connection or not _can_view_connection(current_user, connection):
             return jsonify({"status": "error", "message": "Connection not found"}), 404
 
         from app.services.automated_metamind import generate_router_config
+        from app.models.resource_mapping import ResourceMapping
+        affected_user_ids = {current_user.id, connection.created_by_user_id} | {
+            m.user_id for m in ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id).all()
+        }
 
         if (connection.type or '').lower() == 'excel':
             tables = [t['table'] for t in spreadsheet_service.get_tables_for_connection(connection.id)]
@@ -465,7 +548,8 @@ def process_database_connection(db_id):
                 print(traceback.format_exc())
                 return jsonify({"status": "error", "message": "Something went wrong while summarizing these tables. Please try again."}), 500
 
-            generate_router_config(force=True)
+            for uid in affected_user_ids:
+                generate_router_config(user_id=uid, force=True)
             described = ", ".join(f'"{t}"' for t in tables)
             return jsonify({
                 "status": "success",
@@ -473,7 +557,8 @@ def process_database_connection(db_id):
             })
 
         try:
-            generate_router_config(force=True)
+            for uid in affected_user_ids:
+                generate_router_config(user_id=uid, force=True)
             return jsonify({"status": "success", "message": "This connection's tables are now ready for queries."})
         except Exception as e:
             print(f"Router config regeneration error: {e}")
@@ -614,27 +699,37 @@ def get_database_types():
     ]
     return jsonify({'types': types}), 200
 
-#@bp.route('/run-agentic-process/<int:conn_id>', methods=['POST'])
-#def run_agentic_process(conn_id):
-#    try:
-        # Step 1: Build tables in databrige_db
-        # Ensure the path matches your 'services' folder in the sidebar
-#        subprocess.run(["python", "services/databridge_services/db.py"], check=True)
-        
-#        time.sleep(10) # Let the CPU breathe
-
-        # Step 2: Run the 40-minute LLM analysis
-#        subprocess.run(["python", "services/databridge_services/metamind.py"], check=True)
-
-#        return jsonify({"status": "success", "message": "Successfully JSON file created!"}), 200
-#    except Exception as e:
-#        return jsonify({"error": str(e)}), 500
-    
 @bp.route('/run-agentic-process/<int:conn_id>', methods=['POST'])
 @jwt_required()
 def run_agentic_process(conn_id):
+    """
+    Runs the SAP-style demo-data seeding (db.py) and schema/comment
+    generation (metamind.py) against the external database registered as
+    connection `conn_id` - neither script assumes a local Docker network
+    or any app-internal database, they connect to whatever host/port/
+    credentials are stored on this DatabaseConnection record.
+    """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+
+    connection = DatabaseConnection.query.get(conn_id)
+    if not connection or not (
+        connection.created_by_user_id == current_user.id
+        or (current_user.role == 'admin' and current_user.company_code == connection.company_code)
+    ):
+        return jsonify({"error": "Connection not found"}), 404
+
+    if not connection.host or not connection.database or not connection.username:
+        return jsonify({"error": "This connection is missing host/database/username - edit it before running the agentic process."}), 400
+
+    from app.utils.crypto import decrypt
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = "/app/logs"
+    # Relative to wherever the app actually runs from, not a hardcoded
+    # container path - the same "assumed one specific machine's layout"
+    # mistake that broke this endpoint before.
+    log_dir = os.path.join(os.getcwd(), 'logs')
     log_path = os.path.join(log_dir, f"process_{conn_id}_{timestamp}.log")
     os.makedirs(log_dir, exist_ok=True)
 
@@ -651,13 +746,27 @@ def run_agentic_process(conn_id):
     handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
     logger.addHandler(handler)
 
-    logger.info(f"Process started for connection ID: {conn_id}")
+    logger.info(f"Process started for connection ID: {conn_id} (host={connection.host})")
     try:
-        # We add the extra /app/ here based on your 'find' command
-        base_path = "/app/app/services/databridge_services"
-        
+        # Resolved relative to this file, not a hardcoded container path -
+        # works no matter where the repo actually lives on disk.
+        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'services', 'databridge_services')
         db_script = os.path.join(base_path, "db.py")
         meta_script = os.path.join(base_path, "metamind.py")
+
+        # The target database's credentials are passed via environment,
+        # not CLI args (which would leak the password into `ps aux`
+        # output for any user on the box) and not read from any
+        # app-internal fallback - db.py/metamind.py only ever connect to
+        # whatever this specific DatabaseConnection record points at.
+        subprocess_env = dict(os.environ)
+        subprocess_env.update({
+            "DATABRIDGE_TARGET_HOST": connection.host,
+            "DATABRIDGE_TARGET_PORT": str(connection.port or 5432),
+            "DATABRIDGE_TARGET_DBNAME": connection.database,
+            "DATABRIDGE_TARGET_USER": connection.username,
+            "DATABRIDGE_TARGET_PASSWORD": decrypt(connection.password) if connection.password else "",
+        })
 
         # Step 1: Build SAP tables
         logger.info(f"Step 1 [build_sap_tables] start | conn_id={conn_id} | script={db_script}")
@@ -667,12 +776,13 @@ def run_agentic_process(conn_id):
             timeout=5000,
             capture_output=True,
             text=True,
+            env=subprocess_env,
         )
         logger.info(f"Step 1 stdout:\n{result1.stdout}")
         logger.info(f"Step 1 stderr:\n{result1.stderr}")
         logger.info("Step 1 completed successfully")
-        
-        time.sleep(5) 
+
+        time.sleep(5)
 
         # Step 2: Running the 40-minute LLM analysis
         logger.info(f"Step 2 [metamind_analysis] start | conn_id={conn_id} | script={meta_script}")
@@ -682,14 +792,36 @@ def run_agentic_process(conn_id):
             timeout=5000,
             capture_output=True,
             text=True,
+            env=subprocess_env,
         )
         logger.info(f"Step 2 stdout:\n{result2.stdout}")
         logger.info(f"Step 2 stderr:\n{result2.stderr}")
         logger.info("Step 2 completed successfully")
-        logger.info("Process finished successfully, router config JSON updated")
+        logger.info("Process finished successfully, regenerating router config")
+
+        # Passed explicitly rather than relying on DATABRIDGE_TARGET_* env
+        # vars - those were only ever set on the subprocess above, not
+        # this parent process's own environment.
+        from app.services.automated_metamind import generate_router_config
+        from app.models.resource_mapping import ResourceMapping
+        sap_db_config = {
+            "host": connection.host,
+            "port": connection.port or 5432,
+            "dbname": connection.database,
+            "user": connection.username,
+            "password": decrypt(connection.password) if connection.password else "",
+        }
+        affected_user_ids = {current_user.id, connection.created_by_user_id} | {
+            m.user_id for m in ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id).all()
+        }
+        for uid in affected_user_ids:
+            generate_router_config(user_id=uid, force=True, sap_db_config=sap_db_config)
+
+        log_event('agentic_process_run', company_code=current_user.company_code, user_id=current_user.id,
+                   resource_type='database', resource_id=conn_id, details={'log_path': log_path})
 
         return jsonify({"status": "success", "message": "Successfully JSON file created!", "log_path": log_path}), 200
-    
+
     except subprocess.CalledProcessError as e:
         logger.error(f"Script crashed: {e}")
         logger.error(f"stdout:\n{e.stdout}")

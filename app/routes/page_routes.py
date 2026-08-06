@@ -27,6 +27,11 @@ def settings_page():
     """Settings page"""
     return render_template('settings.html')
 
+@bp.route('/verify-email')
+def verify_email_page():
+    """Landing page for the signup verification email link"""
+    return render_template('verify_email.html')
+
 @bp.route('/api_mode')
 def api_mode():
     """API Mode page showing Swagger docs inside the app layout."""
@@ -221,6 +226,16 @@ def system_logs():
 @bp.route('/management/power-automate')
 def power_automate():
     return render_template('management/power_automate.html')
+
+@bp.route('/management/pending-approvals')
+def pending_approvals_page():
+    """Company admin screen to approve/reject employees requesting to join with their company_code"""
+    return render_template('management/pending_approvals.html')
+
+@bp.route('/platform/companies')
+def platform_companies_page():
+    """Superadmin-only screen to provision new companies"""
+    return render_template('management/platform_companies.html')
 
 @bp.route('/management/rpa-workflows')
 def rpa_workflows():

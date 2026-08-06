@@ -9,6 +9,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from app import db                                       # CODE CHANGE: Imported database instance
 from app.models.model_config import ModelConfiguration
+from app.utils.auth_helpers import get_current_user
 from app.services.model_selection_service import (
     PIPELINE_STEPS,
     RECOMMENDED_PRESET_DEFINITIONS,
@@ -206,82 +207,53 @@ def get_global_selection_preset(preset_key):
 
 @bp.route('/configurations', methods=['GET'])
 @jwt_required()
-#@jwt_required()
 def get_configurations():
     """
-    Get all model configurations
-    Query params: workspace_id
+    Get the current user's model configurations.
     Response: { "configurations": [{id, name, model, provider, settings}] }
     """
-    company_ctx = _resolve_company_context()
-    workspace_id = request.args.get('workspace_id', type=int)
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
 
-    _seed_default_open_source_models(company_ctx)
-    configs = _list_company_configs(company_ctx['company_code'], workspace_id=workspace_id)
+    configs = ModelConfiguration.query.filter_by(user_id=current_user.id).all()
     return jsonify({"configurations": [c.to_dict() for c in configs]}), 200
 
 
 @bp.route('/configurations', methods=['POST'])
 @jwt_required()
-#@jwt_required()
 def create_configuration():
     """
     Create new model configuration
-    Request: { "name": "GPT-4 Turbo Config", "model": "gpt-4-turbo", 
+    Request: { "name": "GPT-4 Turbo Config", "model": "gpt-4-turbo",
                "provider": "OpenAI", "settings": {...} }
     Response: { "configuration": {...}, "message": "Configuration created" }
     """
-    #raw_identity = get_jwt_identity()
-    #if isinstance(raw_identity, dict):
-    #    user_id = raw_identity.get('id') or raw_identity.get('user_id') or 1
-    #elif isinstance(raw_identity, str) and not raw_identity.isdigit():
-    #    user_id = 1
-    #else:
-    #    try:
-    #        user_id = int(raw_identity)
-    #    except (ValueError, TypeError):
-    #        user_id = 1
-    company_ctx = _resolve_company_context()
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+
     data = request.get_json() or {}
-    
+
     if not data.get('name') or not data.get('model') or not data.get('provider'):
         return jsonify({"error": "Missing required fields: name, model, and provider are mandatory."}), 400
-        
-    incoming_settings = data.get('settings', {}) if isinstance(data.get('settings', {}), dict) else {}
-    incoming_settings['company_code'] = company_ctx['company_code']
-    incoming_settings.setdefault('company_name', company_ctx['company_name'])
 
-    existing = None
-    for row in _list_company_configs(company_ctx['company_code']):
-        if row.model == data.get('model'):
-            existing = row
-            break
+    new_config = ModelConfiguration(
+        name=data.get('name'),
+        model=data.get('model'),
+        provider=data.get('provider'),
+        settings=data.get('settings', {}),
+        company_code=current_user.company_code,
+        user_id=current_user.id
+    )
 
-    if existing:
-        existing.name = data.get('name')
-        existing.provider = data.get('provider')
-        existing.workspace_id = data.get('workspace_id')
-        existing.settings = {**(existing.settings or {}), **incoming_settings}
-        target = existing
-    else:
-        target = ModelConfiguration(
-            name=data.get('name'),
-            model=data.get('model'),
-            provider=data.get('provider'),
-            settings=incoming_settings,
-            workspace_id=data.get('workspace_id'),
-            user_id=company_ctx['user_id']
-        )
-    
-    #db.session.add(new_config)
-    #db.session.commit()
     try:
         db.session.add(target)
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Database write failed: {str(e)}"}), 500
-    
+
     return jsonify({
         "configuration": target.to_dict(),
         "message": "Configuration created successfully."
@@ -294,12 +266,12 @@ def get_configuration(config_id):
     Get specific configuration
     Response: { "configuration": {...} }
     """
-    company_ctx = _resolve_company_context()
-    config = ModelConfiguration.query.filter_by(id=config_id).first_or_404()
-    if _settings_company_code(config.settings) != company_ctx['company_code']:
-        return jsonify({"error": "Configuration not found for this company."}), 404
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    config = ModelConfiguration.query.filter_by(id=config_id, user_id=current_user.id).first_or_404()
     return jsonify({"configuration": config.to_dict()}), 200
-   
+
 
 @bp.route('/configurations/<int:config_id>', methods=['PUT'])
 @jwt_required()
@@ -309,12 +281,12 @@ def update_configuration(config_id):
     Request: { "name": "...", "settings": {...} }
     Response: { "configuration": {...}, "message": "Configuration updated" }
     """
-    company_ctx = _resolve_company_context()
-    config = ModelConfiguration.query.filter_by(id=config_id).first_or_404()
-    if _settings_company_code(config.settings) != company_ctx['company_code']:
-        return jsonify({"error": "Configuration not found for this company."}), 404
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    config = ModelConfiguration.query.filter_by(id=config_id, user_id=current_user.id).first_or_404()
     data = request.get_json() or {}
-    
+
     if 'name' in data:
         config.name = data['name']
     if 'model' in data:
@@ -323,18 +295,14 @@ def update_configuration(config_id):
         config.provider = data['provider']
     if 'settings' in data:
         # Merge incoming settings into existing configuration JSON field
-        merged = {**(config.settings or {}), **data['settings']}
-        merged['company_code'] = company_ctx['company_code']
-        config.settings = merged
-    if 'workspace_id' in data:
-        config.workspace_id = data['workspace_id']
-        
+        config.settings = {**config.settings, **data['settings']}
+
     db.session.commit()
     return jsonify({
         "configuration": config.to_dict(),
         "message": "Configuration updated successfully."
     }), 200
-    
+
 
 @bp.route('/configurations/<int:config_id>', methods=['DELETE'])
 @jwt_required()
@@ -343,10 +311,10 @@ def delete_configuration(config_id):
     Delete configuration
     Response: { "message": "Configuration deleted" }
     """
-    company_ctx = _resolve_company_context()
-    config = ModelConfiguration.query.filter_by(id=config_id).first_or_404()
-    if _settings_company_code(config.settings) != company_ctx['company_code']:
-        return jsonify({"error": "Configuration not found for this company."}), 404
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    config = ModelConfiguration.query.filter_by(id=config_id, user_id=current_user.id).first_or_404()
     
     db.session.delete(config)
     db.session.commit()
