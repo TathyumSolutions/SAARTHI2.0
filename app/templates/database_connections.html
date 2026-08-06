@@ -1397,7 +1397,7 @@
             setTimeout(() => {
                 if (document.getElementById('host')) document.getElementById('host').value = conn.host || '';
                 if (document.getElementById('port')) document.getElementById('port').value = conn.port || '';
-                if (document.getElementById('databaseName')) document.getElementById('databaseName').value = conn.database_name || '';
+                if (document.getElementById('databaseName')) document.getElementById('databaseName').value = conn.database || '';
                 if (document.getElementById('username')) document.getElementById('username').value = conn.username || '';
                 
                 showFormAlert(`Testing ${conn.database_type} connection...`, 'info');
