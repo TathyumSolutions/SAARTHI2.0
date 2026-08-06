@@ -1,11 +1,9 @@
 """
 LangGraph Orchestrator - Connects all agents through StateGraph with Error Recovery
 """
-import json
 from langgraph.graph import StateGraph, END
 from .agent_state import DataBridgeState
 from .agent_routers import validation_router, error_recovery_router, format_router
-import os
 from app.services.stream_manager import stream_manager
 import time
 from app.services.model_selection_service import get_model_for_step
@@ -24,13 +22,10 @@ from .agents import (
 
 
 # ===== Configuration =====
-current_dir = os.path.dirname(os.path.abspath(__file__))
-SCHEMA_PATH = os.path.join(current_dir, "sap_schema_with_sap_comments.json")
-#SCHEMA_PATH = "sap_schema_with_sap_comments.json"
-with open(SCHEMA_PATH, "r") as f:
-    SCHEMA = json.load(f)
-#SCHEMA = {}
-#SCHEMA_PATH = None
+# Schema is no longer a static global file - each request builds it from
+# the querying user's own router_configs row (see _build_schema_for_user
+# below), matching the per-user/per-connection model used everywhere else.
+EMPTY_SCHEMA = {"tables": {}}
 
 LLM_BACKEND = {
     "type": "ollama",
@@ -45,32 +40,12 @@ LLM_BACKEND = {
 
 
 # ===== Initialize Agents =====
-#query_simplifier = QuerySimplifierAgent(
- #   schema_path=SCHEMA_PATH,
-  #  model_name=LLM_BACKEND["model"],
-  #  url=LLM_BACKEND["url"]
-#)
-
-#query_sense = QuerySenseAgent(
- #   schema=SCHEMA,
- #   ollama_model=LLM_BACKEND["model"],
- #   ollama_url=LLM_BACKEND["url"]
-#)
-
-query_simplifier = QuerySimplifierAgent(
-    schema_path=SCHEMA_PATH, # Now None
-    model_name=LLM_BACKEND["model"],
-    url=LLM_BACKEND["url"]
-)
-
-query_sense = QuerySenseAgent(
-    schema=SCHEMA, # Now {}
-    ollama_model=LLM_BACKEND["model"],
-    ollama_url=LLM_BACKEND["url"]
-)
-
-query_validator = QueryValidatorAgent(schema=SCHEMA)
-
+# query_simplifier, query_sense, and query_validator are schema-dependent -
+# a fresh instance is built per request (see run_data_bridge_agent, which
+# stashes them under state["_agents"]) using the querying user's own
+# introspected schema, instead of a single shared instance baked with one
+# global schema at import time. Everything below is schema-independent and
+# safe to share as a module-level singleton across requests.
 sql_generator = SQLGeneratorAgent(llm_backend=LLM_BACKEND)
 
 query_formatter = QueryFormatterAgent()
@@ -99,6 +74,7 @@ def simplifier_node(state: DataBridgeState) -> DataBridgeState:
     requested_main_model = state.get("requested_model_name") or state.get("model_name")
     user_id = state.get("user_id", 1)
     step_model = get_model_for_step("query_simplifier", requested_main_model=requested_main_model, user_id=user_id)
+    query_simplifier = state["_agents"]["query_simplifier"]
     if step_model:
         state["model_name"] = step_model
         query_simplifier.model_name = step_model
@@ -119,6 +95,7 @@ def query_sense_node(state: DataBridgeState) -> DataBridgeState:
     requested_main_model = state.get("requested_model_name") or state.get("model_name")
     user_id = state.get("user_id", 1)
     step_model = get_model_for_step("query_sense", requested_main_model=requested_main_model, user_id=user_id)
+    query_sense = state["_agents"]["query_sense"]
     if step_model:
         state["model_name"] = step_model
         query_sense.ollama_model = step_model
@@ -141,7 +118,7 @@ def validator_node(state: DataBridgeState) -> DataBridgeState:
     if step_model:
         state["model_name"] = step_model
     print(f"[ModelSelection] query_validator -> {step_model}")
-    return query_validator.execute(state)
+    return state["_agents"]["query_validator"].execute(state)
 
 
 def sql_generator_node(state: DataBridgeState) -> DataBridgeState:
@@ -382,6 +359,30 @@ def create_data_bridge_graph():
 langgraph_app = create_data_bridge_graph()
 
 
+def _build_schema_for_user(user_id: int) -> dict:
+    """
+    This user's own introspected DB schema (from their router_configs row,
+    populated by generate_router_config()/introspect_databridge_db() - the
+    same data the "Process" button on a database connection builds),
+    converted into the shape the SQL agents below expect. Falls back to an
+    empty schema (never raises) if this user has no router config yet, or
+    it has no DB datasource - same "degrade gracefully" behavior as the
+    rest of the router.
+    """
+    try:
+        from app.models.router_config import RouterConfig
+        from app.services.automated_metamind import to_sql_agent_schema
+
+        row = RouterConfig.query.filter_by(user_id=user_id).first()
+        if not row or not row.config:
+            return dict(EMPTY_SCHEMA)
+        db_tables = row.config.get("routing_menu", {}).get("datasources", {}).get("DB", {}).get("tables", {})
+        return to_sql_agent_schema(db_tables)
+    except Exception as e:
+        print(f"⚠️ [SCHEMA] Could not load schema for user {user_id}: {e}")
+        return dict(EMPTY_SCHEMA)
+
+
 def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "", user_id: int = 1) -> dict:
     """Run the Data Bridge agent with error recovery"""
     print(f"\n{'='*80}")
@@ -390,6 +391,16 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
     print("RUN_DATA_BRIDGE MODEL =", model_name)
     if model_name:
         LLM_BACKEND["model"] = model_name
+
+    # Fresh, request-scoped instances built from this user's own schema -
+    # not shared module-level singletons, so concurrent requests from
+    # different users never see each other's schema.
+    schema = _build_schema_for_user(user_id)
+    agents = {
+        "query_simplifier": QuerySimplifierAgent(schema=schema, model_name=LLM_BACKEND["model"], url=LLM_BACKEND["url"]),
+        "query_sense": QuerySenseAgent(schema=schema, ollama_model=LLM_BACKEND["model"], ollama_url=LLM_BACKEND["url"]),
+        "query_validator": QueryValidatorAgent(schema=schema),
+    }
 
     stream_manager.push_step(
         session_id, 
@@ -423,6 +434,7 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
         "user_id": user_id,
         "custom_key": custom_key,
         "system_instructions": system_instructions,
+        "_agents": agents,
         "steps": [],
         "simplified_query": None,
         "query_sense_output": None,
