@@ -409,49 +409,64 @@ def delete_database_connection(db_id):
 
 @bp.route('/<int:db_id>/test', methods=['POST'])
 @jwt_required()
-
 def test_database_connection(db_id):
     """
-    Test database connection
+    Test database connection. Accepts an optional JSON body of
+    unsaved edits from the connection form (host/port/database/username/
+    type/password) and tests those instead of the stored values - the
+    password field is left blank on the edit form on purpose (it's never
+    sent back to the browser), so a blank submitted password falls back
+    to the stored one rather than being treated as "no password".
     Response: { "status": "success/failed", "latency_ms": 45, "error": null }
     """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
     try:
         connection = DatabaseConnection.query.get(db_id)
-        if not connection:
+        if not connection or not _can_view_connection(current_user, connection):
             return jsonify({'error': 'Connection not found'}), 404
-        
+
+        overrides = request.get_json(silent=True) or {}
+        conn_type = overrides.get('type') or connection.type
+        host = overrides.get('host') or connection.host
+        port = overrides.get('port') or connection.port
+        database = overrides.get('database') or connection.database
+        username = overrides.get('username') or connection.username
+        password = overrides.get('password') or connection.password
+
         start_time = time.time()
-        
+
         try:
-            if connection.type == 'PostgreSQL':
+            if conn_type == 'PostgreSQL':
                 try:
                     import psycopg2
                     conn = psycopg2.connect(
-                        host=connection.host,
-                        port=connection.port or 5432,
-                        database=connection.database,
-                        user=connection.username,
-                        password=connection.password,
+                        host=host,
+                        port=port or 5432,
+                        database=database,
+                        user=username,
+                        password=password,
                         connect_timeout=5
                     )
                     conn.close()
                 except ImportError:
                     pass  # psycopg2 not installed
-            elif connection.type == 'MySQL':
+            elif conn_type == 'MySQL':
                 try:
                     import mysql.connector
                     conn = mysql.connector.connect(
-                        host=connection.host,
-                        port=connection.port or 3306,
-                        database=connection.database,
-                        user=connection.username,
-                        password=connection.password,
+                        host=host,
+                        port=port or 3306,
+                        database=database,
+                        user=username,
+                        password=password,
                         connection_timeout=5
                     )
                     conn.close()
                 except ImportError:
                     pass  # mysql.connector not installed
-            
+
             latency_ms = (time.time() - start_time) * 1000
             return jsonify({
                 'status': 'success',

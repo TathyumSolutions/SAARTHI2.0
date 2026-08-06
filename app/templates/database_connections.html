@@ -992,12 +992,16 @@
         
         showFormAlert('Testing database connection...', 'info');
         
-        // If editing existing connection, test that connection
-        const endpoint = editingConnectionId 
+        // Always test whatever is currently typed in the form, even while
+        // editing an existing connection - previously this sent an empty
+        // body and silently re-tested the connection's old saved values,
+        // ignoring any changes made in the form. The by-id endpoint still
+        // needs the connection id so it can fall back to the stored
+        // password when the (intentionally blank) password field is empty.
+        const endpoint = editingConnectionId
             ? `/api/databases/${editingConnectionId}/test`
             : '/api/databases/test';
-        
-        const requestData = editingConnectionId ? {} : connectionData;
+        const requestData = connectionData;
         
         console.log('🌐 Making API call:', {
             endpoint: endpoint,
@@ -1244,7 +1248,10 @@
             return null;
         }
         
-        if (selectedDbType !== 'Excel' && (!password || password.length === 0)) {
+        // While editing, the password field starts blank on purpose (the
+        // stored password is never sent back to the browser) - leaving it
+        // blank means "keep the existing password", not "no password".
+        if (selectedDbType !== 'Excel' && !editingConnectionId && (!password || password.length === 0)) {
             console.error('❌ Validation failed: Password is required');
             showFormAlert('Please enter the database password', 'error');
             passwordEl?.focus();
