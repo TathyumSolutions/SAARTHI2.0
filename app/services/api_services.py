@@ -1,5 +1,6 @@
 from flask import current_app
 import os
+import re
 import time
 import requests
 import json
@@ -10,18 +11,57 @@ from app.utils.network_guard import is_safe_url
 from app.models.api_connector import ApiConnector
 
 
-def fetch_and_translate_tools():
+def _slugify_tool_name(name: str) -> str:
     """
-    Loads active API connectors and translates them into the structured
-    tool schema the LLM expects.
+    OpenAI (and most other providers') function-calling tool names must
+    match ^[a-zA-Z0-9_-]+$. Integration Name is free-text user input (e.g.
+    "Get metal price") and commonly contains spaces/punctuation that
+    OpenAI rejects outright with a 400 the moment any tool is registered,
+    breaking every chat request that reaches this dynamic tool-calling
+    layer - not just ones that would use that tool. Deterministic in both
+    directions (same integration_name -> same slug every time), so the
+    tool-call handler can map an LLM-returned slug straight back to the
+    real ApiConnector without needing a separately stored mapping.
     """
-    tools = ApiConnector.query.filter_by(status='Active').all()
+    slug = re.sub(r'[^a-zA-Z0-9_-]+', '_', (name or '').strip())
+    slug = re.sub(r'_+', '_', slug).strip('_')
+    return slug or "tool"
+
+
+def _visible_api_connectors(user_id=None):
+    """
+    Active API connectors visible to a user - their own + resource-mapped,
+    same "own + granted" rule as every other resource type. Returns every
+    active connector, company-wide, when user_id isn't given (used at
+    tool-call resolution time by callers that already scoped the tool
+    list themselves).
+    """
+    query = ApiConnector.query.filter_by(status='Active')
+    if user_id is None:
+        return query.all()
+
+    from app.services.automated_metamind import _visible_resource_ids
+    granted_ids = _visible_resource_ids(user_id, 'api')
+    return query.filter(
+        (ApiConnector.created_by_user_id == user_id) | (ApiConnector.id.in_(granted_ids or [-1]))
+    ).all()
+
+
+def fetch_and_translate_tools(user_id=None):
+    """
+    Loads active API connectors visible to this user (own + resource-mapped
+    - previously loaded every active connector across every company,
+    meaning any user's chat could see and trigger any other company's
+    registered API tools) and translates them into the structured tool
+    schema the LLM expects.
+    """
+    tools = _visible_api_connectors(user_id)
 
     return [
         {
             "type": "function",
             "function": {
-                "name": tool.integration_name,
+                "name": _slugify_tool_name(tool.integration_name),
                 "description": tool.api_description,
                 "parameters": {
                     "type": "object",
@@ -33,7 +73,7 @@ def fetch_and_translate_tools():
     ]
 
 
-def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', ollama_config=None,display_query=None,system_instructions=''):
+def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', ollama_config=None,display_query=None,system_instructions='', user_id=None):
     """
     Dynamically routes queries to models, strictly enforcing tool execution,
     performs the actual API execution, and returns a fully parsed response context.
@@ -168,7 +208,16 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                 if isinstance(tool_args, str):
                     tool_args = json.loads(tool_args)
 
-                tool = ApiConnector.query.filter_by(integration_name=target_name).first()
+                # tool_calls names came from the slugified schema built by
+                # fetch_and_translate_tools() (OpenAI rejects raw
+                # integration_name if it contains spaces/punctuation), so
+                # resolve back to the real connector by slug rather than
+                # an exact integration_name match. Scoped to this user's
+                # own + resource-mapped tools, same set they were offered.
+                tool = next(
+                    (t for t in _visible_api_connectors(user_id) if _slugify_tool_name(t.integration_name) == target_name),
+                    None
+                )
 
                 if tool:
                     base_url, endpoint, method = tool.base_url, tool.endpoint, tool.method

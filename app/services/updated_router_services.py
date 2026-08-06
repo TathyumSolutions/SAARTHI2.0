@@ -588,6 +588,7 @@ def _run_api_track(question: str, ctx: dict) -> dict:
         custom_key=ctx["custom_key"],
         ollama_config={"url": "http://ollama:11434/api/chat", "temperature": 0},
         display_query=enriched_question,
+        user_id=ctx.get("user_id"),
     )
     if isinstance(payload, dict):
         return {
@@ -714,7 +715,7 @@ class RouterService:
                 except Exception as e:
                     print(f"[ROUTER CONFIG] Lazy generation failed for user {user_id}: {e}")
             router_config = _load_router_config(user_id)
-            active_db_tools = fetch_and_translate_tools()
+            active_db_tools = fetch_and_translate_tools(user_id=user_id)
             live_tools_summary = "\n".join(
                 f"- Tool: '{t.get('function', {}).get('name')}' -> {t.get('function', {}).get('description')}"
                 for t in active_db_tools

@@ -21,6 +21,7 @@ import os
 import json
 import hashlib
 import datetime
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 import psycopg2
 from psycopg2 import sql
@@ -492,6 +493,43 @@ def resolve_query_execution_config(user_id):
     return _connection_to_db_config(connections[0])
 
 
+_CREDENTIAL_QUERY_KEYS = {
+    "key", "api_key", "apikey", "access_key", "access_token", "token",
+    "secret", "client_secret", "password", "auth", "authorization",
+}
+
+
+def _redact_url_secrets(url: str) -> str:
+    """
+    Strips anything in a URL that looks like a credential - query
+    params named like api_key=/token=/etc., and any userinfo@host
+    component - before it's shown anywhere an LLM (or, through the LLM's
+    answer, another user) might see it. Registering an API tool with
+    "No Auth" commonly means the key ends up pasted straight into the
+    Base URL or Endpoint field rather than a dedicated auth field, and
+    that URL was otherwise being exposed verbatim as tool metadata in
+    the router config every LLM call sees. The real, unredacted URL is
+    still read straight from the ApiConnector row whenever the tool is
+    actually called (api_services.py) - this only affects what gets
+    shown as descriptive metadata.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url
+
+    redacted_query = urlencode([
+        (k, "REDACTED" if k.lower().replace('-', '_') in _CREDENTIAL_QUERY_KEYS else v)
+        for k, v in parse_qsl(parts.query, keep_blank_values=True)
+    ])
+
+    netloc = parts.netloc
+    if "@" in netloc:
+        netloc = "REDACTED@" + netloc.split("@", 1)[-1]
+
+    return urlunsplit((parts.scheme, netloc, parts.path, redacted_query, parts.fragment))
+
+
 def introspect_api_db(user_id):
     """
     API connectors visible to this specific user - their own, plus any
@@ -514,7 +552,9 @@ def introspect_api_db(user_id):
             "name": tool.integration_name,
             "description": tool.api_description or f"API integration: {tool.integration_name}",
             "method": tool.method,
-            "endpoint": tool.endpoint,
+            "endpoint": _redact_url_secrets(
+                f"{(tool.base_url or '').rstrip('/')}/{(tool.endpoint or '').lstrip('/')}"
+            ),
         }
         for tool in tools
     ]
