@@ -1660,6 +1660,9 @@
 
                     chatContainer.scrollTop = chatContainer.scrollHeight;
                     localStorage.setItem('saarthi_chat_history', chatContainer.innerHTML);
+                    if (typeof saveActiveChatToHistory === 'function') {
+                        await saveActiveChatToHistory();
+                    }
                 } else {
                     removeTypingBubble();
                 }
