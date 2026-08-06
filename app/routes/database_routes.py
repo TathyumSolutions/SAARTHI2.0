@@ -556,9 +556,34 @@ def process_database_connection(db_id):
                 "message": f"Tables ready for queries: {described}."
             })
 
+        # For an actual database connection (PostgreSQL/MySQL, e.g. the SAP
+        # demo DB), the router config needs this connection's own
+        # credentials to introspect it - without this, generate_router_config()
+        # falls back to unset DATABRIDGE_TARGET_* env vars and silently
+        # fails to connect (defaulting to a local Unix socket instead of
+        # this connection's actual host/port).
+        sap_db_config = None
+        if (connection.type or '').lower() == 'postgresql':
+            from app.utils.crypto import decrypt
+            sap_db_config = {
+                "host": connection.host,
+                "port": connection.port or 5432,
+                "dbname": connection.database,
+                "user": connection.username,
+                "password": decrypt(connection.password) if connection.password else "",
+            }
+
         try:
+            own_result = None
             for uid in affected_user_ids:
-                generate_router_config(user_id=uid, force=True)
+                result = generate_router_config(user_id=uid, force=True, sap_db_config=sap_db_config)
+                if uid == current_user.id:
+                    own_result = result
+            if own_result is None:
+                return jsonify({
+                    "status": "error",
+                    "message": "Could not connect to this database with the saved credentials - check the connection's host/port/database/username/password and try again."
+                }), 502
             return jsonify({"status": "success", "message": "This connection's tables are now ready for queries."})
         except Exception as e:
             print(f"Router config regeneration error: {e}")
