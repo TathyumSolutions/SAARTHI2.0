@@ -533,13 +533,39 @@ class LLMService:
     #         print(f"Analysis Error: {e}")
     #         return "Analyzing natural language inquiry for document matching modules."    
 
-    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions=''):
+    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions='',user_id=None):
         """
-        Retrieves relevant chunks from Qdrant and updates the live steps 
-        using the new structured event payload layout.
+        Retrieves relevant chunks from Qdrant and updates the live steps
+        using the new structured event payload layout. Retrieval is scoped
+        to documents visible to user_id (their own uploads plus anything
+        granted via Resource Mapping) so one user's answers never surface
+        content from a document another user never shared with them.
         """
         rag_chain_of_thought = []
         session_id = str(session_id)
+
+        qdrant_filter = None
+        if user_id is not None:
+            from app.services.automated_metamind import visible_document_codes
+            doc_codes = visible_document_codes(user_id)
+            if not doc_codes:
+                stream_manager.push_step(session_id, "DONE", is_sql=False)
+                return {
+                    "answer": "You don't have any documents uploaded or shared with you yet.",
+                    "sql": None,
+                    "table": [],
+                    "chart": {},
+                    "rag_chain_of_thought": rag_chain_of_thought
+                }
+            from qdrant_client.http import models as qmodels
+            qdrant_filter = qmodels.Filter(
+                must=[
+                    qmodels.FieldCondition(
+                        key="metadata.document_code",
+                        match=qmodels.MatchAny(any=doc_codes),
+                    )
+                ]
+            )
         
         # ========================================================
        
@@ -699,10 +725,10 @@ class LLMService:
                 search_queries = [self._generate_hyde_document(q) for q in search_queries]
 
             if len(search_queries) > 1:
-                doc_lists = [vector_store.similarity_search(q, k=retrieval_cfg["top_k"]) for q in search_queries]
+                doc_lists = [vector_store.similarity_search(q, k=retrieval_cfg["top_k"], filter=qdrant_filter) for q in search_queries]
                 docs = self._merge_and_dedupe_docs(doc_lists)
             else:
-                docs = vector_store.similarity_search(search_queries[0], k=retrieval_cfg["top_k"])
+                docs = vector_store.similarity_search(search_queries[0], k=retrieval_cfg["top_k"], filter=qdrant_filter)
             context_text = "\n\n".join([doc.page_content for doc in docs])
             
             retrieval_msg = f"Found {len(docs)} relevant sections in your documents."
@@ -907,9 +933,9 @@ class LLMService:
 
 _shared_llm_service = LLMService()
 
-def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions=''):
+def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions='', user_id=None):
     """
-    Top-level module function mapping so your orchestrator router can import 
+    Top-level module function mapping so your orchestrator router can import
     it cleanly without needing class-level structural instantiation overhead.
     """
     return _shared_llm_service.answer_from_docs(
@@ -917,8 +943,9 @@ def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system
         model_name=model_name,
         session_id=session_id,
         custom_key=custom_key,
-        system_instructions=system_instructions
-    )   
+        system_instructions=system_instructions,
+        user_id=user_id,
+    )
        
 
 #     def get_smart_response(self, user_query,model_name, session_id=1,custom_key=''):

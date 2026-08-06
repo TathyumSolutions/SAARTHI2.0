@@ -568,7 +568,8 @@ def _run_files_track(question: str, ctx: dict) -> dict:
 
     rag_res = answer_from_docs(
         enriched_question, model_name=ctx["model_name"],
-        session_id=ctx["session_id"], custom_key=ctx["custom_key"]
+        session_id=ctx["session_id"], custom_key=ctx["custom_key"],
+        user_id=ctx.get("user_id"),
     )
     return {
         "answer": rag_res.get("answer"),

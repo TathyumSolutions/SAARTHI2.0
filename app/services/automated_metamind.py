@@ -2,14 +2,14 @@
 Builds each user's personal router config (saved to their row in
 router_configs, see app/models/router_config.py - not a shared file) by
 introspecting:
-1. The external SAP demo database, if DATABRIDGE_TARGET_* env vars (or an
-   explicit sap_db_config) are set (PostgreSQL) -> DB datasource
-   (SAP-style tables). Still global for now, not yet scoped per user.
+1. This user's own + resource-mapped PostgreSQL database connections
+   (falling back to the legacy DATABRIDGE_TARGET_* env vars if this user
+   has none registered) -> DB datasource (SAP-style tables)
 2. This user's own + resource-mapped API connectors (saarthi_resources_db,
    via the ApiConnector ORM model) -> API datasource
 3. This user's own + resource-mapped spreadsheet-backed tables -> SPREADSHEET datasource
-4. Qdrant -> FILES datasource (RAG document collection). Still global for
-   now, not yet scoped per user.
+4. This user's own + resource-mapped documents in Qdrant -> FILES datasource
+   (RAG document collection, filtered by metadata.document_code)
 
 Features:
 - Detects schema changes via a per-user content hash (fingerprint column)
@@ -411,6 +411,25 @@ def _visible_resource_ids(user_id, resource_type):
     return granted
 
 
+def visible_document_codes(user_id):
+    """
+    document_code values for uploaded files visible to this user - their
+    own uploads, plus anything explicitly granted via Resource Mapping.
+    Same "own + granted" rule as introspect_api_db/introspect_spreadsheets;
+    used to scope both the FILES status shown in the router config and
+    the actual Qdrant retrieval in llm_service.answer_from_docs, so a
+    document uploaded by (or not shared with) another user never surfaces
+    in this user's answers.
+    """
+    from app.models.file_resource import FileResource
+
+    granted_ids = _visible_resource_ids(user_id, 'file')
+    resources = FileResource.query.filter(
+        (FileResource.created_by_user_id == user_id) | (FileResource.id.in_(granted_ids or [-1]))
+    ).all()
+    return [r.document_code for r in resources]
+
+
 def _introspect_visible_databases(user_id, sap_db_config=None):
     """
     Introspects the external SAP-style database(s) this user can actually
@@ -498,15 +517,26 @@ def introspect_api_db(user_id):
 # STEP 3: INTROSPECT Qdrant -> FILES datasource
 # ============================================================
 
-def introspect_qdrant():
+def introspect_qdrant(user_id):
     """
-    Confirms Qdrant collection metrics to verify active uploads.
+    Confirms Qdrant collection metrics to verify active uploads visible to
+    this specific user - their own uploads plus anything explicitly
+    granted via Resource Mapping (see visible_document_codes). Points
+    belonging to other users'/companies' documents are never counted here,
+    so the router never even reports them as "available" to this user.
     """
     if QdrantClient is None:
         print("⚠️ [FILES] qdrant_client not installed, skipping FILES datasource.")
         return None
 
+    doc_codes = visible_document_codes(user_id)
+    if not doc_codes:
+        print(f"⚠️ [FILES] No documents visible to user {user_id}, skipping FILES datasource.")
+        return None
+
     try:
+        from qdrant_client.http import models as qmodels
+
         client = QdrantClient(url=QDRANT_URL, timeout=5)
         collections = client.get_collections().collections
         names = [c.name for c in collections]
@@ -515,25 +545,31 @@ def introspect_qdrant():
             print(f"⚠️ [FILES] Collection '{QDRANT_COLLECTION}' not found in Qdrant, skipping.")
             return None
 
-        info = client.get_collection(QDRANT_COLLECTION)
-        points_count = info.points_count or 0
-
-        if points_count == 0:
-            print(f"⚠️ [FILES] Collection '{QDRANT_COLLECTION}' is empty, skipping FILES datasource.")
-            return None
+        visibility_filter = qmodels.Filter(
+            must=[
+                qmodels.FieldCondition(
+                    key="metadata.document_code",
+                    match=qmodels.MatchAny(any=doc_codes),
+                )
+            ]
+        )
 
         # Count chunks by type (text / table / image) so the router knows
-        # what kind of content is actually available in FILES.
+        # what kind of content is actually available in FILES - scoped to
+        # this user's own/granted documents only, never the whole collection.
         chunk_type_counts = {"text": 0, "table": 0, "image": 0, "other": 0}
+        points_count = 0
         next_offset = None
         while True:
             points, next_offset = client.scroll(
                 collection_name=QDRANT_COLLECTION,
+                scroll_filter=visibility_filter,
                 limit=500,
                 offset=next_offset,
                 with_payload=True,
                 with_vectors=False,
             )
+            points_count += len(points)
             for point in points:
                 payload = point.payload or {}
                 chunk_type = payload.get("chunk_type")
@@ -556,7 +592,11 @@ def introspect_qdrant():
             if next_offset is None:
                 break
 
-        print(f"✅ [FILES] Qdrant collection '{QDRANT_COLLECTION}' has {points_count} points: {chunk_type_counts}")
+        if points_count == 0:
+            print(f"⚠️ [FILES] No indexed chunks visible to user {user_id}, skipping FILES datasource.")
+            return None
+
+        print(f"✅ [FILES] Qdrant collection '{QDRANT_COLLECTION}' has {points_count} points visible to user {user_id}: {chunk_type_counts}")
         return {
             "collection": QDRANT_COLLECTION,
             "points_count": points_count,
@@ -811,8 +851,9 @@ def generate_router_config(user_id, force=False, sap_db_config=None):
     The external SAP-style database is resolved from this user's own
     PostgreSQL connections (own + resource-mapped) unless sap_db_config is
     given explicitly - see _introspect_visible_databases()'s docstring.
-    Qdrant (introspect_qdrant) is still global for now - not yet scoped
-    per resource-mapping the way everything else here is.
+    Qdrant documents (introspect_qdrant) are scoped the same way, via
+    visible_document_codes() - so every datasource here now reflects only
+    what this user created or was granted, not the whole company/system.
     """
     from app import db
     from app.models.user import User
@@ -828,7 +869,7 @@ def generate_router_config(user_id, force=False, sap_db_config=None):
 
     db_tables = _introspect_visible_databases(user_id, sap_db_config)
     api_tools = introspect_api_db(user_id)
-    files_info = introspect_qdrant()
+    files_info = introspect_qdrant(user_id)
     spreadsheet_tables = introspect_spreadsheets(user_id)
 
     if not db_tables and not api_tools and not files_info and not spreadsheet_tables:
