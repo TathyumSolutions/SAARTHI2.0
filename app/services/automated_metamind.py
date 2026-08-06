@@ -454,32 +454,61 @@ def _introspect_visible_databases(user_id, sap_db_config=None):
     if sap_db_config is not None:
         return introspect_databridge_db(sap_db_config)
 
-    from app.models.database_connection import DatabaseConnection
-    from app.utils.crypto import decrypt
-
-    granted_ids = _visible_resource_ids(user_id, 'database')
-    connections = DatabaseConnection.query.filter(
-        DatabaseConnection.type == 'PostgreSQL',
-        (DatabaseConnection.created_by_user_id == user_id) | (DatabaseConnection.id.in_(granted_ids or [-1]))
-    ).all()
-
+    connections = _visible_postgresql_connections(user_id)
     if not connections:
         return introspect_databridge_db(None)
 
     merged_tables = {}
     for connection in connections:
-        config = {
-            "host": connection.host,
-            "port": connection.port or 5432,
-            "dbname": connection.database,
-            "user": connection.username,
-            "password": decrypt(connection.password) if connection.password else "",
-        }
-        tables = introspect_databridge_db(config)
+        tables = introspect_databridge_db(_connection_to_db_config(connection))
         if tables:
             merged_tables.update(tables)
 
     return merged_tables or None
+
+
+def _visible_postgresql_connections(user_id):
+    """PostgreSQL DatabaseConnection rows visible to this user - own + resource-mapped."""
+    from app.models.database_connection import DatabaseConnection
+
+    granted_ids = _visible_resource_ids(user_id, 'database')
+    return DatabaseConnection.query.filter(
+        DatabaseConnection.type == 'PostgreSQL',
+        (DatabaseConnection.created_by_user_id == user_id) | (DatabaseConnection.id.in_(granted_ids or [-1]))
+    ).all()
+
+
+def _connection_to_db_config(connection):
+    from app.utils.crypto import decrypt
+    return {
+        "host": connection.host,
+        "port": connection.port or 5432,
+        "dbname": connection.database,
+        "user": connection.username,
+        "password": decrypt(connection.password) if connection.password else "",
+    }
+
+
+def resolve_query_execution_config(user_id):
+    """
+    Connection config to actually RUN generated SQL against for this user -
+    not just introspect for schema. Picks this user's first visible
+    PostgreSQL connection (own + resource-mapped); returns None if they
+    have none registered, in which case the caller should fall back to its
+    own default (e.g. the app's own database, for local/dev use).
+
+    Only a single connection is supported here for now - if a user has
+    multiple PostgreSQL connections, their combined schema is still shown.
+    (introspect_databridge_db can merge tables across connections; query
+    execution against a specific one of several cannot yet, since nothing
+    tracks which connection a given table actually came from once the two
+    schemas are merged.) This matches the existing "still global for now"
+    caveat on the external SAP-style database.
+    """
+    connections = _visible_postgresql_connections(user_id)
+    if not connections:
+        return None
+    return _connection_to_db_config(connections[0])
 
 
 def introspect_api_db(user_id):

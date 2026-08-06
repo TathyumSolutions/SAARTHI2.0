@@ -12,7 +12,26 @@ class DataBridgeState(TypedDict):
     # ===== Input =====
     user_query: str
     model_name: Optional[str]
-    
+    requested_model_name: Optional[str]
+    session_id: Optional[str]
+    user_id: Optional[int]
+    custom_key: Optional[str]
+    system_instructions: Optional[str]
+    steps: Optional[List[str]]
+
+    # ===== Internal (not persisted/streamed, request-scoped only) =====
+    # Per-request agent instances built from the querying user's own
+    # schema - see run_data_bridge_agent(). LangGraph only preserves keys
+    # declared here across node invocations; anything else is silently
+    # dropped from state before it reaches the next node.
+    _agents: Optional[Dict[str, Any]]
+    # Connection (host/port/dbname/user/password) to run generated SQL
+    # against for this request - see resolve_query_execution_config() in
+    # automated_metamind.py. None means "use QueryFormatterAgent's own
+    # default", not "no database".
+    db_config: Optional[Dict[str, Any]]
+
+
     # ===== Query Processing =====
     simplified_query: Optional[str]
     query_sense_output: Optional[Dict[str, Any]]
