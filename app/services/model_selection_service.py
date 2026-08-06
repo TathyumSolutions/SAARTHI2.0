@@ -53,8 +53,17 @@ def _is_paid_api_model(model_name: str, provider: str) -> bool:
     )
 
 
-def get_available_models(user_id: int = 1) -> List[Dict[str, str]]:
-    rows = ModelConfiguration.query.filter_by(user_id=user_id).all()
+def _row_company_code(row: ModelConfiguration) -> str:
+    settings = row.settings if isinstance(row.settings, dict) else {}
+    return str(settings.get("company_code") or "").strip()
+
+
+def get_available_models(user_id: int = 1, company_code: Optional[str] = None) -> List[Dict[str, str]]:
+    rows = ModelConfiguration.query.all()
+    if company_code:
+        rows = [row for row in rows if _row_company_code(row) == company_code]
+    else:
+        rows = [row for row in rows if row.user_id == user_id]
 
     seen = set()
     options: List[Dict[str, str]] = []
@@ -102,8 +111,8 @@ def get_model_for_step(step_name: str, requested_main_model: Optional[str] = Non
     return selected_model
 
 
-def get_recommended_preset_payload(preset_key: str, user_id: int = 1) -> Dict[str, object]:
-    available = get_available_models(user_id=user_id)
+def get_recommended_preset_payload(preset_key: str, user_id: int = 1, company_code: Optional[str] = None) -> Dict[str, object]:
+    available = get_available_models(user_id=user_id, company_code=company_code)
     if not available:
         return {
             "key": preset_key,

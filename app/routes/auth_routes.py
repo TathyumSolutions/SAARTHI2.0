@@ -315,7 +315,7 @@ def get_profile():
     try:
         conn = get_auth_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT id, name, email, created_at FROM users WHERE id = %s;", (current_user_id,))
+        cursor.execute("SELECT id, name, email, company_code, role, created_at FROM users WHERE id = %s;", (current_user_id,))
         user = cursor.fetchone()
         cursor.close()
         conn.close()

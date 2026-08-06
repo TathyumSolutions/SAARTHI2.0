@@ -2,6 +2,9 @@
 Model Configuration API Routes
 Handles LLM model settings, fine-tuning, and custom model management
 """
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from app import db                                       # CODE CHANGE: Imported database instance
@@ -30,6 +33,104 @@ def _resolve_user_id() -> int:
         return int(identity)
     except Exception:
         return 1
+
+
+def _get_auth_db_connection():
+    base_uri = os.environ.get('ENVIRONMENT_DATABASE_URL') or "postgresql://saarthi:password@db:5432/saarthi_db"
+    if "saarthi_db" in base_uri:
+        auth_db_uri = base_uri.replace("saarthi_db", "saarthi_auth_db")
+    else:
+        auth_db_uri = "postgresql://saarthi:password@db:5432/saarthi_auth_db"
+    return psycopg2.connect(auth_db_uri)
+
+
+def _resolve_company_context():
+    user_id = _resolve_user_id()
+    fallback_company = "default_company"
+    fallback_name = "Default Company"
+    fallback_role = "user"
+
+    try:
+        conn = _get_auth_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT company_code, role, name FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone() or {}
+        cur.close()
+        conn.close()
+
+        company_code = str(row.get("company_code") or fallback_company).strip() or fallback_company
+        company_name = str(row.get("name") or fallback_name).strip() or fallback_name
+        role = str(row.get("role") or fallback_role).strip().lower() or fallback_role
+        return {
+            "user_id": user_id,
+            "company_code": company_code,
+            "company_name": company_name,
+            "role": role,
+        }
+    except Exception:
+        return {
+            "user_id": user_id,
+            "company_code": fallback_company,
+            "company_name": fallback_name,
+            "role": fallback_role,
+        }
+
+
+def _settings_company_code(settings):
+    if not isinstance(settings, dict):
+        return ""
+    return str(settings.get("company_code") or "").strip()
+
+
+def _list_company_configs(company_code: str, workspace_id=None):
+    rows = ModelConfiguration.query.all()
+    scoped = [row for row in rows if _settings_company_code(row.settings) == company_code]
+    if workspace_id is not None:
+        scoped = [row for row in scoped if row.workspace_id == workspace_id]
+    return scoped
+
+
+def _seed_default_open_source_models(company_ctx: dict):
+    company_code = company_ctx["company_code"]
+    existing = _list_company_configs(company_code=company_code)
+    existing_models = {row.model for row in existing}
+
+    defaults = [
+        {
+            "name": "Llama 3",
+            "model": "ollama://llama3",
+            "provider": "ollama",
+        },
+        {
+            "name": "Qwen 2.5 3B",
+            "model": "ollama://qwen2.5:3b",
+            "provider": "ollama",
+        },
+    ]
+
+    created_any = False
+    for item in defaults:
+        if item["model"] in existing_models:
+            continue
+        cfg = ModelConfiguration(
+            name=item["name"],
+            model=item["model"],
+            provider=item["provider"],
+            workspace_id=None,
+            user_id=company_ctx["user_id"],
+            settings={
+                "company_code": company_code,
+                "company_name": company_ctx.get("company_name", ""),
+                "model_engine": "ollama",
+                "base_url": "http://ollama:11434/api/chat",
+                "seeded_default": True,
+            },
+        )
+        db.session.add(cfg)
+        created_any = True
+
+    if created_any:
+        db.session.commit()
 
 
 @bp.route('/global-selection', methods=['GET'])
@@ -76,10 +177,10 @@ def save_global_model_selection():
 @bp.route('/global-selection/options', methods=['GET'])
 @jwt_required()
 def get_global_selection_options():
-    user_id = _resolve_user_id()
+    ctx = _resolve_company_context()
     return jsonify(
         {
-            'models': get_available_models(user_id=user_id),
+            'models': get_available_models(user_id=ctx['user_id'], company_code=ctx['company_code']),
             'steps': PIPELINE_STEPS,
             'presets': [
                 {
@@ -95,8 +196,12 @@ def get_global_selection_options():
 @bp.route('/global-selection/preset/<string:preset_key>', methods=['GET'])
 @jwt_required()
 def get_global_selection_preset(preset_key):
-    user_id = _resolve_user_id()
-    payload = get_recommended_preset_payload(preset_key=preset_key, user_id=user_id)
+    ctx = _resolve_company_context()
+    payload = get_recommended_preset_payload(
+        preset_key=preset_key,
+        user_id=ctx['user_id'],
+        company_code=ctx['company_code'],
+    )
     return jsonify(payload), 200
 
 @bp.route('/configurations', methods=['GET'])
@@ -108,16 +213,11 @@ def get_configurations():
     Query params: workspace_id
     Response: { "configurations": [{id, name, model, provider, settings}] }
     """
-    #user_id = get_jwt_identity()
-    user_id=1
+    company_ctx = _resolve_company_context()
     workspace_id = request.args.get('workspace_id', type=int)
-    
-    # Filter configurations by the current authenticated user
-    query = ModelConfiguration.query.filter_by(user_id=user_id)
-    if workspace_id:
-        query = query.filter_by(workspace_id=workspace_id)
-        
-    configs = query.all()
+
+    _seed_default_open_source_models(company_ctx)
+    configs = _list_company_configs(company_ctx['company_code'], workspace_id=workspace_id)
     return jsonify({"configurations": [c.to_dict() for c in configs]}), 200
 
 
@@ -141,33 +241,49 @@ def create_configuration():
     #        user_id = int(raw_identity)
     #    except (ValueError, TypeError):
     #        user_id = 1
-    user_id = 1
-    #user_id = get_jwt_identity()
+    company_ctx = _resolve_company_context()
     data = request.get_json() or {}
     
     if not data.get('name') or not data.get('model') or not data.get('provider'):
         return jsonify({"error": "Missing required fields: name, model, and provider are mandatory."}), 400
         
-    new_config = ModelConfiguration(
-        name=data.get('name'),
-        model=data.get('model'),
-        provider=data.get('provider'),
-        settings=data.get('settings', {}),
-        workspace_id=data.get('workspace_id'), # Optional field
-        user_id=user_id
-    )
+    incoming_settings = data.get('settings', {}) if isinstance(data.get('settings', {}), dict) else {}
+    incoming_settings['company_code'] = company_ctx['company_code']
+    incoming_settings.setdefault('company_name', company_ctx['company_name'])
+
+    existing = None
+    for row in _list_company_configs(company_ctx['company_code']):
+        if row.model == data.get('model'):
+            existing = row
+            break
+
+    if existing:
+        existing.name = data.get('name')
+        existing.provider = data.get('provider')
+        existing.workspace_id = data.get('workspace_id')
+        existing.settings = {**(existing.settings or {}), **incoming_settings}
+        target = existing
+    else:
+        target = ModelConfiguration(
+            name=data.get('name'),
+            model=data.get('model'),
+            provider=data.get('provider'),
+            settings=incoming_settings,
+            workspace_id=data.get('workspace_id'),
+            user_id=company_ctx['user_id']
+        )
     
     #db.session.add(new_config)
     #db.session.commit()
     try:
-        db.session.add(new_config)
+        db.session.add(target)
         db.session.commit()
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Database write failed: {str(e)}"}), 500
     
     return jsonify({
-        "configuration": new_config.to_dict(),
+        "configuration": target.to_dict(),
         "message": "Configuration created successfully."
     }), 201
 
@@ -178,8 +294,10 @@ def get_configuration(config_id):
     Get specific configuration
     Response: { "configuration": {...} }
     """
-    user_id = get_jwt_identity()
-    config = ModelConfiguration.query.filter_by(id=config_id, user_id=user_id).first_or_404()
+    company_ctx = _resolve_company_context()
+    config = ModelConfiguration.query.filter_by(id=config_id).first_or_404()
+    if _settings_company_code(config.settings) != company_ctx['company_code']:
+        return jsonify({"error": "Configuration not found for this company."}), 404
     return jsonify({"configuration": config.to_dict()}), 200
    
 
@@ -191,8 +309,10 @@ def update_configuration(config_id):
     Request: { "name": "...", "settings": {...} }
     Response: { "configuration": {...}, "message": "Configuration updated" }
     """
-    user_id = get_jwt_identity()
-    config = ModelConfiguration.query.filter_by(id=config_id, user_id=user_id).first_or_404()
+    company_ctx = _resolve_company_context()
+    config = ModelConfiguration.query.filter_by(id=config_id).first_or_404()
+    if _settings_company_code(config.settings) != company_ctx['company_code']:
+        return jsonify({"error": "Configuration not found for this company."}), 404
     data = request.get_json() or {}
     
     if 'name' in data:
@@ -203,7 +323,9 @@ def update_configuration(config_id):
         config.provider = data['provider']
     if 'settings' in data:
         # Merge incoming settings into existing configuration JSON field
-        config.settings = {**config.settings, **data['settings']}
+        merged = {**(config.settings or {}), **data['settings']}
+        merged['company_code'] = company_ctx['company_code']
+        config.settings = merged
     if 'workspace_id' in data:
         config.workspace_id = data['workspace_id']
         
@@ -221,8 +343,10 @@ def delete_configuration(config_id):
     Delete configuration
     Response: { "message": "Configuration deleted" }
     """
-    user_id = get_jwt_identity()
-    config = ModelConfiguration.query.filter_by(id=config_id, user_id=user_id).first_or_404()
+    company_ctx = _resolve_company_context()
+    config = ModelConfiguration.query.filter_by(id=config_id).first_or_404()
+    if _settings_company_code(config.settings) != company_ctx['company_code']:
+        return jsonify({"error": "Configuration not found for this company."}), 404
     
     db.session.delete(config)
     db.session.commit()

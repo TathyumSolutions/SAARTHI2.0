@@ -31,6 +31,39 @@ def get_chats_db_connection():
     return psycopg2.connect(chats_db_uri)
 
 
+def get_auth_db_connection():
+    base_uri = os.environ.get('ENVIRONMENT_DATABASE_URL') or "postgresql://saarthi:password@db:5432/saarthi_db"
+    if "saarthi_db" in base_uri:
+        auth_db_uri = base_uri.replace("saarthi_db", "saarthi_auth_db")
+    else:
+        auth_db_uri = "postgresql://saarthi:password@db:5432/saarthi_auth_db"
+    return psycopg2.connect(auth_db_uri)
+
+
+def _resolve_company_context():
+    user_id = get_jwt_identity()
+    fallback = {
+        "company_code": "default_company",
+        "company_name": None,
+        "role": "user",
+    }
+
+    try:
+        conn = get_auth_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT company_code, role, name FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone() or {}
+        cur.close()
+        conn.close()
+        return {
+            "company_code": str(row.get("company_code") or fallback["company_code"]).strip() or fallback["company_code"],
+            "company_name": row.get("name") or fallback["company_name"],
+            "role": str(row.get("role") or fallback["role"]).strip().lower() or fallback["role"],
+        }
+    except Exception:
+        return fallback
+
+
 def _resolve_feedback_user():
     """Resolve the current user from JWT if available; fallback to user 1."""
     try:
@@ -303,6 +336,7 @@ def send_message():
     stream_manager.start_new_query(session_id)
 
     custom_key = data.get('custom_key', '')
+    model_base_url = data.get('model_base_url', '')
     system_instructions = data.get('system_instructions', '')
 
     if not user_query:
@@ -311,15 +345,28 @@ def send_message():
     if not model_name:
         return jsonify({"error": "No valid LLM model selected. Please select a model from the dropdown."}), 400
     
+    company_ctx = _resolve_company_context()
+
     if model_name.startswith('api://') or model_name.startswith('ollama://'):
         # Querying the record to fetch credentials securely on the server
-        config = ModelConfiguration.query.filter_by(model=model_name).first()
-        if config:
-            db_settings = config.settings or {}
+        config_rows = ModelConfiguration.query.filter_by(model=model_name).all()
+        selected_config = None
+        for row in config_rows:
+            row_settings = row.settings if isinstance(row.settings, dict) else {}
+            if str(row_settings.get('company_code') or '').strip() == company_ctx['company_code']:
+                selected_config = row
+                break
+        if not selected_config and config_rows:
+            selected_config = config_rows[0]
+
+        if selected_config:
+            db_settings = selected_config.settings or {}
             # If a custom key was saved, use it to override the default credentials pipeline
-            if db_settings.get('custom_key'):
+            if not custom_key and db_settings.get('custom_key'):
                 custom_key = db_settings.get('custom_key')
                 print(f"DEBUG: Successfully intercepted database router '{model_name}'. Injecting secure custom credentials token.")
+            if not model_base_url and db_settings.get('base_url'):
+                model_base_url = db_settings.get('base_url')
 
     try:
         # STEP 1: Get the answer from your RAG logic in LLMService
@@ -334,8 +381,9 @@ def send_message():
             session_id=session_id,
             model_name=model_name,
             custom_key=custom_key,
+            model_base_url=model_base_url,
             system_instructions=system_instructions,
-            company_name=company_name,
+            company_name=company_ctx.get('company_name') or company_name,
             user_id=user_id,
         )
         print(f"DEBUG: AI Response from Service: {ai_response}")

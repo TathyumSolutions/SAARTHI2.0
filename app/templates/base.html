@@ -399,22 +399,9 @@
                     <span>Configured Models</span>
                     <span class="expand-icon">▼</span>
                 </div>
-                <div class="sub-items">
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Claude 4.5 Sonnet
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>GPT-4 Turbo
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Llama 3.3 70B
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Gemini Pro
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Mixtral 8x7B
+                <div class="sub-items" id="configuredModelsList">
+                    <div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">
+                        Loading configured models...
                     </div>
                     <div id="plusModelBtn" class="sub-item" style="color: var(--primary-blue); font-weight: 500; cursor: pointer;">
                         <span style="margin-right: 8px;">➕</span>Configure New Model
@@ -585,6 +572,68 @@
                 const shouldBeActive = isApiButton ? (path === '/api_mode') : (path !== '/api_mode');
                 btn.classList.toggle('active', shouldBeActive);
             });
+        });
+
+        function renderConfiguredModelsSidebar(configurations) {
+            const wrapper = document.getElementById('configuredModelsList');
+            if (!wrapper) return;
+
+            const plusBtn = document.getElementById('plusModelBtn');
+            wrapper.innerHTML = '';
+
+            if (!configurations || configurations.length === 0) {
+                const emptyItem = document.createElement('div');
+                emptyItem.className = 'sub-item';
+                emptyItem.style.color = '#64748b';
+                emptyItem.style.fontStyle = 'italic';
+                emptyItem.style.pointerEvents = 'none';
+                emptyItem.textContent = 'No configured models found';
+                wrapper.appendChild(emptyItem);
+            } else {
+                configurations.forEach(function (config, idx) {
+                    const modelItem = document.createElement('div');
+                    modelItem.className = 'sub-item';
+                    const activeBadge = idx === 0 ? '<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>' : '';
+                    modelItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${config.name || config.model}${activeBadge}`;
+                    wrapper.appendChild(modelItem);
+                });
+            }
+
+            if (plusBtn) {
+                wrapper.appendChild(plusBtn);
+            }
+        }
+
+        function loadConfiguredModelsSidebar() {
+            authFetch('/api/model-config/configurations')
+                .then(function (response) {
+                    if (!response.ok) throw new Error('Could not load model configs');
+                    return response.json();
+                })
+                .then(function (data) {
+                    renderConfiguredModelsSidebar((data && data.configurations) || []);
+                })
+                .catch(function () {
+                    renderConfiguredModelsSidebar([]);
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const plusModelBtn = document.getElementById('plusModelBtn');
+            if (plusModelBtn) {
+                plusModelBtn.addEventListener('click', function () {
+                    if (window.location.pathname !== '/index') {
+                        window.location.href = '/index?configure_model=1';
+                        return;
+                    }
+                    const modal = document.getElementById('modelModal');
+                    if (modal) {
+                        modal.classList.add('active');
+                        modal.style.display = 'flex';
+                    }
+                });
+            }
+            loadConfiguredModelsSidebar();
         });
 
         // ==========================================

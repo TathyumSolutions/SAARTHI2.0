@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.services.stream_manager import stream_manager
+from app.models.model_config import ModelConfiguration
 from app.utils.network_guard import is_safe_url
 
 def fetch_and_translate_tools():
@@ -60,7 +61,16 @@ def fetch_and_translate_tools():
     return llm_tools_list
 
 
-def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', ollama_config=None,display_query=None,system_instructions=''):
+def _resolve_model_runtime_settings(model_name: str):
+    cfg = ModelConfiguration.query.filter_by(model=model_name).order_by(ModelConfiguration.id.desc()).first()
+    settings = cfg.settings if cfg and isinstance(cfg.settings, dict) else {}
+    return {
+        "custom_key": settings.get("custom_key") or "",
+        "base_url": settings.get("base_url") or "",
+    }
+
+
+def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', model_base_url='', ollama_config=None,display_query=None,system_instructions=''):
     """
     Dynamically routes queries to models, strictly enforcing tool execution,
     performs the actual API execution, and returns a fully parsed response context.
@@ -96,6 +106,12 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
 
     try:
+        runtime_settings = _resolve_model_runtime_settings(model_name)
+        if not custom_key and runtime_settings.get("custom_key"):
+            custom_key = runtime_settings.get("custom_key")
+        if not model_base_url and runtime_settings.get("base_url"):
+            model_base_url = runtime_settings.get("base_url")
+
         push_tool_event("start", "Your Question", f"\"{user_message}\"")
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_message)]
         push_tool_event("complete", "Your Question", f"\"{user_message}\"")
@@ -139,7 +155,14 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         # --- ROUTE C: DYNAMIC CLOUD PROVIDERS (api://) ---
         elif str(model_name).startswith("api://"):
             actual_model = model_name.replace("api://", "").lower()
-            if "claude" in actual_model:
+            if model_base_url:
+                dynamic_llm = ChatOpenAI(
+                    model=actual_model,
+                    temperature=0,
+                    openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY", "placeholder-key"),
+                    openai_api_base=model_base_url,
+                )
+            elif "claude" in actual_model:
                 from langchain_anthropic import ChatAnthropic
                 dynamic_llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY"))
             elif "gemini" in actual_model:
@@ -161,6 +184,8 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
             actual_model = model_name.replace("ollama://", "")
             if not ollama_config:
                 ollama_config = {"url": "http://localhost:11434/api/chat", "temperature": 0}
+            if model_base_url:
+                ollama_config["url"] = model_base_url
             payload = {
                 "model": actual_model,
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
@@ -262,7 +287,14 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                             refinement_llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
                         elif str(model_name).startswith("api://"):
                             actual_model = model_name.replace("api://", "").lower()
-                            if "claude" in actual_model:
+                            if model_base_url:
+                                refinement_llm = ChatOpenAI(
+                                    model=actual_model,
+                                    temperature=0,
+                                    openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY", "placeholder-key"),
+                                    openai_api_base=model_base_url,
+                                )
+                            elif "claude" in actual_model:
                                 from langchain_anthropic import ChatAnthropic
                                 refinement_llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY"))
                             elif "gemini" in actual_model:

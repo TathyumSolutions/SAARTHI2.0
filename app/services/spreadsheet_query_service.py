@@ -20,6 +20,7 @@ import pandas as pd
 
 from app.services.stream_manager import stream_manager
 from app.services import spreadsheet_service
+from app.models.model_config import ModelConfiguration
 
 ALLOWED_FILTER_OPS = {"==", "!=", ">", "<", ">=", "<=", "in", "contains"}
 ALLOWED_AGG_FUNCS = {"sum", "mean", "count", "min", "max", "median", "nunique"}
@@ -97,6 +98,12 @@ def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_cont
 
     messages = [SystemMessage(content=system_content), HumanMessage(content=user_content)]
 
+    cfg = ModelConfiguration.query.filter_by(model=model_name).order_by(ModelConfiguration.id.desc()).first()
+    cfg_settings = cfg.settings if cfg and isinstance(cfg.settings, dict) else {}
+    model_base_url = cfg_settings.get("base_url") or ""
+    if not custom_key and cfg_settings.get("custom_key"):
+        custom_key = cfg_settings.get("custom_key")
+
     if model_name in ("gpt-4o", "gpt-4o-mini"):
         from langchain_openai import ChatOpenAI
         llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key or os.getenv("OPENAI_API_KEY"))
@@ -104,7 +111,15 @@ def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_cont
 
     if str(model_name).startswith("api://"):
         actual_model = model_name.replace("api://", "").lower()
-        if "claude" in actual_model:
+        if model_base_url:
+            from langchain_openai import ChatOpenAI
+            llm = ChatOpenAI(
+                model=actual_model,
+                temperature=0,
+                openai_api_key=custom_key or os.getenv("OPENAI_API_KEY", "placeholder-key"),
+                openai_api_base=model_base_url,
+            )
+        elif "claude" in actual_model:
             from langchain_anthropic import ChatAnthropic
             llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key or os.getenv("ANTHROPIC_API_KEY"))
         elif "gemini" in actual_model:
@@ -122,8 +137,9 @@ def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_cont
         import requests
         actual_model = model_name.replace("ollama://", "") if str(model_name).startswith("ollama://") else "llama3"
         prompt = f"{system_content}\n\n{user_content}"
+        ollama_url = model_base_url or "http://ollama:11434/api/generate"
         response = requests.post(
-            "http://ollama:11434/api/generate",
+            ollama_url,
             json={"model": actual_model, "prompt": prompt, "stream": False, "options": {"temperature": 0}},
             timeout=120,
         )

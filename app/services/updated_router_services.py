@@ -577,6 +577,7 @@ def _run_api_track(question: str, ctx: dict) -> dict:
         user_message=enriched_question, llm_tools_list=ctx["active_db_tools"],
         model_name=ctx["model_name"], session_id=ctx["session_id"],
         custom_key=ctx["custom_key"],
+        model_base_url=ctx.get("model_base_url", ""),
         ollama_config={"url": "http://ollama:11434/api/chat", "temperature": 0},
         display_query=enriched_question,
     )
@@ -683,6 +684,7 @@ class RouterService:
         model_name: str = "gpt-4o-mini",
         session_id=1,
         custom_key: str = "",
+        model_base_url: str = "",
         system_instructions: str = "",
         chat_history: Optional[list] = None,
         company_name: Optional[str] = None,
@@ -779,7 +781,7 @@ class RouterService:
 
             ctx = {
                 "user_query": user_query, "model_name": model_name, "session_id": session_id,
-                "custom_key": custom_key, "system_instructions": system_instructions,
+                "custom_key": custom_key, "model_base_url": model_base_url, "system_instructions": system_instructions,
                 "active_db_tools": active_db_tools, "router_config": router_config,
                 "company_feedback_context": company_feedback_context,
                 "user_id": user_id,

@@ -20,6 +20,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from dotenv import load_dotenv
 import requests 
 import json
+from app.models.model_config import ModelConfiguration
 from .rag_config import load_rag_config
 #from .databridge_services import run_data_bridge_agent
 try:
@@ -30,6 +31,14 @@ except Exception as e:
 from app.services.stream_manager import stream_manager
 
 load_dotenv()
+
+
+def _resolve_runtime_overrides(model_name: str, custom_key: str):
+    cfg = ModelConfiguration.query.filter_by(model=model_name).order_by(ModelConfiguration.id.desc()).first()
+    settings = cfg.settings if cfg and isinstance(cfg.settings, dict) else {}
+    effective_key = custom_key or settings.get("custom_key") or ""
+    base_url = settings.get("base_url") or ""
+    return effective_key, base_url
 
 class LLMService:
     """Service for LLM provider interactions and RAG pipeline"""
@@ -610,33 +619,41 @@ class LLMService:
                 elif str(model_name).startswith("api://"):
                     actual_model = model_name.replace("api://", "").lower()
                     messages = [HumanMessage(content=analysis_prompt)]
+                    runtime_key, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
                     
-                    if "claude" in actual_model:
+                    if runtime_base_url:
+                        dynamic_llm = ChatOpenAI(
+                            model=actual_model,
+                            temperature=self.rag_config["generation"]["temperature"],
+                            openai_api_key=runtime_key if runtime_key else os.getenv("OPENAI_API_KEY", "placeholder-key"),
+                            openai_api_base=runtime_base_url,
+                        )
+                    elif "claude" in actual_model:
                         from langchain_anthropic import ChatAnthropic
                         dynamic_llm = ChatAnthropic(
                             model=actual_model,
                             temperature=self.rag_config["generation"]["temperature"],
-                            anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY")
+                            anthropic_api_key=runtime_key if runtime_key else os.getenv("ANTHROPIC_API_KEY")
                         )
                     elif "gemini" in actual_model:
                         from langchain_google_genai import ChatGoogleGenerativeAI
                         dynamic_llm = ChatGoogleGenerativeAI(
                             model=actual_model,
                             temperature=self.rag_config["generation"]["temperature"],
-                            google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY")
+                            google_api_key=runtime_key if runtime_key else os.getenv("GOOGLE_API_KEY")
                         )
                     elif "deepseek" in actual_model:
                         dynamic_llm = ChatOpenAI(
                             model=actual_model,
                             temperature=self.rag_config["generation"]["temperature"],
-                            openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"),
+                            openai_api_key=runtime_key if runtime_key else os.getenv("DEEPSEEK_API_KEY"),
                             openai_api_base="https://api.deepseek.com/v1"
                         )
                     else:  # Custom GPT models
                         dynamic_llm = ChatOpenAI(
                             model=actual_model,
                             temperature=self.rag_config["generation"]["temperature"],
-                            openai_api_key=custom_key if custom_key else self.openai_key
+                            openai_api_key=runtime_key if runtime_key else self.openai_key
                         )
                     
                     ai_response = dynamic_llm.invoke(messages)
@@ -645,13 +662,15 @@ class LLMService:
                 # 3. DYNAMIC OLLAMA ROUTING
                 elif str(model_name).startswith("ollama://") or model_name == "llama3":
                     actual_model = model_name.replace("ollama://", "") if str(model_name).startswith("ollama://") else "llama3"
+                    _, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
+                    ollama_url = runtime_base_url or self.ollama_config["url"]
                     cot_payload = {
                         "model": actual_model,
                         "prompt": analysis_prompt,
                         "stream": False,
                         "options": {"temperature": self.ollama_config["temperature"]}
                     }
-                    cot_res = requests.post(self.ollama_config["url"], json=cot_payload, timeout=60)
+                    cot_res = requests.post(ollama_url, json=cot_payload, timeout=60)
                     analysis_text = cot_res.json().get("response", "").strip()
                 
                 else:
@@ -799,6 +818,7 @@ class LLMService:
             
             elif str(model_name).startswith("api://"):
                 actual_model = model_name.replace("api://", "").lower()
+                runtime_key, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
                 print(f"🌐 Dynamic RAG Routing payload to Custom Cloud API model: {actual_model}")
                 
                 messages = [
@@ -807,12 +827,22 @@ class LLMService:
                 ]
 
                 # 1. ANTHROPIC CLAUDE MODELS
-                if "claude" in actual_model:
+                if runtime_base_url:
+                    dynamic_llm = ChatOpenAI(
+                        model=actual_model,
+                        temperature=self.rag_config["generation"]["temperature"],
+                        openai_api_key=runtime_key if runtime_key else os.getenv("OPENAI_API_KEY", "placeholder-key"),
+                        openai_api_base=runtime_base_url,
+                    )
+                    ai_response = dynamic_llm.invoke(messages)
+                    final_answer = ai_response.content
+
+                elif "claude" in actual_model:
                     from langchain_anthropic import ChatAnthropic
                     dynamic_llm = ChatAnthropic(
                         model=actual_model,
                         temperature=self.rag_config["generation"]["temperature"],
-                        anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY")
+                        anthropic_api_key=runtime_key if runtime_key else os.getenv("ANTHROPIC_API_KEY")
                     )
                     ai_response = dynamic_llm.invoke(messages)
                     final_answer = ai_response.content
@@ -823,7 +853,7 @@ class LLMService:
                     dynamic_llm = ChatGoogleGenerativeAI(
                         model=actual_model,
                         temperature=self.rag_config["generation"]["temperature"],
-                        google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY")
+                        google_api_key=runtime_key if runtime_key else os.getenv("GOOGLE_API_KEY")
                     )
                     ai_response = dynamic_llm.invoke(messages)
                     final_answer = ai_response.content
@@ -833,7 +863,7 @@ class LLMService:
                     dynamic_llm = ChatOpenAI(
                         model=actual_model,
                         temperature=self.rag_config["generation"]["temperature"],
-                        openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"),
+                        openai_api_key=runtime_key if runtime_key else os.getenv("DEEPSEEK_API_KEY"),
                         openai_api_base="https://api.deepseek.com/v1"
                     )
                     ai_response = dynamic_llm.invoke(messages)
@@ -844,7 +874,7 @@ class LLMService:
                     dynamic_llm = ChatOpenAI(
                         model=actual_model,
                         temperature=self.rag_config["generation"]["temperature"],
-                        openai_api_key=custom_key if custom_key else self.openai_key
+                        openai_api_key=runtime_key if runtime_key else self.openai_key
                     )
                     ai_response = dynamic_llm.invoke(messages)
                     final_answer = ai_response.content
@@ -856,11 +886,13 @@ class LLMService:
 
             elif str(model_name).startswith("ollama://"):
                 actual_model = model_name.replace("ollama://", "")
+                _, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
+                ollama_url = runtime_base_url or self.ollama_config["url"]
                 print(f"📦 Dynamic RAG Routing payload to Custom Local Ollama model: {actual_model}")
                 ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
                 
                 response = requests.post(
-                    self.ollama_config["url"],
+                    ollama_url,
                     json={
                         "model": actual_model,  # Directly maps raw string to local runtime container target
                         "prompt": ollama_prompt,
