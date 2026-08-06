@@ -450,6 +450,11 @@
                     <div class="item-icon">👥</div>
                     <span>Resource Mapping</span>
                 </div>
+
+                <div class="section-item" id="companyMasterMenuItem" style="display: none;" onclick="window.location.href='/platform/companies'">
+                    <div class="item-icon">🏢</div>
+                    <span>Company Master</span>
+                </div>
             </div>
         </div>
 
@@ -531,6 +536,11 @@
                     const label = (user.name || user.email || '').trim();
                     if (avatar && label) avatar.textContent = label.charAt(0).toUpperCase();
                     if (nameEl) nameEl.textContent = user.name || user.email || '';
+
+                    const companyMasterItem = document.getElementById('companyMasterMenuItem');
+                    if (companyMasterItem && user.is_superadmin) {
+                        companyMasterItem.style.display = '';
+                    }
                 })
                 .catch(function () {});
         }
