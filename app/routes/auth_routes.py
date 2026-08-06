@@ -5,7 +5,7 @@ company employee-approval workflow.
 """
 import secrets
 from datetime import datetime, timedelta
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app import db, limiter
 from app.models.user import User, ROLE_ADMIN, ROLE_USER, STATUS_ACTIVE, STATUS_PENDING, STATUS_REJECTED
@@ -230,7 +230,9 @@ def get_profile():
     user = User.query.get(int(current_user_id))
     if not user:
         return jsonify({"status": "error", "message": "User profile not found."}), 404
-    return jsonify({"status": "success", "user": user.to_dict()}), 200
+    profile = user.to_dict()
+    profile['is_superadmin'] = user.email.lower() in current_app.config.get('SUPERADMIN_EMAILS', [])
+    return jsonify({"status": "success", "user": profile}), 200
 
 
 @bp.route('/pending-approvals', methods=['GET'])
