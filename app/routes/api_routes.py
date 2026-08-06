@@ -46,11 +46,29 @@ def test_connection():
             "code": response.status_code,
             "message": "Connection test succeeded."
         })
+    except requests.exceptions.Timeout:
+        print(f"❌ Test connection timed out for '{full_url}'")
+        return jsonify({
+            "status": "error",
+            "message": "Connection test failed: the request timed out after 5 seconds. The endpoint may be slow, unreachable from this server, or blocking requests without a browser-like User-Agent."
+        })
+    except requests.exceptions.SSLError as e:
+        print(f"❌ Test connection SSL error for '{full_url}': {e}")
+        return jsonify({
+            "status": "error",
+            "message": "Connection test failed: SSL/TLS certificate error connecting to this URL."
+        })
+    except requests.exceptions.ConnectionError as e:
+        print(f"❌ Test connection failed for '{full_url}': {e}")
+        return jsonify({
+            "status": "error",
+            "message": "Connection test failed: could not reach this host from the server (DNS/network error, or the host refused the connection)."
+        })
     except Exception as e:
         print(f"❌ Test connection failed for '{full_url}': {e}")
         return jsonify({
             "status": "error",
-            "message": "Connection test failed. Please check the URL and try again."
+            "message": f"Connection test failed: {e}"
         })
 
 @bp.route('/api_connectors/save_tool', methods=['POST'])
