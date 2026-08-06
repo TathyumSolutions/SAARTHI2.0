@@ -279,6 +279,38 @@ def introspect_databridge_db(db_config=None):
     return tables_out
 
 
+def to_sql_agent_schema(db_tables: dict) -> dict:
+    """
+    Converts introspect_databridge_db()'s output shape into the
+    {"tables": {name: {"description", "columns": {col: {...}}, "foreign_keys"}}}
+    shape the LangGraph SQL agents (databridge_services/agents/*) expect -
+    columns keyed by name rather than a list, and foreign keys flattened to
+    "table.column" references. Used to feed those agents this specific
+    user's own introspected schema (from their router_configs row) instead
+    of a static, global schema file.
+    """
+    tables = {}
+    for table_name, table_data in (db_tables or {}).items():
+        columns = {
+            col["name"]: {
+                "type": col.get("data_type"),
+                "nullable": col.get("nullable"),
+                "example_values": col.get("sample_values", []),
+            }
+            for col in table_data.get("columns", [])
+        }
+        foreign_keys = [
+            {"column": fk["column"], "references": f"{fk['references_table']}.{fk['references_column']}"}
+            for fk in (table_data.get("constraints") or {}).get("foreign_keys", [])
+        ]
+        tables[table_name] = {
+            "description": table_data.get("description", ""),
+            "columns": columns,
+            "foreign_keys": foreign_keys,
+        }
+    return {"tables": tables}
+
+
 def _get_table_constraints(cur, conn, table_name):
     """
     Returns primary key, foreign key, and unique constraint info for one

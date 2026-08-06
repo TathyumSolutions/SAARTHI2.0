@@ -14,25 +14,24 @@ class QuerySimplifierAgent:
     Uses LLM to extract core intent and remove ambiguity.
     """
     
-    def __init__(self, schema_path: str, model_name: str = "llama3", url: str = "http://ollama:11434/api/generate"):
+    def __init__(self, schema_path: str = None, schema: dict = None, model_name: str = "llama3", url: str = "http://ollama:11434/api/generate"):
         self.schema_path = schema_path
         self.model_name = model_name
         self.url = url
 
         self.openai_key = os.getenv("OPENAI_API_KEY")
-        
-        # Load schema for context
-        if self.schema_path:
+
+        # schema, if given directly, takes precedence - this is how callers
+        # pass a specific user's own introspected schema (from their
+        # router_configs row) instead of reading a static file.
+        self.schema = schema or {}
+        if not schema and self.schema_path:
             try:
                 with open(self.schema_path, "r") as f:
                     self.schema = json.load(f)
             except (FileNotFoundError, TypeError, Exception):
                 # If file is missing, we just log a warning instead of crashing
                 print(f"⚠️ Warning: Could not load schema from {self.schema_path}. Proceeding with empty schema.")
-
-
-        #with open(schema_path, "r") as f:
-         #   self.schema = json.load(f)
     
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -73,7 +72,7 @@ class QuerySimplifierAgent:
     def simplify(self, user_query: str,target_model: str,custom_key: str = "",system_instructions:str = "") -> str:
         """Simplify the user query using LLM"""
         # Get table names for context
-        table_names = list(self.schema.keys())
+        table_names = list(self.schema.get("tables", {}).keys())
         
         #prompt = f"""
 #You are a query simplification expert. Your task is to simplify the user's natural language query while preserving its core intent.

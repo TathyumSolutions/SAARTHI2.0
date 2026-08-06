@@ -284,12 +284,10 @@ if __name__ == "__main__":
         user=os.getenv("DATABRIDGE_TARGET_USER"),
         password=os.getenv("DATABRIDGE_TARGET_PASSWORD", ""),
     )
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    save_path = os.path.join(BASE_DIR, "sap_schema_with_sap_comments.json")
 
-    with open(save_path, "w") as f:
-        json.dump(schema, f, indent=2)
-
-    print("✅ Success! Schema snapshot written to sap_schema_with_sap_comments.json")
-
-    #print("✅ SAP schema with domain-specific comments saved to sap_schema_with_sap_comments.json")
+    # No longer persisted to a local JSON snapshot - the live chat SQL
+    # agent (langgraph_agent.py) now builds its schema per-user from
+    # router_configs (via generate_router_config()/introspect_databridge_db())
+    # instead of reading a static global file, so nothing consumes this
+    # output on disk anymore.
+    print(f"✅ Success! Generated SAP schema with comments for {len(schema.get('tables', {}))} table(s).")
