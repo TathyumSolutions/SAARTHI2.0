@@ -383,6 +383,22 @@ def _build_schema_for_user(user_id: int) -> dict:
         return dict(EMPTY_SCHEMA)
 
 
+def _build_db_config_for_user(user_id: int):
+    """
+    Connection to actually RUN generated SQL against for this user - see
+    resolve_query_execution_config()'s docstring. None means "no
+    PostgreSQL connection registered", in which case QueryFormatterAgent
+    falls back to its own default (the app's own database, for local/dev
+    use) rather than this being treated as an error.
+    """
+    try:
+        from app.services.automated_metamind import resolve_query_execution_config
+        return resolve_query_execution_config(user_id)
+    except Exception as e:
+        print(f"⚠️ [SCHEMA] Could not resolve a query execution connection for user {user_id}: {e}")
+        return None
+
+
 def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "", user_id: int = 1) -> dict:
     """Run the Data Bridge agent with error recovery"""
     print(f"\n{'='*80}")
@@ -396,6 +412,7 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
     # not shared module-level singletons, so concurrent requests from
     # different users never see each other's schema.
     schema = _build_schema_for_user(user_id)
+    db_config = _build_db_config_for_user(user_id)
     agents = {
         "query_simplifier": QuerySimplifierAgent(schema=schema, model_name=LLM_BACKEND["model"], url=LLM_BACKEND["url"]),
         "query_sense": QuerySenseAgent(schema=schema, ollama_model=LLM_BACKEND["model"], ollama_url=LLM_BACKEND["url"]),
@@ -431,10 +448,12 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
         "user_query": user_query,
         "model_name": model_name,
         "requested_model_name": model_name,
+        "session_id": session_id,
         "user_id": user_id,
         "custom_key": custom_key,
         "system_instructions": system_instructions,
         "_agents": agents,
+        "db_config": db_config,
         "steps": [],
         "simplified_query": None,
         "query_sense_output": None,

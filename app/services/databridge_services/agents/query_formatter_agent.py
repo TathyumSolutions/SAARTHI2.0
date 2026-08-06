@@ -478,7 +478,12 @@ class QueryFormatterAgent:
         self.state = {}
         self.insight_generator = DataInsightGeneratorAgent(llm_url=llm_url, model=model)
 
-    def execute_query(self, sql_query: str, user_query: str = "",target_model: str = None,system_instructions: str = "") -> dict:
+    def execute_query(self, sql_query: str, user_query: str = "",target_model: str = None,system_instructions: str = "", db_config: dict = None) -> dict:
+        # db_config, if given, overrides self.db_config's env-var/hardcoded
+        # defaults (the app's own database) with the specific external
+        # connection this request's schema actually came from - see
+        # resolve_query_execution_config() in automated_metamind.py.
+        db_config = db_config or self.db_config
 
         if sql_query:
             sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
@@ -534,8 +539,8 @@ class QueryFormatterAgent:
 
         try:
             db_url = (
-                f"postgresql+psycopg2://{self.db_config['user']}:{self.db_config['password']}@"
-                f"{self.db_config['host']}:{self.db_config['port']}/{self.db_config['dbname']}"
+                f"postgresql+psycopg2://{db_config['user']}:{db_config['password']}@"
+                f"{db_config['host']}:{db_config['port']}/{db_config['dbname']}"
             )
             # 30s statement_timeout at the Postgres session level - a
             # runaway query gets killed by the database itself rather than
@@ -679,7 +684,7 @@ class QueryFormatterAgent:
         self.insight_generator.custom_key = custom_key
         system_instructions = state.get("system_instructions", "")
 
-        result = self.execute_query(generated_sql, user_query,target_model=chosen_model,system_instructions=system_instructions)
+        result = self.execute_query(generated_sql, user_query,target_model=chosen_model,system_instructions=system_instructions, db_config=state.get("db_config"))
 
         # print("\n[DEBUG] OUTBOUND result to router:", json.dumps(result, indent=4))
 
