@@ -1,5 +1,6 @@
 from flask import current_app
 import os
+import re
 import time
 import requests
 import json
@@ -8,6 +9,17 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from app.services.stream_manager import stream_manager
 from app.utils.network_guard import is_safe_url
 from app.models.api_connector import ApiConnector
+
+
+def _sanitize_tool_name(name):
+    """
+    Integration names are free-text (e.g. "Copper Price API"), but
+    OpenAI-compatible function-calling APIs require tool names to match
+    ^[a-zA-Z0-9_-]+$. Translate into a safe identifier before it's handed
+    to the LLM as a tool/function name.
+    """
+    sanitized = re.sub(r'[^a-zA-Z0-9_-]+', '_', name or '').strip('_')
+    return sanitized or 'tool'
 
 
 def fetch_and_translate_tools():
@@ -21,7 +33,7 @@ def fetch_and_translate_tools():
         {
             "type": "function",
             "function": {
-                "name": tool.integration_name,
+                "name": _sanitize_tool_name(tool.integration_name),
                 "description": tool.api_description,
                 "parameters": {
                     "type": "object",
@@ -168,7 +180,11 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                 if isinstance(tool_args, str):
                     tool_args = json.loads(tool_args)
 
-                tool = ApiConnector.query.filter_by(integration_name=target_name).first()
+                tool = next(
+                    (t for t in ApiConnector.query.filter_by(status='Active').all()
+                     if _sanitize_tool_name(t.integration_name) == target_name),
+                    None
+                )
 
                 if tool:
                     base_url, endpoint, method = tool.base_url, tool.endpoint, tool.method
