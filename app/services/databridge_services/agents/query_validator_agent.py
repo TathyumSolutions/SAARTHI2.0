@@ -5,6 +5,31 @@ Validates schema references and SQL syntax
 import re
 from typing import Dict, Any, List
 
+
+def _is_function_call_from(sql_query: str, from_pos: int) -> bool:
+    """
+    True if the FROM keyword at from_pos is a keyword-argument separator
+    inside a scalar function call (e.g. EXTRACT(MONTH FROM CURRENT_DATE),
+    TRIM(chars FROM string), SUBSTRING(str FROM n)) rather than the start
+    of a real table clause. Walks left from from_pos to the nearest
+    unmatched '(': if a SELECT appears between that '(' and FROM, it's a
+    genuine subquery table clause; otherwise it's a function argument.
+    """
+    depth = 0
+    i = from_pos - 1
+    while i >= 0:
+        ch = sql_query[i]
+        if ch == ")":
+            depth += 1
+        elif ch == "(":
+            if depth == 0:
+                between = sql_query[i + 1:from_pos]
+                return not re.search(r"\bselect\b", between, re.IGNORECASE)
+            depth -= 1
+        i -= 1
+    return False
+
+
 class QueryValidatorAgent:
     """
     Agent responsible for validation.
@@ -84,10 +109,15 @@ class QueryValidatorAgent:
             used_tables = [t for t in tokens if t.lower() in all_table_names]
             used_columns = [c for c in tokens if c.lower() in all_column_names]
 
-            # Detect invalid tables
+            # Detect invalid tables (skipping FROM used as a function
+            # keyword-argument separator, e.g. EXTRACT(MONTH FROM
+            # CURRENT_DATE) or TRIM(chars FROM string) - that's not a
+            # table reference and shouldn't be validated as one)
             invalid_tables = [
-                t for t in re.findall(r"from\s+([a-zA-Z_][a-zA-Z0-9_]*)", sql_query, re.IGNORECASE)
-                if t.lower() not in all_table_names
+                m.group(1)
+                for m in re.finditer(r"from\s+([a-zA-Z_][a-zA-Z0-9_]*)", sql_query, re.IGNORECASE)
+                if m.group(1).lower() not in all_table_names
+                and not _is_function_call_from(sql_query, m.start())
             ]
 
             # Detect invalid columns

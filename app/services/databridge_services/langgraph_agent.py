@@ -261,16 +261,16 @@ def error_handler_node(state: DataBridgeState) -> DataBridgeState:
     response = {
         "query": state["user_query"],
         "format": "error",
-        "message": f"❌ Error at {current_step}: {error_msg}",
+        "message": "I wasn't able to pull this from the connected database. Could you try rephrasing the question, or let us know if this keeps happening?",
         "error": error_msg,
         "current_step": current_step,
         "recovery_attempts": recovery_attempts
     }
-    
+
     state["response"] = response
     state["current_step"] = "error_handler"
-    
-    print(f"✅ [ErrorHandler] Error handled (after {recovery_attempts} recovery attempts)\n")
+
+    print(f"✅ [ErrorHandler] Error handled (after {recovery_attempts} recovery attempts): {error_msg}\n")
     return state
 
 
@@ -615,7 +615,8 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
             "chart": user_facing_response.get("chart_configs", {}),
             "sql": final_state.get("generated_sql", "-- No SQL Generated --"),
             #"steps": final_state.get("steps", []),
-            "steps": list(streamed_steps)
+            "steps": list(streamed_steps),
+            "error": user_facing_response.get("format") == "error",
         },
         "cot_logs": final_state  # This is the "Everything" for your CoT section
     }

@@ -93,6 +93,7 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         tool_payload = None
         generation_text = ""
         is_local_ollama = False
+        had_error = False
 
         # --- ROUTE A: OPENAI ---
         if model_name in ["gpt-4o-mini", "gpt-4o"]:
@@ -169,7 +170,7 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
             push_tool_event("complete", "Putting Your Answer Together", "No matching tool was available for this request.")
             stream_manager.push_step(session_id, "DONE", is_sql=False)
             return {
-                "answer": "ERROR: No matching workflow tool found to execute this request.",
+                "answer": "I don't have a connected data source that covers this request.",
                 "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
             }
 
@@ -260,12 +261,16 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                     push_tool_event("complete", "Putting Your Answer Together", "Your answer is ready.")
                 else:
                     push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
-                    generation_text = f"Tool properties for execution identifier '{target_name}' could not be located in database records."
+                    had_error = True
+                    generation_text = "I found a matching tool for this request, but its connection details are missing. Please check the API Integrations setup."
+                    print(f"Tool properties for execution identifier '{target_name}' could not be located in database records.")
                     push_tool_event("complete", "Putting Your Answer Together", "Could not find configuration for the selected tool.")
 
             except Exception as e:
                 push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
-                generation_text = f"Tool identified successfully, but dynamic automation handler failed: {str(e)}"
+                had_error = True
+                generation_text = "I found a matching tool for this request, but the connected system didn't respond successfully, so I can't provide this data right now."
+                print(f"Dynamic automation handler failed: {str(e)}")
                 push_tool_event("complete", "Putting Your Answer Together", f"Could not complete the tool run: {str(e)}")
 
         time.sleep(0.5)
@@ -274,15 +279,17 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         return {
             "answer": generation_text,
             "tool_calls": tool_payload,
-            "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
+            "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought,
+            "error": had_error,
         }
 
     except Exception as e:
         print(f"Engine failure: {str(e)}")
         stream_manager.push_step(session_id, "DONE", is_sql=False)
         return {
-            "answer": f"The system encountered an error processing your routing request: {str(e)}",
-            "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
+            "answer": "I couldn't reach the connected external system for this request. Please try again in a moment, or let us know if the issue continues.",
+            "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought,
+            "error": True,
         }
 
 

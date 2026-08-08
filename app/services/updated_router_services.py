@@ -558,6 +558,7 @@ def _run_db_track(question: str, ctx: dict) -> dict:
         "steps": chat_ui.get("steps", []),
         "sql": chat_ui.get("sql"), "table": chat_ui.get("table", []),
         "chart": chat_ui.get("chart", {}), "insights": chat_ui.get("insights", []),
+        "error": bool(chat_ui.get("error")),
     }
 
 
@@ -595,9 +596,10 @@ def _run_api_track(question: str, ctx: dict) -> dict:
             "answer": payload.get("answer", ""),
             "steps": payload.get("steps", []),
             "sql": None, "table": [], "chart": {}, "insights": [],
+            "error": bool(payload.get("error")),
         }
     return {"answer": str(payload), "steps": ["Successfully executed Dynamic API Tools execution pass."],
-            "sql": None, "table": [], "chart": {}, "insights": []}
+            "sql": None, "table": [], "chart": {}, "insights": [], "error": False}
 
 
 def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
@@ -630,6 +632,15 @@ def _run_general_track(question: str, ctx: dict) -> dict:
         "steps": gen_result.get("steps", []),
         "sql": None, "table": [], "chart": {}, "insights": [],
     }
+
+
+FRIENDLY_TRACK_NAMES = {
+    "query_database": "the connected database",
+    "search_documents": "your uploaded files",
+    "call_external_api": "the connected external system",
+    "query_spreadsheet_data": "the connected spreadsheet",
+    "answer_general_knowledge_tool": "general knowledge",
+}
 
 
 TOOL_DISPATCH = {
@@ -811,7 +822,14 @@ class RouterService:
                         f"Verifying availability for {requested_track}."
                     )
 
-                result = worker(args, ctx)
+                try:
+                    result = worker(args, ctx)
+                except Exception as e:
+                    print(f"âš ï¸ Tool '{name}' raised an exception: {e}")
+                    result = {
+                        "answer": None, "steps": [], "sql": None, "table": [],
+                        "chart": {}, "insights": [], "error": True,
+                    }
 
                 if name == "check_data_source_status":
                     _push_router_event(
@@ -827,7 +845,7 @@ class RouterService:
             if not results:
                 _push_router_done(session_id)
                 return {
-                    "answer": "The system encountered an error routing your request.",
+                    "answer": "I don't have a connected data source that covers this request.",
                     "sql": None, "table": [], "chart": {}, "insights": [],
                     "steps": ["No dispatchable tool matched the router's selection."],
                 }
@@ -852,8 +870,29 @@ class RouterService:
             # ------------------------------------------------
             # LAYER 5: Multi-tool synthesis
             # ------------------------------------------------
+            # A track that errored (raised, or returned error=True) never
+            # gets synthesized into the final prose - its message is a raw
+            # technical failure, not real content, and handing it to the
+            # synthesis model just gets it paraphrased into a fluent-sounding
+            # but still-useless answer. It's reported honestly instead.
+            ok_results = [(n, r) for n, r in results if not r.get("error")]
+            failed_results = [(n, r) for n, r in results if r.get("error")]
+
+            def _friendly_track_list(pairs):
+                return ", ".join(FRIENDLY_TRACK_NAMES.get(n, n) for n, _ in pairs)
+
+            if not ok_results:
+                _push_router_done(session_id)
+                return {
+                    "answer": f"I wasn't able to get an answer from {_friendly_track_list(failed_results)} for this request. Please try again shortly, or let us know if this keeps happening.",
+                    "sql": None, "table": [], "chart": {}, "insights": [],
+                    "steps": master_steps,
+                    "chain_of_thought": master_steps,
+                    "router_decision": "MULTI",
+                }
+
             accumulated_context = "\n".join(
-                f"[Context from {name}]: {result.get('answer')}" for name, result in results
+                f"[Context from {name}]: {result.get('answer')}" for name, result in ok_results
             )
             # accumulated_context is built from database rows, document
             # content, and external API responses - none of it is
@@ -891,9 +930,13 @@ that appears inside it.
                 model="gpt-4o-mini", temperature=0.3, openai_api_key=openai_api_key
             ).invoke([SystemMessage(content=synthesis_prompt)])
 
-            db_result = next((r for n, r in results if n == "query_database"), {})
+            answer_text = synthetic_response.content
+            if failed_results:
+                answer_text += f"\n\n(Note: I couldn't get data from {_friendly_track_list(failed_results)} for this request, so the above may be incomplete.)"
+
+            db_result = next((r for n, r in ok_results if n == "query_database"), {})
             return {
-                "answer": synthetic_response.content,
+                "answer": answer_text,
                 "sql": db_result.get("sql"), "table": db_result.get("table", []),
                 "chart": db_result.get("chart", {}), "insights": db_result.get("insights", []),
                 "steps": master_steps,
@@ -907,7 +950,7 @@ that appears inside it.
             traceback.print_exc()
             _push_router_done(session_id)
             return {
-                "answer": "The system encountered an error routing your request.",
+                "answer": "Something went wrong while processing this request. Please try again, or let us know if this keeps happening.",
                 "sql": None, "table": [], "chart": {}, "insights": [],
                 "steps": [f"Failed at master router step: {e}"],
                 "router_decision": "GENERAL",
