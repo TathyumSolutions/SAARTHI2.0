@@ -860,6 +860,101 @@
         opacity: 1 !important;
       }
     }
+
+    /* ═══════════ Terms & Privacy Policy modal ═══════════ */
+    .terms-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(3, 4, 14, 0.72);
+      backdrop-filter: blur(3px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .terms-overlay.open { display: flex; }
+
+    .terms-modal {
+      width: 100%; max-width: 680px; max-height: 84vh;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      display: flex; flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+
+    .terms-modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .terms-modal-header h2 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 17px; color: var(--text-hi); font-weight: 600;
+    }
+    .terms-modal-close {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-mid); font-size: 20px; line-height: 1;
+      padding: 4px 8px; border-radius: 6px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .terms-modal-close:hover { color: var(--text-hi); background: var(--bg-input); }
+
+    .terms-modal-body {
+      padding: 4px 24px 20px;
+      overflow-y: auto;
+      color: var(--text-mid);
+      font-size: 13px;
+      line-height: 1.65;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .terms-modal-body h3 {
+      color: var(--text-hi);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13.5px;
+      font-weight: 600;
+      margin: 20px 0 8px;
+    }
+    .terms-modal-body h3:first-child { margin-top: 16px; }
+    .terms-modal-body p { margin: 0 0 10px; }
+    .terms-modal-body ul { margin: 0 0 10px 18px; }
+    .terms-modal-body li { margin-bottom: 4px; }
+    .terms-modal-body .terms-updated {
+      color: var(--text-lo); font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .terms-modal-body .terms-divider {
+      border: none; border-top: 1px solid var(--border);
+      margin: 22px 0;
+    }
+
+    .terms-modal-footer {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 24px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .terms-modal-footer .btn-signin {
+      width: auto; padding: 10px 20px; font-size: 13px;
+    }
+
+    /* Checkbox is inert until the user has actually opened the terms */
+    .remember.terms-locked { cursor: not-allowed; }
+    .remember input[type="checkbox"]:disabled ~ .chk {
+      opacity: 0.4;
+    }
+    .terms-hint {
+      display: block;
+      font-size: 11px; color: var(--text-lo);
+      margin-top: 4px;
+    }
+    .terms-link { color: var(--accent); text-decoration: none; font-weight: 500; cursor: pointer; }
+    .terms-link:hover { color: var(--teal); }
   </style>
 </head>
 <body>
@@ -1183,12 +1278,13 @@
         <a href="#" class="forgot">Forgot password?</a>
       </div>
 
-      <div class="meta-row signup-only">
-        <label class="remember">
-          <input type="checkbox" id="agreeTerms" />
+      <div class="meta-row signup-only" style="flex-direction: column; align-items: flex-start;">
+        <label class="remember terms-locked" id="agreeTermsLabel">
+          <input type="checkbox" id="agreeTerms" disabled onclick="return handleAgreeTermsClick(event);" />
           <span class="chk"></span>
-          I agree to the Terms &amp; Privacy Policy
+          I agree to the <a href="#" class="terms-link" onclick="openTermsModal(event);">Terms &amp; Privacy Policy</a>
         </label>
+        <span class="terms-hint" id="agreeTermsHint">Open and read the Terms &amp; Privacy Policy to enable this.</span>
       </div>
 
       <button type="submit" class="btn-signin" id="submitBtn">Sign in to Saarthi</button>
@@ -1221,10 +1317,88 @@
 
     <p class="form-footer" id="formFooter">
       By signing in you agree to Tathyum's
-      <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+      <a href="#" onclick="openTermsModal(event);">Terms of Service</a> and <a href="#" onclick="openTermsModal(event);">Privacy Policy</a>.
     </p>
 
     <p class="tathyum-tag">Powered by <span>Tathyum Intelligence</span></p>
+  </div>
+</div>
+
+<!-- Terms of Service & Privacy Policy modal - opening this is what unlocks the
+     "I agree" checkbox on the sign-up form (see openTermsModal() below). -->
+<div class="terms-overlay" id="termsOverlay" onclick="if (event.target === this) closeTermsModal();">
+  <div class="terms-modal" role="dialog" aria-modal="true" aria-labelledby="termsModalTitle">
+    <div class="terms-modal-header">
+      <h2 id="termsModalTitle">Terms of Service &amp; Privacy Policy</h2>
+      <button type="button" class="terms-modal-close" aria-label="Close" onclick="closeTermsModal();">&times;</button>
+    </div>
+    <div class="terms-modal-body">
+      <p class="terms-updated">Last updated: January 2026</p>
+
+      <h3>1. Acceptance of Terms</h3>
+      <p>These Terms of Service ("Terms") govern your access to and use of Saarthi, an enterprise data-intelligence platform provided by Tathyum Intelligence ("Tathyum", "we", "us"). By creating an account or otherwise using Saarthi, you agree to be bound by these Terms and by our Privacy Policy below. If you are creating an account on behalf of a company, you confirm that you have the authority to bind that company to these Terms.</p>
+
+      <h3>2. Description of Service</h3>
+      <p>Saarthi lets you connect data sources - databases, uploaded files, and API integrations - and query them through natural language and AI-assisted routing. Features, connectors, and available AI models may change over time as the platform evolves.</p>
+
+      <h3>3. Accounts &amp; Eligibility</h3>
+      <ul>
+        <li>You must provide accurate registration information and keep your password confidential.</li>
+        <li>You are responsible for all activity that occurs under your account.</li>
+        <li>Company accounts are managed by a company admin, who may approve new members and grant or revoke access to shared data sources.</li>
+      </ul>
+
+      <h3>4. Your Data &amp; Data Sources</h3>
+      <p>You retain ownership of the data you connect to or upload into Saarthi ("Customer Data"). You grant Tathyum a limited license to process Customer Data solely to operate the Service for you - including indexing, embedding, and routing it to the AI models you configure. Customer Data is never shared with other companies, and within your own company it is only shared with teammates you or your admin explicitly grant access to.</p>
+
+      <h3>5. Acceptable Use</h3>
+      <p>You agree not to: use the Service for any unlawful purpose; attempt to bypass access controls or another user's or company's data isolation; upload data you do not have the right to share; or use the Service to build a competing product.</p>
+
+      <h3>6. Third-Party AI Models &amp; Integrations</h3>
+      <p>Saarthi can route your queries to third-party AI model providers and external systems you connect (databases, APIs). Those providers process the minimum data required to answer your query, under their own applicable terms. Removing a connector or model revokes its future access; it does not retroactively delete data already sent to that provider.</p>
+
+      <h3>7. Intellectual Property</h3>
+      <p>The Service, including its software, design, and branding, is owned by Tathyum and protected by intellectual property laws. These Terms do not grant you any rights to Tathyum's trademarks or proprietary technology beyond what is needed to use the Service as intended.</p>
+
+      <h3>8. Termination</h3>
+      <p>You may stop using the Service and request account deletion at any time. We may suspend or terminate accounts that violate these Terms, pose a security risk, or remain inactive for an extended period, with notice where practical.</p>
+
+      <h3>9. Disclaimers &amp; Limitation of Liability</h3>
+      <p>The Service, including AI-generated answers, is provided "as is." AI-generated responses may be inaccurate or incomplete and should be verified before use in decision-making. To the maximum extent permitted by law, Tathyum is not liable for indirect, incidental, or consequential damages arising from use of the Service.</p>
+
+      <h3>10. Changes to These Terms</h3>
+      <p>We may update these Terms as the Service evolves. Material changes will be reflected by an updated "Last updated" date above, and continued use of the Service after changes take effect constitutes acceptance.</p>
+
+      <hr class="terms-divider" />
+
+      <h3>Privacy Policy</h3>
+      <p>This section explains what information Saarthi collects and how it is used.</p>
+
+      <h3>Information We Collect</h3>
+      <ul>
+        <li><strong style="color: var(--text-hi);">Account information</strong> - name, email address, company code, and authentication credentials.</li>
+        <li><strong style="color: var(--text-hi);">Customer Data</strong> - the databases, files, and API responses you connect, upload, or query.</li>
+        <li><strong style="color: var(--text-hi);">Usage data</strong> - queries, chat history, audit logs, and product analytics used to operate and improve the Service.</li>
+      </ul>
+
+      <h3>How We Use Information</h3>
+      <p>We use this information to authenticate you, operate the connectors and AI routing you configure, enforce the access boundaries between companies and users, provide support, and improve the reliability and security of Saarthi.</p>
+
+      <h3>Data Storage &amp; Security</h3>
+      <p>Customer Data is stored in access-controlled, tenant-isolated storage. Credentials for connected databases and APIs are encrypted at rest. Access to your data is limited to your account and any teammates explicitly granted access by your company admin.</p>
+
+      <h3>Data Sharing</h3>
+      <p>We do not sell your data. Customer Data is shared with third-party AI model or infrastructure providers only as needed to process the specific query or connector you configure, and is never shared with other Tathyum customers.</p>
+
+      <h3>Data Retention &amp; Your Rights</h3>
+      <p>We retain account and Customer Data for as long as your account is active, or as needed to comply with legal obligations. You may request access to, correction of, or deletion of your data at any time by contacting us below; deleting a data source or account removes its underlying data and indexed content.</p>
+
+      <h3>Contact</h3>
+      <p>Questions about these Terms or this Privacy Policy can be sent to <a class="terms-link" href="mailto:privacy@tathyum.com">privacy@tathyum.com</a>.</p>
+    </div>
+    <div class="terms-modal-footer">
+      <button type="button" class="btn-signin" onclick="closeTermsModal();">Close</button>
+    </div>
   </div>
 </div>
 
@@ -1236,6 +1410,47 @@
     inp.type = isHidden ? 'text' : 'password';
     btn.textContent = isHidden ? 'Hide' : 'Show';
   }
+
+  /* ==========================================
+     TERMS & PRIVACY POLICY MODAL
+     The "I agree" checkbox on sign-up starts disabled - it's only enabled
+     once the user has actually opened this modal at least once, so
+     accepting always requires having had the content in front of them.
+     ========================================== */
+  let termsHasBeenViewed = false;
+
+  function openTermsModal(event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    document.getElementById('termsOverlay').classList.add('open');
+
+    if (!termsHasBeenViewed) {
+      termsHasBeenViewed = true;
+      const checkbox = document.getElementById('agreeTerms');
+      const label = document.getElementById('agreeTermsLabel');
+      const hint = document.getElementById('agreeTermsHint');
+      if (checkbox) checkbox.disabled = false;
+      if (label) label.classList.remove('terms-locked');
+      if (hint) hint.textContent = 'Thanks for reading - you can check the box above to continue.';
+    }
+  }
+
+  function closeTermsModal() {
+    document.getElementById('termsOverlay').classList.remove('open');
+  }
+
+  function handleAgreeTermsClick(event) {
+    // Belt-and-braces: even if the disabled attribute were ever removed
+    // by something else, block acceptance until the modal has been opened.
+    if (!termsHasBeenViewed) {
+      openTermsModal(event);
+      return false;
+    }
+    return true;
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeTermsModal();
+  });
 
   /* Sign In / Sign Up tab switching */
   function switchTab(mode) {
@@ -1263,7 +1478,7 @@
       title.textContent = 'Create your account';
       sub.textContent = 'Sign up to ask anything, across every connected source.';
       submitBtn.textContent = 'Create account';
-      footer.innerHTML = 'By signing up you agree to Tathyum\'s <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.';
+      footer.innerHTML = 'By signing up you agree to Tathyum\'s <a href="#" onclick="openTermsModal(event);">Terms of Service</a> and <a href="#" onclick="openTermsModal(event);">Privacy Policy</a>.';
     } else {
       wrap.classList.remove('show-signup');
       tabSignin.classList.add('active');
@@ -1271,7 +1486,7 @@
       title.textContent = 'Welcome back';
       sub.textContent = 'Sign in to ask anything, across every connected source.';
       submitBtn.textContent = 'Sign in to Saarthi';
-      footer.innerHTML = 'By signing in you agree to Tathyum\'s <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.';
+      footer.innerHTML = 'By signing in you agree to Tathyum\'s <a href="#" onclick="openTermsModal(event);">Terms of Service</a> and <a href="#" onclick="openTermsModal(event);">Privacy Policy</a>.';
     }
   }
 
@@ -1427,11 +1642,17 @@
           return;
       }
 
+      const agreeTerms = document.getElementById('agreeTerms');
+      if (!agreeTerms || !agreeTerms.checked) {
+          showFormMessage("Please open and accept the Terms & Privacy Policy to create an account.", 'error');
+          return;
+      }
+
       try {
           const response = await fetch('/api/auth/register', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email, password, confirm_password, company_code })
+            body: JSON.stringify({ name, email, password, confirm_password, company_code, agree_terms: agreeTerms.checked })
           });
 
           const result = await response.json();
