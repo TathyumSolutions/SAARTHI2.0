@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Saarthi - All Data Sources{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .ds-page { max-width: 1200px; }
+    .ds-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; gap: 12px; }
+    .ds-subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 18px; }
+    .ds-controls { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .ds-search { flex: 1; min-width: 220px; padding: 8px 10px; background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); }
+    .ds-filter-btn { background: var(--panel-bg); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+    .ds-filter-btn.active { background: var(--primary-blue); color: #fff; border-color: var(--primary-blue); }
+    .ds-stats { display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+    .ds-stat-card { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 18px; min-width: 130px; }
+    .ds-stat-value { font-size: 22px; font-weight: 700; color: var(--accent-green); }
+    .ds-stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+    .ds-card { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .ds-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .ds-card-title { font-size: 15px; font-weight: 600; color: var(--text-primary); word-break: break-word; }
+    .ds-type-badge { font-size: 10px; padding: 3px 8px; border-radius: 10px; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+    .ds-type-database { background: rgba(0, 120, 212, 0.18); color: #5AA9F0; }
+    .ds-type-file { background: rgba(78, 201, 176, 0.18); color: var(--accent-green); }
+    .ds-type-api { background: rgba(197, 134, 192, 0.18); color: var(--accent-purple); }
+    .ds-subtype { font-size: 11px; color: var(--text-secondary); }
+    .ds-description { font-size: 13px; color: var(--text-secondary); line-height: 1.4; }
+    .ds-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 4px; }
+    .ds-meta strong { color: var(--text-primary); font-weight: 500; }
+    .ds-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+    .ds-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7280; }
+    .ds-status-dot.active, .ds-status-dot.connected, .ds-status-dot.success { background: var(--accent-green); }
+    .ds-status-dot.error, .ds-status-dot.failed, .ds-status-dot.inactive { background: #F48771; }
+    .ds-access-badge { font-size: 10px; padding: 2px 7px; border-radius: 8px; border: 1px solid var(--border-color); color: var(--text-secondary); }
+    .ds-empty { color: var(--text-secondary); font-size: 13px; padding: 40px 0; text-align: center; }
+    .ds-loading { color: var(--text-secondary); font-size: 13px; padding: 20px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ds-page">
+    <div class="ds-toolbar">
+        <h2 style="margin: 0;">All Data Sources</h2>
+    </div>
+    <p class="ds-subtitle">
+        Every database connection, uploaded file, and API integration you can currently use - your own, plus anything a company admin has explicitly shared with you.
+    </p>
+
+    <div class="ds-stats" id="dsStats"></div>
+
+    <div class="ds-controls">
+        <input id="dsSearch" class="ds-search" type="text" placeholder="Search by name, description, or creator..." />
+        <button type="button" class="ds-filter-btn active" data-filter="all">All</button>
+        <button type="button" class="ds-filter-btn" data-filter="database">Databases</button>
+        <button type="button" class="ds-filter-btn" data-filter="file">Files</button>
+        <button type="button" class="ds-filter-btn" data-filter="api">APIs</button>
+    </div>
+
+    <div id="dsGrid" class="ds-grid">
+        <div class="ds-loading">Loading data sources...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let allDatasources = [];
+    let activeFilter = 'all';
+
+    const TYPE_LABELS = { database: 'Database', file: 'File', api: 'API' };
+
+    function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function renderStats() {
+        const counts = { database: 0, file: 0, api: 0 };
+        allDatasources.forEach(function (ds) { if (counts[ds.type] !== undefined) counts[ds.type]++; });
+
+        document.getElementById('dsStats').innerHTML = `
+            <div class="ds-stat-card"><div class="ds-stat-value">${allDatasources.length}</div><div class="ds-stat-label">Total Data Sources</div></div>
+            <div class="ds-stat-card"><div class="ds-stat-value">${counts.database}</div><div class="ds-stat-label">Databases</div></div>
+            <div class="ds-stat-card"><div class="ds-stat-value">${counts.file}</div><div class="ds-stat-label">Files</div></div>
+            <div class="ds-stat-card"><div class="ds-stat-value">${counts.api}</div><div class="ds-stat-label">API Integrations</div></div>
+        `;
+    }
+
+    function renderGrid() {
+        const query = document.getElementById('dsSearch').value.toLowerCase();
+        const grid = document.getElementById('dsGrid');
+
+        const visible = allDatasources.filter(function (ds) {
+            if (activeFilter !== 'all' && ds.type !== activeFilter) return false;
+            if (!query) return true;
+            const haystack = [
+                ds.name, ds.description, ds.subtype,
+                ds.creator && ds.creator.name, ds.creator && ds.creator.email
+            ].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(query);
+        });
+
+        if (!visible.length) {
+            grid.innerHTML = '<div class="ds-empty">No data sources match your search.</div>';
+            return;
+        }
+
+        grid.innerHTML = visible.map(function (ds) {
+            const creatorLabel = ds.creator && (ds.creator.name || ds.creator.email) || 'Unknown';
+            const createdLabel = ds.created_at ? new Date(ds.created_at).toLocaleDateString() : 'Unknown';
+            const statusClass = (ds.status || '').toLowerCase();
+            return `
+                <div class="ds-card">
+                    <div class="ds-card-header">
+                        <div class="ds-card-title">${escapeHtml(ds.name || 'Untitled')}</div>
+                        <span class="ds-type-badge ds-type-${ds.type}">${TYPE_LABELS[ds.type] || ds.type}</span>
+                    </div>
+                    ${ds.subtype ? `<div class="ds-subtype">${escapeHtml(ds.subtype)}</div>` : ''}
+                    <div class="ds-description">${escapeHtml(ds.description || 'No description available.')}</div>
+                    <div class="ds-meta">
+                        <span>Creator: <strong>${escapeHtml(creatorLabel)}</strong></span>
+                        <span>Added: <strong>${createdLabel}</strong></span>
+                        <span class="ds-status"><span class="ds-status-dot ${statusClass}"></span>${escapeHtml(ds.status || 'unknown')}</span>
+                        <span class="ds-access-badge">${ds.access === 'owner' ? 'Owned by you' : 'Shared with you'}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function loadDatasources() {
+        try {
+            const res = await authFetch('/api/datasources/');
+            const data = await res.json();
+            allDatasources = data.datasources || [];
+        } catch (err) {
+            console.error('Failed to load data sources:', err);
+            allDatasources = [];
+        }
+        renderStats();
+        renderGrid();
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('dsSearch').addEventListener('input', renderGrid);
+        document.querySelectorAll('.ds-filter-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('.ds-filter-btn').forEach(function (b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                activeFilter = btn.dataset.filter;
+                renderGrid();
+            });
+        });
+        loadDatasources();
+    });
+</script>
+{% endblock %}

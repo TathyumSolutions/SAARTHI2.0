@@ -37,6 +37,12 @@ def api_mode():
     """API Mode page showing Swagger docs inside the app layout."""
     return render_template('apidocs.html')
 
+# Data Sources - Directory of all data sources visible to the current user
+@bp.route('/data_sources')
+def data_sources_page():
+    """All Data Sources directory: databases, files, and API connectors the current user can see."""
+    return render_template('data_sources.html')
+
 # Data Sources - Unstructured Data
 @bp.route('/unstructured_data')
 def unstructured_data():
