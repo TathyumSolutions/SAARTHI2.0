@@ -146,7 +146,7 @@
         background: #006bb3;
     }
 
-    .btn-primary:disabled {
+    .btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
     }
@@ -824,6 +824,13 @@
         if (usernameInput) usernameInput.parentElement.style.display = (dbType === 'Excel') ? 'none' : 'block';
         if (passwordInput) passwordInput.parentElement.style.display = (dbType === 'Excel') ? 'none' : 'block';
 
+        // Uploaded spreadsheets have no live connection to test.
+        const testConnBtn = document.getElementById('testConnectionBtn');
+        if (testConnBtn) {
+            testConnBtn.disabled = (dbType === 'Excel');
+            testConnBtn.title = (dbType === 'Excel') ? 'Uploaded spreadsheets have no live connection to test' : '';
+        }
+
         let excelFieldContainer = document.getElementById('excelFileFieldContainer');
         if (dbType === 'Excel') {
             if (!excelFieldContainer) {
@@ -1346,7 +1353,7 @@
                             <div id="formAlertError" class="test-result error" style="display: none; margin-bottom: 5px;"><span id="formAlertErrorMessage"></span></div>
     
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id}, this)">Process</button>
-                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="testExistingConnection(${conn.id})">Test</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" ${conn.type === 'Excel' ? 'disabled title="Uploaded spreadsheets have no live connection to test"' : `onclick="testExistingConnection(${conn.id})"`}>Test</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
                             <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>
                         </div>
