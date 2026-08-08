@@ -78,6 +78,7 @@ def upload_unstructured():
 
     files = request.files.getlist('files')
     file_type = request.form.get('file_type')
+    description = (request.form.get('description') or '').strip() or None
     if not file_type:
         return jsonify({'error': 'No file type provided'}), 400
 
@@ -125,6 +126,7 @@ def upload_unstructured():
             file_type=file_type,
             file_size=file_size,
             file_path=save_path,
+            description=description,
             company_code=current_user.company_code,
             created_by_user_id=current_user.id,
         )

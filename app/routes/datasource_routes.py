@@ -102,6 +102,7 @@ def get_visible_datasources(user):
             'subtype': conn.type,
             'description': conn.description or _database_description(conn),
             'has_custom_description': bool(conn.description),
+            'metamind_summary': conn.metamind_summary,
             'status': conn.status,
             'error_message': conn.error_message,
             'creator': _creator(conn),
@@ -116,6 +117,7 @@ def get_visible_datasources(user):
             'subtype': (f.file_type or '').upper() or None,
             'description': f.description or _file_description(f),
             'has_custom_description': bool(f.description),
+            'metamind_summary': f.metamind_summary,
             'status': f.status or 'uploaded',
             'error_message': f.error_message,
             'creator': _creator(f),
@@ -130,6 +132,7 @@ def get_visible_datasources(user):
             'subtype': tool.method,
             'description': tool.api_description or f"API integration: {tool.integration_name}",
             'has_custom_description': bool(tool.api_description),
+            'metamind_summary': tool.metamind_summary,
             'status': tool.status,
             'error_message': None,
             'creator': _creator(tool),
@@ -249,6 +252,11 @@ def _metadata_for_datasource(user_id, datasource_type, resource):
     summary = ((row.summary or {}).get('routing_menu_summary', {}) if row else {}).get('datasources', {})
     full = ((row.config or {}).get('routing_menu', {}) if row else {}).get('datasources', {})
 
+    # The persisted metamind_summary column (see automated_metamind.py's
+    # _persist_metamind_summary) - what the AI router actually last saw for
+    # this exact resource, kept separate from the user's own `description`.
+    metamind_summary = getattr(resource, 'metamind_summary', None)
+
     if datasource_type == 'database':
         if (resource.type or '').lower() == 'excel':
             try:
@@ -258,11 +266,11 @@ def _metadata_for_datasource(user_id, datasource_type, resource):
             summary_tables = {k: v for k, v in summary.get('SPREADSHEET', {}).get('tables', {}).items() if k in table_names}
             full_tables = {k: v for k, v in full.get('SPREADSHEET', {}).get('tables', {}).items() if k in table_names}
             return (
-                {'datasource': 'SPREADSHEET', 'tables': summary_tables},
+                {'datasource': 'SPREADSHEET', 'metamind_summary': metamind_summary, 'tables': summary_tables},
                 {'datasource': 'SPREADSHEET', 'tables': full_tables},
             )
         return (
-            {'datasource': 'DB', 'tables': summary.get('DB', {}).get('tables', {})},
+            {'datasource': 'DB', 'metamind_summary': metamind_summary, 'tables': summary.get('DB', {}).get('tables', {})},
             {'datasource': 'DB', 'tables': full.get('DB', {}).get('tables', {})},
         )
 
@@ -270,7 +278,7 @@ def _metadata_for_datasource(user_id, datasource_type, resource):
         summary_docs = [d for d in summary.get('FILES', {}).get('documents', []) if d.get('document_code') == resource.document_code]
         full_docs = [d for d in full.get('FILES', {}).get('vector_store_info', {}).get('documents', []) if d.get('document_code') == resource.document_code]
         return (
-            {'datasource': 'FILES', 'documents': summary_docs},
+            {'datasource': 'FILES', 'metamind_summary': metamind_summary, 'documents': summary_docs},
             {'datasource': 'FILES', 'documents': full_docs, 'collection': full.get('FILES', {}).get('vector_store_info', {}).get('collection')},
         )
 
@@ -278,7 +286,7 @@ def _metadata_for_datasource(user_id, datasource_type, resource):
         summary_tools = [t for t in summary.get('API', {}).get('registered_tools', []) if t.get('name') == resource.integration_name]
         full_tools = [t for t in full.get('API', {}).get('registered_tools', []) if t.get('name') == resource.integration_name]
         return (
-            {'datasource': 'API', 'registered_tools': summary_tools},
+            {'datasource': 'API', 'metamind_summary': metamind_summary, 'registered_tools': summary_tools},
             {'datasource': 'API', 'registered_tools': full_tools},
         )
 

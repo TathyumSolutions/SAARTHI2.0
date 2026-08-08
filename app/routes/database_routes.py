@@ -62,6 +62,7 @@ def serialize_connection(conn):
             'status': conn.status,
             'error_message': conn.error_message,
             'description': conn.description,
+            'metamind_summary': conn.metamind_summary,
             'created_at': conn.created_at.isoformat() if conn.created_at else None,
             'updated_at': conn.updated_at.isoformat() if conn.updated_at else None,
             'last_tested': conn.last_tested.isoformat() if conn.last_tested else None
@@ -155,6 +156,7 @@ def create_database_connection():
             password=data.get('password'),
             connection_string=data.get('connection_string'),
             config=data.get('config', {}),
+            description=(data.get('description') or '').strip() or None,
             company_code=current_user.company_code,
             created_by_user_id=current_user.id,
             status='connected'
@@ -235,6 +237,7 @@ def create_excel_database():
             username=None,
             password=None,
             config={'source_tables': []},
+            description=(request.form.get('description') or '').strip() or None,
             company_code=current_user.company_code,
             created_by_user_id=current_user.id,
             status='connected'
@@ -341,7 +344,7 @@ def update_database_connection(db_id):
         data = request.get_json()
 
         # Update fields
-        for key in ['name', 'host', 'port', 'database', 'username', 'password', 'connection_string', 'type']:
+        for key in ['name', 'host', 'port', 'database', 'username', 'password', 'connection_string', 'type', 'description']:
             if key in data:
                 setattr(connection, key, data[key])
 

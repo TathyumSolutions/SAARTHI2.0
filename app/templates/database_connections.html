@@ -491,6 +491,13 @@
                 </div>
             </div>
 
+            <div class="form-row">
+                <div class="form-group full-width">
+                    <label class="form-label">Description</label>
+                    <textarea id="connectionDescription" class="form-input" style="min-height: 70px; resize: vertical;" placeholder="What does this connection contain, and when should it be used? Shown alongside the AI router's own schema info."></textarea>
+                </div>
+            </div>
+
             <!-- Additional fields for specific database types -->
             <div id="additionalFields"></div>
 
@@ -1095,6 +1102,10 @@
             formData.append('name', nameInput.value.trim());
             formData.append('file', fileInput.files[0]);
             formData.append('workspace_id', 1);
+            const descriptionEl = document.getElementById('connectionDescription');
+            if (descriptionEl && descriptionEl.value.trim()) {
+                formData.append('description', descriptionEl.value.trim());
+            }
 
             authFetch('/api/databases/excel', { method: 'POST', body: formData })
                 .then(res => res.json())
@@ -1300,7 +1311,12 @@
         if (workspaceId) {
             data.workspace_id = workspaceId;
         }
-        
+
+        const descriptionEl = document.getElementById('connectionDescription');
+        if (descriptionEl && descriptionEl.value.trim()) {
+            data.description = descriptionEl.value.trim();
+        }
+
         console.log('✅ Validation passed, returning data:', {
             ...data,
             password: '***'
@@ -1497,6 +1513,8 @@
                     document.getElementById('databaseName').value = conn.database || '';
                     document.getElementById('username').value = conn.username || '';
                     document.getElementById('workspaceId').value = conn.workspace_id || '';
+                    const descriptionEl = document.getElementById('connectionDescription');
+                    if (descriptionEl) descriptionEl.value = conn.description || '';
                     // Don't populate password for security
 
                     const saveBtnText = document.getElementById('saveBtnText');
