@@ -8,6 +8,10 @@ import os
 from app import db
 from app.services.llm_service import LLMService
 from app.models.file_resource import FileResource
+from app.models.database_connection import DatabaseConnection
+from app.models.api_connector import ApiConnector
+from app.models.resource_mapping import ResourceMapping
+from app.models.user import User
 from app.utils.auth_helpers import get_current_user
 from app.services.audit_service import log_event
 from qdrant_client import QdrantClient
@@ -15,16 +19,146 @@ from qdrant_client.http import models
 
 bp = Blueprint('datasource', __name__, url_prefix='/api/datasources')
 
+
+def _format_bytes(size):
+    if not size:
+        return None
+    for unit in ('B', 'KB', 'MB', 'GB'):
+        if size < 1024:
+            return f"{size:.0f} {unit}" if unit == 'B' else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+def _database_description(conn):
+    if (conn.type or '').lower() == 'excel':
+        source_tables = (conn.config or {}).get('source_tables') or []
+        table_count = len(source_tables)
+        row_count = (conn.config or {}).get('row_count')
+        parts = [f"Spreadsheet upload ({conn.type})"]
+        if table_count:
+            parts.append(f"{table_count} table(s)")
+        if row_count:
+            parts.append(f"{row_count} rows")
+        return ", ".join(parts) + "."
+    location = conn.database or conn.host or ''
+    return f"{conn.type} database connection" + (f" to \"{location}\"." if location else ".")
+
+
+def _file_description(resource):
+    parts = [resource.file_type.upper() if resource.file_type else "Uploaded file"]
+    size = _format_bytes(resource.file_size)
+    if size:
+        parts.append(size)
+    return ", ".join(parts) + "."
+
+
+def get_visible_datasources(user):
+    """
+    Every data source (database connection, uploaded file, API connector)
+    visible to `user` - their own, plus anything explicitly granted to
+    them via Resource Mapping. Same "own + granted" visibility rule used
+    by automated_metamind.py, so this list always matches what the AI
+    router can actually see for this user.
+    """
+    granted_by_type = {'database': set(), 'file': set(), 'api': set()}
+    for m in ResourceMapping.query.filter_by(user_id=user.id).all():
+        if m.resource_type in granted_by_type:
+            granted_by_type[m.resource_type].add(m.resource_id)
+
+    databases = DatabaseConnection.query.filter(
+        (DatabaseConnection.created_by_user_id == user.id)
+        | (DatabaseConnection.id.in_(granted_by_type['database'] or [-1]))
+    ).all()
+    files = FileResource.query.filter(
+        (FileResource.created_by_user_id == user.id)
+        | (FileResource.id.in_(granted_by_type['file'] or [-1]))
+    ).all()
+    apis = ApiConnector.query.filter(
+        (ApiConnector.created_by_user_id == user.id)
+        | (ApiConnector.id.in_(granted_by_type['api'] or [-1]))
+    ).all()
+
+    creator_ids = {r.created_by_user_id for r in (databases + files + apis)}
+    creators = {u.id: u for u in User.query.filter(User.id.in_(creator_ids or [-1])).all()}
+
+    def _creator(resource):
+        creator = creators.get(resource.created_by_user_id)
+        return {
+            'id': resource.created_by_user_id,
+            'name': creator.name if creator else None,
+            'email': creator.email if creator else None,
+        }
+
+    def _access(resource):
+        return 'owner' if resource.created_by_user_id == user.id else 'shared'
+
+    datasources = []
+    for conn in databases:
+        datasources.append({
+            'id': conn.id,
+            'type': 'database',
+            'name': conn.name,
+            'subtype': conn.type,
+            'description': _database_description(conn),
+            'status': conn.status,
+            'creator': _creator(conn),
+            'created_at': conn.created_at.isoformat() if conn.created_at else None,
+            'access': _access(conn),
+        })
+    for f in files:
+        datasources.append({
+            'id': f.id,
+            'type': 'file',
+            'name': f.file_name,
+            'subtype': (f.file_type or '').upper() or None,
+            'description': _file_description(f),
+            'status': 'active',
+            'creator': _creator(f),
+            'created_at': f.created_at.isoformat() if f.created_at else None,
+            'access': _access(f),
+        })
+    for tool in apis:
+        datasources.append({
+            'id': tool.id,
+            'type': 'api',
+            'name': tool.integration_name,
+            'subtype': tool.method,
+            'description': tool.api_description or f"API integration: {tool.integration_name}",
+            'status': tool.status,
+            'creator': _creator(tool),
+            'created_at': tool.created_at.isoformat() if tool.created_at else None,
+            'access': _access(tool),
+        })
+
+    datasources.sort(key=lambda d: d['created_at'] or '', reverse=True)
+    return datasources
+
+
 @bp.route('/', methods=['GET'])
 @jwt_required()
 def get_datasources():
     """
-    Get all configured data sources
-    Query params: workspace_id, type
-    Response: { "datasources": [{id, name, type, status, last_sync}] }
+    Get all data sources (database connections, files, API connectors)
+    visible to the current user - their own, plus anything explicitly
+    granted to them via Resource Mapping.
+    Query params: type ('database' | 'file' | 'api')
+    Response: { "datasources": [{id, type, name, description, status, creator, created_at}] }
     """
-    # TODO: Implement get datasources logic
-    pass
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required', 'datasources': []}), 401
+
+    try:
+        datasources = get_visible_datasources(current_user)
+
+        type_filter = request.args.get('type')
+        if type_filter:
+            datasources = [d for d in datasources if d['type'] == type_filter]
+
+        return jsonify({'datasources': datasources, 'count': len(datasources)}), 200
+    except Exception as e:
+        return jsonify({'error': str(e), 'datasources': []}), 500
 
 @bp.route('/', methods=['POST'])
 @jwt_required()
