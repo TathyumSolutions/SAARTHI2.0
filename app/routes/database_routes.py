@@ -573,6 +573,13 @@ def process_database_connection(db_id):
         try:
             for uid in affected_user_ids:
                 generate_router_config(user_id=uid, force=True)
+            # generate_router_config()'s DB introspection already sets
+            # connection.status/error_message directly on this row when it
+            # can't reach the database - don't clobber an 'error' it just
+            # set with a blanket 'processed'.
+            if connection.status == 'error':
+                db.session.commit()
+                return jsonify({"status": "error", "message": connection.error_message or "Could not connect to this database."}), 502
             connection.status = 'processed'
             connection.error_message = None
             db.session.commit()
