@@ -517,6 +517,7 @@ def introspect_api_db(user_id):
     explicitly granted via Resource Mapping.
     """
     from app.models.api_connector import ApiConnector
+    from app.utils.redaction import redact_secrets
 
     granted_ids = _visible_resource_ids(user_id, 'api')
     tools = ApiConnector.query.filter(
@@ -531,9 +532,9 @@ def introspect_api_db(user_id):
     tools_out = [
         {
             "name": tool.integration_name,
-            "description": tool.api_description or f"API integration: {tool.integration_name}",
+            "description": redact_secrets(tool.api_description) or f"API integration: {tool.integration_name}",
             "method": tool.method,
-            "endpoint": tool.endpoint,
+            "endpoint": redact_secrets(tool.endpoint),
         }
         for tool in tools
     ]

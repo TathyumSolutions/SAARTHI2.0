@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.services.stream_manager import stream_manager
 from app.utils.network_guard import is_safe_url
+from app.utils.redaction import redact_secrets
 from app.models.api_connector import ApiConnector
 
 
@@ -34,7 +35,7 @@ def fetch_and_translate_tools():
             "type": "function",
             "function": {
                 "name": _sanitize_tool_name(tool.integration_name),
-                "description": tool.api_description,
+                "description": redact_secrets(tool.api_description),
                 "parameters": {
                     "type": "object",
                     "properties": {}
