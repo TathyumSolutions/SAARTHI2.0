@@ -21,6 +21,12 @@ class ApiConnector(db.Model):
     api_description = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(20), default='Active')
 
+    # AI-visible summary of what metamind actually feeds the router for
+    # this tool (redacted description) - see automated_metamind.py's
+    # introspect_api_db(). Kept separate from api_description so it always
+    # reflects exactly what the router sees, redaction included.
+    metamind_summary = db.Column(db.Text, nullable=True)
+
     company_code = db.Column(db.String(50), nullable=True, index=True)
     created_by_user_id = db.Column(db.Integer, nullable=False)
 
@@ -37,6 +43,7 @@ class ApiConnector(db.Model):
             'auth_type': self.auth_type,
             'api_description': self.api_description,
             'status': self.status,
+            'metamind_summary': self.metamind_summary,
             'company_code': self.company_code,
             'created_by_user_id': self.created_by_user_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,

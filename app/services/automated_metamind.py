@@ -54,6 +54,25 @@ QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "saarthi_unstructured")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+def _persist_metamind_summary(resource, summary_text):
+    """
+    Writes the AI-generated `metamind_summary` field on a resource (a
+    DatabaseConnection, FileResource, or ApiConnector row) - kept separate
+    from that resource's own user-editable `description`. No-ops if the
+    text hasn't changed, so router config regeneration (which can run
+    often) doesn't churn out no-op commits every time.
+    """
+    if not resource or resource.metamind_summary == summary_text:
+        return
+    from app import db
+    resource.metamind_summary = summary_text
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"⚠️ Could not persist metamind_summary for {resource.__class__.__name__} id={getattr(resource, 'id', None)}: {e}")
+
+
 # These are Saarthi's own internal application tables - never show them
 # to the AI as if they were customer/business data.
 INTERNAL_SYSTEM_TABLES = {
@@ -462,6 +481,12 @@ def _introspect_visible_databases(user_id, sap_db_config=None):
     for connection in connections:
         tables = introspect_databridge_db(_connection_to_db_config(connection))
         if tables:
+            summary_text = "; ".join(
+                f"{name} ({t.get('row_count')} rows): {t.get('description', '')}".strip()
+                for name, t in tables.items()
+            )
+            _persist_metamind_summary(connection, summary_text)
+
             if connection.description:
                 for table_data in tables.values():
                     table_data["description"] = f"{connection.description} — {table_data.get('description', '')}".strip(" —")
@@ -532,15 +557,18 @@ def introspect_api_db(user_id):
         print(f"⚠️ [API] No API tools visible to user {user_id}, skipping API datasource.")
         return None
 
-    tools_out = [
-        {
+    tools_out = []
+    for tool in tools:
+        description = redact_secrets(tool.api_description) or f"API integration: {tool.integration_name}"
+        method = tool.method
+        endpoint = redact_secrets(tool.endpoint)
+        _persist_metamind_summary(tool, f"{method} {endpoint} — {description}".strip(" —"))
+        tools_out.append({
             "name": tool.integration_name,
-            "description": redact_secrets(tool.api_description) or f"API integration: {tool.integration_name}",
-            "method": tool.method,
-            "endpoint": redact_secrets(tool.endpoint),
-        }
-        for tool in tools
-    ]
+            "description": description,
+            "method": method,
+            "endpoint": endpoint,
+        })
 
     print(f"✅ [API] Found {len(tools_out)} API tool(s) visible to user {user_id}")
     return tools_out
@@ -590,7 +618,10 @@ def introspect_qdrant(user_id):
         # Count chunks by type (text / table / image) so the router knows
         # what kind of content is actually available in FILES - scoped to
         # this user's own/granted documents only, never the whole collection.
+        # Also tracked per-document, so each FileResource's metamind_summary
+        # reflects only its own chunks, not the whole collection's.
         chunk_type_counts = {"text": 0, "table": 0, "image": 0, "other": 0}
+        per_doc_counts = {}
         points_count = 0
         next_offset = None
         while True:
@@ -622,6 +653,11 @@ def introspect_qdrant(user_id):
                     chunk_type = "other"
                 chunk_type_counts[chunk_type] += 1
 
+                doc_code = (payload.get("metadata") or {}).get("document_code")
+                if doc_code:
+                    doc_counts = per_doc_counts.setdefault(doc_code, {"text": 0, "table": 0, "image": 0, "other": 0})
+                    doc_counts[chunk_type] += 1
+
             if next_offset is None:
                 break
 
@@ -630,15 +666,19 @@ def introspect_qdrant(user_id):
             return None
 
         from app.models.file_resource import FileResource
-        documents = [
-            {
+        documents = []
+        for r in FileResource.query.filter(FileResource.document_code.in_(doc_codes)).all():
+            doc_counts = per_doc_counts.get(r.document_code)
+            if doc_counts:
+                doc_total = sum(doc_counts.values())
+                breakdown = ", ".join(f"{v} {k}" for k, v in doc_counts.items() if v)
+                _persist_metamind_summary(r, f"{doc_total} chunk(s) indexed ({breakdown}).")
+            documents.append({
                 "document_code": r.document_code,
                 "name": r.file_name,
                 "description": r.description or f"Uploaded {r.file_type or 'file'}.",
                 "status": r.status or "uploaded",
-            }
-            for r in FileResource.query.filter(FileResource.document_code.in_(doc_codes)).all()
-        ]
+            })
 
         print(f"✅ [FILES] Qdrant collection '{QDRANT_COLLECTION}' has {points_count} points visible to user {user_id}: {chunk_type_counts}")
         return {
@@ -683,25 +723,26 @@ def introspect_spreadsheets(user_id):
 
     from app.models.database_connection import DatabaseConnection
     granted_ids = _visible_resource_ids(user_id, 'database')
-    visible_connection_ids = {
-        conn.id for conn in DatabaseConnection.query.filter(
+    connections_by_id = {
+        conn.id: conn for conn in DatabaseConnection.query.filter(
             (DatabaseConnection.created_by_user_id == user_id) | (DatabaseConnection.id.in_(granted_ids or [-1]))
         ).all()
     }
-
-    connection_descriptions = {
-        conn.id: conn.description for conn in DatabaseConnection.query.filter(
-            DatabaseConnection.id.in_(visible_connection_ids or [-1])
-        ).all() if conn.description
-    }
+    visible_connection_ids = set(connections_by_id.keys())
 
     tables_out = {}
+    summary_parts_by_connection = {}
     for table in tables:
         connection_id = table.get("connection_id")
         if connection_id not in visible_connection_ids:
             continue
-        description = table.get("description") or f"Spreadsheet table storing {table['table']} records."
-        custom_description = connection_descriptions.get(connection_id)
+        auto_description = table.get("description") or f"Spreadsheet table storing {table['table']} records."
+        summary_parts_by_connection.setdefault(connection_id, []).append(
+            f"{table['table']} ({table.get('row_count')} rows): {auto_description}"
+        )
+
+        description = auto_description
+        custom_description = connections_by_id[connection_id].description
         if custom_description:
             description = f"{custom_description} — {description}".strip(" —")
         tables_out[table["table"]] = {
@@ -709,6 +750,9 @@ def introspect_spreadsheets(user_id):
             "row_count": table.get("row_count"),
             "columns": table.get("columns", []),
         }
+
+    for connection_id, parts in summary_parts_by_connection.items():
+        _persist_metamind_summary(connections_by_id[connection_id], "; ".join(parts))
 
     if not tables_out:
         print(f"⚠️ [SPREADSHEET] No spreadsheet-backed tables visible to user {user_id}.")

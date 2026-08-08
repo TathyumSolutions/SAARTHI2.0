@@ -302,6 +302,11 @@
             <div class="upload-subtext">Maximum file size: 100MB</div>
         </div>
 
+        <div style="margin-top: 16px;">
+            <label for="uploadDescription" style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500;">Description (optional)</label>
+            <textarea id="uploadDescription" style="width: 100%; min-height: 60px; padding: 10px 12px; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 14px; font-family: inherit; resize: vertical;" placeholder="What does this file contain, and when should it be used? Shown alongside the AI router's own schema info."></textarea>
+        </div>
+
         <div class="progress-bar" id="progressBar">
             <div class="progress-fill" id="progressFill"></div>
         </div>
@@ -608,6 +613,10 @@
                 formData.append('files', file);
             });
             formData.append('file_type', selectedFileType);
+            const descriptionEl = document.getElementById('uploadDescription');
+            if (descriptionEl && descriptionEl.value.trim()) {
+                formData.append('description', descriptionEl.value.trim());
+            }
             
             authFetch('/api/upload/unstructured', {
                 method: 'POST',
@@ -633,6 +642,8 @@
                 document.querySelectorAll('.file-type-card').forEach(function(c) {
                     c.classList.remove('selected');
                 });
+                const descriptionEl = document.getElementById('uploadDescription');
+                if (descriptionEl) descriptionEl.value = '';
                 updateUI();
                 
                 setTimeout(function() {
