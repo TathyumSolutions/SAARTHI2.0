@@ -477,9 +477,24 @@ def _introspect_visible_databases(user_id, sap_db_config=None):
     if not connections:
         return introspect_databridge_db(None)
 
+    from app import db
+
     merged_tables = {}
     for connection in connections:
-        tables = introspect_databridge_db(_connection_to_db_config(connection))
+        config = _connection_to_db_config(connection)
+        conn_error = _test_postgres_connectivity(config)
+        if conn_error:
+            connection.status = 'error'
+            connection.error_message = conn_error
+            db.session.commit()
+            continue
+
+        tables = introspect_databridge_db(config)
+        if connection.status == 'error':
+            connection.status = 'connected'
+        connection.error_message = None
+        db.session.commit()
+
         if tables:
             summary_text = "; ".join(
                 f"{name} ({t.get('row_count')} rows): {t.get('description', '')}".strip()
@@ -493,6 +508,28 @@ def _introspect_visible_databases(user_id, sap_db_config=None):
             merged_tables.update(tables)
 
     return merged_tables or None
+
+
+def _test_postgres_connectivity(db_config):
+    """
+    Cheap standalone reachability check for a PostgreSQL connection, used
+    only to attribute a connection failure to the specific DatabaseConnection
+    row it came from. introspect_databridge_db() deliberately swallows its
+    own connect failures and returns None instead of raising - that's the
+    right call for its other two callers (the legacy env-var CLI fallback
+    and the explicit sap_db_config passthrough used by the agentic process
+    route, which already does its own error handling) - but it means a
+    failed connection inside the per-connection loop above used to vanish
+    silently, leaving a stale/incorrect status on the connection (e.g. still
+    "connected" after the DB became unreachable). Returns the error message
+    string on failure, or None if the connection is reachable.
+    """
+    try:
+        conn = psycopg2.connect(**db_config, connect_timeout=5)
+        conn.close()
+        return None
+    except Exception as e:
+        return str(e)
 
 
 def _visible_postgresql_connections(user_id):
