@@ -1304,7 +1304,21 @@
 
         if (!thoughtChainContainer) return;
 
-        thoughtChainContainer.innerHTML = '';
+        // Shown instantly, before the backend's first real SSE step arrives -
+        // without this the panel sits empty for however long the backend
+        // takes to emit its first step, which reads as broken/frozen rather
+        // than working. Removed the moment any real message (including
+        // DONE) comes through, or by the fallback renderer below if the
+        // live stream never delivered anything at all.
+        thoughtChainContainer.innerHTML = `
+            <div class="thought-step thought-step-placeholder" id="live-step-placeholder">
+                <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px; display: flex; align-items: baseline; gap: 6px;">
+                    <span class="thought-icon" aria-hidden="true">🗂️</span>
+                    <span class="thought-title-text">Identifying the right resources</span>
+                </div>
+                <span class="status-indicator" style="color: #60A5FA; font-size: 11px; display: block; margin-top: 8px;">⏳ Processing...</span>
+            </div>
+        `;
         if (panelTitle) panelTitle.innerText = "Chain of Thought";
 
         if (stepEventSource) {
@@ -1333,6 +1347,9 @@
 
             stepRenderQueue = stepRenderQueue.then(async () => {
                 if (payload.heartbeat) return;
+
+                const placeholder = thoughtChainContainer.querySelector('.thought-step-placeholder');
+                if (placeholder) placeholder.remove();
 
                 if (payload.step === "DONE") {
                     finalizeLiveSteps(payload.is_sql);
@@ -1445,6 +1462,9 @@
         const panelTitle = document.querySelector('.panel-title');
 
         if (!thoughtChainContainer || !ui) return;
+
+        const placeholder = thoughtChainContainer.querySelector('.thought-step-placeholder');
+        if (placeholder) placeholder.remove();
 
         const existingSteps = thoughtChainContainer.querySelectorAll('.thought-step').length;
         const fallbackSteps = Array.isArray(ui.steps) ? ui.steps.filter(Boolean) : [];

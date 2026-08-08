@@ -1422,9 +1422,12 @@
         console.log('✅ Connections displayed');
     }
     
-   /* function testExistingConnection(connectionId) {
+    function testExistingConnection(connectionId) {
         console.log('🔧 Testing existing connection:', connectionId);
-        
+
+        // Just re-test the connection using its already-saved credentials -
+        // this is a row action from the list, not an edit, so it must not
+        // open the create/edit form or touch any of its fields.
         authFetch(`/api/databases/${connectionId}/test`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
@@ -1437,55 +1440,11 @@
             } else {
                 showAlert(data.error || 'Connection test failed', 'error');
             }
-            loadConnections(); // Reload to update status
-        })
-        .catch(error => {
-            console.error('❌ Test error:', error);
-            showAlert(`Test failed: ${error.message}`, 'error');
-        });
-    }*/
-
-    function testExistingConnection(connectionId) {
-        console.log('🔧 Testing existing connection:', connectionId);
-        
-        // 1. Find the connection data from your loaded list
-        // Note: 'allConnections' should be the variable where you store your GET results
-        const conn = allConnections.find(c => c.id === connectionId);
-        
-        if (conn) {
-            // 2. Open the form UI first so we can see what's happening
-            selectDatabaseType(conn.database_type || conn.type);
-
-            // 3. Fill the visible form fields
-            setTimeout(() => {
-                if (document.getElementById('host')) document.getElementById('host').value = conn.host || '';
-                if (document.getElementById('port')) document.getElementById('port').value = conn.port || '';
-                if (document.getElementById('databaseName')) document.getElementById('databaseName').value = conn.database || '';
-                if (document.getElementById('username')) document.getElementById('username').value = conn.username || '';
-                
-                showFormAlert(`Testing ${conn.database_type} connection...`, 'info');
-            }, 100);
-        }
-
-        // 4. Perform the actual POST request to the backend
-        authFetch(`/api/databases/${connectionId}/test`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success || data.status === 'connected') {
-                const latency = data.latency ? ` (${data.latency})` : '';
-                showFormAlert(`Connection test successful!${latency}`, 'success');
-            } else {
-                // This targets the error shown in your screenshot
-                showFormAlert(data.error || 'Connection test failed', 'error');
-            }
             loadConnections(); // Refresh the table status
         })
         .catch(error => {
             console.error('❌ Test error:', error);
-            showFormAlert(`Test failed: ${error.message}`, 'error');
+            showAlert(`Test failed: ${error.message}`, 'error');
         });
     }
     
