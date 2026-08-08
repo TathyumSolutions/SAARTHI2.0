@@ -60,6 +60,8 @@ def serialize_connection(conn):
             'company_code': conn.company_code,
             'created_by_user_id': conn.created_by_user_id,
             'status': conn.status,
+            'error_message': conn.error_message,
+            'description': conn.description,
             'created_at': conn.created_at.isoformat() if conn.created_at else None,
             'updated_at': conn.updated_at.isoformat() if conn.updated_at else None,
             'last_tested': conn.last_tested.isoformat() if conn.last_tested else None
@@ -538,6 +540,9 @@ def process_database_connection(db_id):
             tables = [t['table'] for t in spreadsheet_service.get_tables_for_connection(connection.id)]
 
             if not tables:
+                connection.status = 'error'
+                connection.error_message = 'No tables found for this connection.'
+                db.session.commit()
                 return jsonify({"status": "error", "message": "No tables found for this connection."}), 404
 
             try:
@@ -546,10 +551,16 @@ def process_database_connection(db_id):
             except Exception as e:
                 print(f"Table summarization error: {e}")
                 print(traceback.format_exc())
+                connection.status = 'error'
+                connection.error_message = 'Something went wrong while summarizing these tables. Please try again.'
+                db.session.commit()
                 return jsonify({"status": "error", "message": "Something went wrong while summarizing these tables. Please try again."}), 500
 
             for uid in affected_user_ids:
                 generate_router_config(user_id=uid, force=True)
+            connection.status = 'processed'
+            connection.error_message = None
+            db.session.commit()
             described = ", ".join(f'"{t}"' for t in tables)
             return jsonify({
                 "status": "success",
@@ -559,13 +570,25 @@ def process_database_connection(db_id):
         try:
             for uid in affected_user_ids:
                 generate_router_config(user_id=uid, force=True)
+            connection.status = 'processed'
+            connection.error_message = None
+            db.session.commit()
             return jsonify({"status": "success", "message": "This connection's tables are now ready for queries."})
         except Exception as e:
             print(f"Router config regeneration error: {e}")
+            connection.status = 'error'
+            connection.error_message = 'Something went wrong while activating this connection. Please try again.'
+            db.session.commit()
             return jsonify({"status": "error", "message": "Something went wrong while activating this connection. Please try again."}), 500
     except Exception as e:
         print(f"Process connection error: {str(e)}")
         print(traceback.format_exc())
+        try:
+            connection.status = 'error'
+            connection.error_message = str(e)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         return jsonify({"status": "error", "message": "Something went wrong. Please try again."}), 500
 
 

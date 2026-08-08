@@ -18,6 +18,15 @@ class FileResource(db.Model):
     file_size = db.Column(db.Integer)
     file_path = db.Column(db.Text, nullable=False)
 
+    # User-editable description, shown alongside (and folded into) the
+    # metamind-generated schema info - see automated_metamind.py's
+    # introspect_qdrant(). Falls back to an auto-generated blurb when unset.
+    description = db.Column(db.Text, nullable=True)
+
+    # uploaded -> processing -> processed, or error (see error_message).
+    status = db.Column(db.String(20), default='uploaded', nullable=False)
+    error_message = db.Column(db.Text, nullable=True)
+
     company_code = db.Column(db.String(50), nullable=True, index=True)
     created_by_user_id = db.Column(db.Integer, nullable=False)
 
@@ -30,6 +39,9 @@ class FileResource(db.Model):
             'file_type': self.file_type,
             'file_size': self.file_size,
             'file_path': self.file_path,
+            'description': self.description,
+            'status': self.status,
+            'error_message': self.error_message,
             'company_code': self.company_code,
             'created_by_user_id': self.created_by_user_id,
             'upload_date': self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None,
