@@ -374,11 +374,6 @@
             <div class="sidebar-section">
                 <div class="section-title">Data Sources</div>
 
-                <div class="section-item" id="dataSourcesDirectoryIcon" onclick="window.location.href='/data_sources'">
-                    <div class="item-icon">🗂️</div>
-                    <span>All Data Sources</span>
-                </div>
-
                 <div class="section-item" id="unstructuredDataIcon" onclick="window.location.href='/unstructured_data'">
                     <div class="item-icon">📁</div>
                     <span>Files</span>
@@ -444,6 +439,14 @@
                     <div class="sub-item" style="color: var(--text-muted, #64748b); font-style: italic; pointer-events: none;">
                         No previous chats found
                     </div>
+                </div>
+            </div>
+
+            <!-- Knowledge Base (was "All Data Sources", moved below Conversations) -->
+            <div class="sidebar-section">
+                <div class="section-item" id="dataSourcesDirectoryIcon" onclick="window.location.href='/data_sources'">
+                    <div class="item-icon">🗂️</div>
+                    <span>Knowledge Base</span>
                 </div>
             </div>
 

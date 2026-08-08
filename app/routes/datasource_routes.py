@@ -100,8 +100,10 @@ def get_visible_datasources(user):
             'type': 'database',
             'name': conn.name,
             'subtype': conn.type,
-            'description': _database_description(conn),
+            'description': conn.description or _database_description(conn),
+            'has_custom_description': bool(conn.description),
             'status': conn.status,
+            'error_message': conn.error_message,
             'creator': _creator(conn),
             'created_at': conn.created_at.isoformat() if conn.created_at else None,
             'access': _access(conn),
@@ -112,8 +114,10 @@ def get_visible_datasources(user):
             'type': 'file',
             'name': f.file_name,
             'subtype': (f.file_type or '').upper() or None,
-            'description': _file_description(f),
-            'status': 'active',
+            'description': f.description or _file_description(f),
+            'has_custom_description': bool(f.description),
+            'status': f.status or 'uploaded',
+            'error_message': f.error_message,
             'creator': _creator(f),
             'created_at': f.created_at.isoformat() if f.created_at else None,
             'access': _access(f),
@@ -125,7 +129,9 @@ def get_visible_datasources(user):
             'name': tool.integration_name,
             'subtype': tool.method,
             'description': tool.api_description or f"API integration: {tool.integration_name}",
+            'has_custom_description': bool(tool.api_description),
             'status': tool.status,
+            'error_message': None,
             'creator': _creator(tool),
             'created_at': tool.created_at.isoformat() if tool.created_at else None,
             'access': _access(tool),
@@ -159,6 +165,157 @@ def get_datasources():
         return jsonify({'datasources': datasources, 'count': len(datasources)}), 200
     except Exception as e:
         return jsonify({'error': str(e), 'datasources': []}), 500
+
+
+_TYPE_MODELS = {
+    'database': (DatabaseConnection, 'description'),
+    'file': (FileResource, 'description'),
+    'api': (ApiConnector, 'api_description'),
+}
+
+
+def _resource_or_404(datasource_type, datasource_id):
+    if datasource_type not in _TYPE_MODELS:
+        return None, None, (jsonify({'status': 'error', 'message': 'Unknown datasource type'}), 400)
+    model, field_name = _TYPE_MODELS[datasource_type]
+    resource = model.query.get(datasource_id)
+    if not resource:
+        return None, None, (jsonify({'status': 'error', 'message': 'Datasource not found'}), 404)
+    return resource, field_name, None
+
+
+@bp.route('/<datasource_type>/<int:datasource_id>/description', methods=['PUT'])
+@jwt_required()
+def update_datasource_description(datasource_type, datasource_id):
+    """
+    Set/update the human-readable description for one data source
+    (database connection, file, or API connector). Stored on the resource
+    itself (not just derived), and folded into that user's router config
+    the next time it's regenerated - see automated_metamind.py's
+    _introspect_visible_databases()/introspect_spreadsheets()/
+    introspect_qdrant(), which already read api_description for API tools
+    the same way.
+    Request: { "description": "..." }
+    Response: { "status": "success", "description": "..." }
+    """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+
+    resource, field_name, error = _resource_or_404(datasource_type, datasource_id)
+    if error:
+        return error
+
+    if resource.created_by_user_id != current_user.id and current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'Only the owner or a company admin can edit this description'}), 403
+
+    description = ((request.get_json(silent=True) or {}).get('description') or '').strip()
+    if datasource_type == 'api' and not description:
+        return jsonify({'status': 'error', 'message': 'API integrations require a description'}), 400
+
+    setattr(resource, field_name, description or None)
+    db.session.commit()
+
+    from app.models.resource_mapping import ResourceMapping
+    from app.services.automated_metamind import generate_router_config
+    affected_user_ids = {current_user.id, resource.created_by_user_id} | {
+        m.user_id for m in ResourceMapping.query.filter_by(resource_type=datasource_type, resource_id=resource.id).all()
+    }
+    for uid in affected_user_ids:
+        try:
+            generate_router_config(user_id=uid, force=True)
+        except Exception as e:
+            print(f"⚠️ Could not regenerate router config for user {uid} after description update: {e}")
+
+    return jsonify({'status': 'success', 'description': getattr(resource, field_name)}), 200
+
+
+def _metadata_for_datasource(user_id, datasource_type, resource):
+    """
+    Slices this one user's router config (see app/models/router_config.py)
+    down to just the tables/tools/documents that belong to `resource`, for
+    the Knowledge Base "Details" popup - summary section from
+    RouterConfig.summary, full section from RouterConfig.config. Router
+    config tables aren't tagged with which connection produced them once
+    merged (see automated_metamind.py's docstrings), so a plain PostgreSQL
+    connection's Details show every DB table this user can see; Excel
+    connections and files can be scoped exactly via their own table/doc
+    codes.
+    """
+    from app.models.router_config import RouterConfig
+    from app.services import spreadsheet_service
+
+    row = RouterConfig.query.filter_by(user_id=user_id).first()
+    summary = ((row.summary or {}).get('routing_menu_summary', {}) if row else {}).get('datasources', {})
+    full = ((row.config or {}).get('routing_menu', {}) if row else {}).get('datasources', {})
+
+    if datasource_type == 'database':
+        if (resource.type or '').lower() == 'excel':
+            try:
+                table_names = {t['table'] for t in spreadsheet_service.get_tables_for_connection(resource.id)}
+            except Exception:
+                table_names = set()
+            summary_tables = {k: v for k, v in summary.get('SPREADSHEET', {}).get('tables', {}).items() if k in table_names}
+            full_tables = {k: v for k, v in full.get('SPREADSHEET', {}).get('tables', {}).items() if k in table_names}
+            return (
+                {'datasource': 'SPREADSHEET', 'tables': summary_tables},
+                {'datasource': 'SPREADSHEET', 'tables': full_tables},
+            )
+        return (
+            {'datasource': 'DB', 'tables': summary.get('DB', {}).get('tables', {})},
+            {'datasource': 'DB', 'tables': full.get('DB', {}).get('tables', {})},
+        )
+
+    if datasource_type == 'file':
+        summary_docs = [d for d in summary.get('FILES', {}).get('documents', []) if d.get('document_code') == resource.document_code]
+        full_docs = [d for d in full.get('FILES', {}).get('vector_store_info', {}).get('documents', []) if d.get('document_code') == resource.document_code]
+        return (
+            {'datasource': 'FILES', 'documents': summary_docs},
+            {'datasource': 'FILES', 'documents': full_docs, 'collection': full.get('FILES', {}).get('vector_store_info', {}).get('collection')},
+        )
+
+    if datasource_type == 'api':
+        summary_tools = [t for t in summary.get('API', {}).get('registered_tools', []) if t.get('name') == resource.integration_name]
+        full_tools = [t for t in full.get('API', {}).get('registered_tools', []) if t.get('name') == resource.integration_name]
+        return (
+            {'datasource': 'API', 'registered_tools': summary_tools},
+            {'datasource': 'API', 'registered_tools': full_tools},
+        )
+
+    return {}, {}
+
+
+@bp.route('/<datasource_type>/<int:datasource_id>/metadata', methods=['GET'])
+@jwt_required()
+def get_datasource_metadata(datasource_type, datasource_id):
+    """
+    Powers the Knowledge Base "Details" popup for one data source: the
+    metamind info the AI router actually sees for it, split into a
+    lightweight summary (names/descriptions/columns only) and the full
+    metadata (types, null/unique counts, sample values, row counts, etc).
+    Response: { "status": "success", "summary": {...}, "metadata": {...} }
+    """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+
+    resource, _field_name, error = _resource_or_404(datasource_type, datasource_id)
+    if error:
+        return error
+
+    from app.models.resource_mapping import ResourceMapping
+    is_granted = ResourceMapping.query.filter_by(
+        resource_type=datasource_type, resource_id=resource.id, user_id=current_user.id
+    ).first() is not None
+    if resource.created_by_user_id != current_user.id and not is_granted and current_user.role != 'admin':
+        return jsonify({'status': 'error', 'message': 'You do not have access to this datasource'}), 403
+
+    try:
+        summary, metadata = _metadata_for_datasource(current_user.id, datasource_type, resource)
+        return jsonify({'status': 'success', 'summary': summary, 'metadata': metadata}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @bp.route('/', methods=['POST'])
 @jwt_required()
@@ -317,6 +474,9 @@ def process_unstructured_file(document_code):
             return jsonify({"status": "error", "message": "Only the uploader or a company admin can process this file"}), 403
 
         file_path = resource.file_path
+        resource.status = 'processing'
+        resource.error_message = None
+        db.session.commit()
 
         # Trigger the AI Pipeline
         if file_path and os.path.exists(file_path):
@@ -325,6 +485,9 @@ def process_unstructured_file(document_code):
 
             if "error" in result:
                 print(f"❌ Error processing document {document_code}: {result['error']}")
+                resource.status = 'error'
+                resource.error_message = str(result['error'])
+                db.session.commit()
                 return jsonify({"status": "error", "message": "Something went wrong while processing this file. Please try again."}), 500
 
             from app.services.automated_metamind import generate_router_config
@@ -332,7 +495,14 @@ def process_unstructured_file(document_code):
                 generate_router_config(user_id=current_user.id, force=True)
             except Exception as e:
                 print(f"❌ Error regenerating router config after processing {document_code}: {e}")
+                resource.status = 'error'
+                resource.error_message = 'Processed successfully, but the AI router config could not be regenerated.'
+                db.session.commit()
                 return jsonify({"status": "error", "message": "Something went wrong while activating this file. Please try again."}), 500
+
+            resource.status = 'processed'
+            resource.error_message = None
+            db.session.commit()
 
             log_event('file_processed', company_code=current_user.company_code, user_id=current_user.id,
                        resource_type='file', resource_id=resource.id, details={'document_code': document_code})
@@ -347,11 +517,20 @@ def process_unstructured_file(document_code):
                 }
             }), 200
         else:
+            resource.status = 'error'
+            resource.error_message = 'Physical file could not be located on disk.'
+            db.session.commit()
             return jsonify({"status": "error", "message": "Physical file could not be located on disk."}), 404
 
     except Exception as e:
         # Catch-all for system errors
         print(f"❌ Unexpected error processing document {document_code}: {e}")
+        try:
+            resource.status = 'error'
+            resource.error_message = str(e)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         return jsonify({"status": "error", "message": "Something went wrong while processing this file. Please try again."}), 500
 
 # Minimal GET route to keep the blueprint valid

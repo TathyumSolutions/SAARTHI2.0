@@ -231,6 +231,23 @@
         color: var(--dark-bg);
     }
 
+    .status-processed {
+        background: var(--accent-green);
+        color: var(--dark-bg);
+    }
+
+    .status-error {
+        background: #d32f2f;
+        color: white;
+    }
+
+    .connection-error-message {
+        font-size: 11px;
+        color: #ff6b6b;
+        margin-top: 4px;
+        max-width: 220px;
+    }
+
     .alert {
         padding: 16px;
         border-radius: 6px;
@@ -1334,19 +1351,28 @@
             return;
         }
         
+        const STATUS_DISPLAY = {
+            connected: { cls: 'status-connected', text: 'Connected' },
+            processed: { cls: 'status-processed', text: 'Processed' },
+            error: { cls: 'status-error', text: 'Error' },
+            active: { cls: 'status-connected', text: 'Active' },
+        };
+
         let html = '';
         connections.forEach(conn => {
-            const statusClass = conn.status === 'connected' ? 'status-connected' : 'status-disconnected';
-            const statusText = conn.status === 'connected' ? 'Connected' : 'Disconnected';
+            const display = STATUS_DISPLAY[conn.status] || { cls: 'status-disconnected', text: conn.status || 'Disconnected' };
             const dbConfig = DB_CONFIGS[conn.type] || { icon: '📦' };
-            
+
             html += `
                 <tr>
                     <td><span class="connection-name">${escapeHtml(conn.name)}</span></td>
                     <td><span class="connection-type">${dbConfig.icon} ${escapeHtml(conn.type)}</span></td>
                     <td>${escapeHtml(conn.host || 'N/A')}</td>
                     <td>${escapeHtml(conn.database || 'N/A')}</td>
-                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    <td>
+                        <span class="status-badge ${display.cls}">${display.text}</span>
+                        ${conn.status === 'error' && conn.error_message ? `<div class="connection-error-message">${escapeHtml(conn.error_message)}</div>` : ''}
+                    </td>
                     <td>
                         <div class="action-btn-group">
                             <div id="formAlertSuccess" class="test-result success" style="display: none; margin-bottom: 5px;"><span id="formAlertSuccessMessage"></span></div>
@@ -1680,7 +1706,8 @@
         } finally {
             btn.disabled = false;
             btn.innerText = "Process";
+            loadConnections();
         }
-    }        
+    }
 </script>
 {% endblock %}

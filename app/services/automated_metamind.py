@@ -462,6 +462,9 @@ def _introspect_visible_databases(user_id, sap_db_config=None):
     for connection in connections:
         tables = introspect_databridge_db(_connection_to_db_config(connection))
         if tables:
+            if connection.description:
+                for table_data in tables.values():
+                    table_data["description"] = f"{connection.description} — {table_data.get('description', '')}".strip(" —")
             merged_tables.update(tables)
 
     return merged_tables or None
@@ -626,11 +629,23 @@ def introspect_qdrant(user_id):
             print(f"⚠️ [FILES] No indexed chunks visible to user {user_id}, skipping FILES datasource.")
             return None
 
+        from app.models.file_resource import FileResource
+        documents = [
+            {
+                "document_code": r.document_code,
+                "name": r.file_name,
+                "description": r.description or f"Uploaded {r.file_type or 'file'}.",
+                "status": r.status or "uploaded",
+            }
+            for r in FileResource.query.filter(FileResource.document_code.in_(doc_codes)).all()
+        ]
+
         print(f"✅ [FILES] Qdrant collection '{QDRANT_COLLECTION}' has {points_count} points visible to user {user_id}: {chunk_type_counts}")
         return {
             "collection": QDRANT_COLLECTION,
             "points_count": points_count,
             "chunk_type_breakdown": chunk_type_counts,
+            "documents": documents,
         }
 
     except Exception as e:
@@ -674,12 +689,23 @@ def introspect_spreadsheets(user_id):
         ).all()
     }
 
+    connection_descriptions = {
+        conn.id: conn.description for conn in DatabaseConnection.query.filter(
+            DatabaseConnection.id.in_(visible_connection_ids or [-1])
+        ).all() if conn.description
+    }
+
     tables_out = {}
     for table in tables:
-        if table.get("connection_id") not in visible_connection_ids:
+        connection_id = table.get("connection_id")
+        if connection_id not in visible_connection_ids:
             continue
+        description = table.get("description") or f"Spreadsheet table storing {table['table']} records."
+        custom_description = connection_descriptions.get(connection_id)
+        if custom_description:
+            description = f"{custom_description} — {description}".strip(" —")
         tables_out[table["table"]] = {
-            "description": table.get("description") or f"Spreadsheet table storing {table['table']} records.",
+            "description": description,
             "row_count": table.get("row_count"),
             "columns": table.get("columns", []),
         }
@@ -789,6 +815,7 @@ def compute_fingerprint(db_tables, api_tools, files_info, spreadsheet_tables=Non
         "api_tools": api_tools or [],
         "files_points_count": (files_info or {}).get("points_count", 0),
         "files_collection": (files_info or {}).get("collection", ""),
+        "files_documents": (files_info or {}).get("documents", []),
         "spreadsheet_tables": spreadsheet_tables or {}
     }
     raw = json.dumps(fingerprint_source, sort_keys=True, default=str)
@@ -838,7 +865,11 @@ def build_routing_menu_summary(menu: dict) -> dict:
         summary_datasources["FILES"] = {
             "description": full_datasources["FILES"].get("description", ""),
             "collection": vs_info.get("collection", ""),
-            "points_count": vs_info.get("points_count", 0)
+            "points_count": vs_info.get("points_count", 0),
+            "documents": [
+                {"document_code": d.get("document_code"), "name": d.get("name"), "description": d.get("description")}
+                for d in vs_info.get("documents", [])
+            ]
         }
 
     if "API" in full_datasources:
