@@ -41,6 +41,9 @@ def register():
     password = data.get("password") or request.form.get("password")
     confirm_password = data.get("confirm_password") or request.form.get("confirm_password")
     company_code = (data.get("company_code") or request.form.get("company_code") or "").strip()
+    agree_terms = data.get("agree_terms")
+    if agree_terms is None:
+        agree_terms = request.form.get("agree_terms")
 
     if email:
         email = email.strip().lower()
@@ -50,6 +53,9 @@ def register():
 
     if password != confirm_password:
         return jsonify({"status": "error", "message": "Passwords do not match."}), 400
+
+    if agree_terms not in (True, "true", "True", "1", 1):
+        return jsonify({"status": "error", "message": "You must accept the Terms & Privacy Policy to create an account."}), 400
 
     if User.query.filter_by(email=email).first():
         return jsonify({"status": "error", "message": "An account with this email already exists."}), 400
