@@ -22,8 +22,8 @@ class QuerySimplifierAgent:
         self.openai_key = os.getenv("OPENAI_API_KEY")
 
         # schema, if given directly, takes precedence - this is how callers
-        # pass a specific user's own introspected schema (from their
-        # router_configs row) instead of reading a static file.
+        # pass a specific user's own live-introspected schema instead of
+        # reading a static file.
         self.schema = schema or {}
         if not schema and self.schema_path:
             try:

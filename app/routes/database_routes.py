@@ -169,7 +169,7 @@ def create_database_connection():
                    resource_type='database', resource_id=connection.id, details={'name': connection.name, 'type': connection.type})
 
         from app.services.automated_metamind import generate_router_config
-        generate_router_config(user_id=current_user.id, force=True)
+        generate_router_config(user_id=current_user.id)
 
         return jsonify({
             'database': serialize_connection(connection),
@@ -274,7 +274,7 @@ def create_excel_database():
         db.session.commit()
 
         from app.services.automated_metamind import generate_router_config
-        generate_router_config(user_id=current_user.id, force=True)
+        generate_router_config(user_id=current_user.id)
 
         log_event('database_connection_created', company_code=current_user.company_code, user_id=current_user.id,
                    resource_type='database', resource_id=connection.id, details={'name': connection.name, 'type': 'Excel'})
@@ -359,7 +359,7 @@ def update_database_connection(db_id):
         }
         try:
             for uid in affected_user_ids:
-                generate_router_config(user_id=uid, force=True)
+                generate_router_config(user_id=uid)
             # generate_router_config()'s DB introspection already sets
             # connection.status/error_message directly on this row when it
             # can't reach the database (see automated_metamind.py's
@@ -400,11 +400,6 @@ def delete_database_connection(db_id):
         if not connection or not _can_modify_connection(current_user, connection):
             return jsonify({'error': 'Connection not found'}), 404
 
-        from app.models.resource_mapping import ResourceMapping
-        affected_user_ids = {current_user.id, connection.created_by_user_id} | {
-            m.user_id for m in ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id).all()
-        }
-
         is_excel = (connection.type or '').lower() == 'excel'
         connection_id = connection.id
         db.session.delete(connection)
@@ -416,9 +411,9 @@ def delete_database_connection(db_id):
         log_event('database_connection_deleted', company_code=current_user.company_code, user_id=current_user.id,
                    resource_type='database', resource_id=connection_id)
 
-        from app.services.automated_metamind import generate_router_config
-        for uid in affected_user_ids:
-            generate_router_config(user_id=uid, force=True)
+        # No router config to refresh - it's computed live on every chat
+        # query, so a deleted connection simply stops appearing on the
+        # very next query with nothing to proactively clear.
 
         return jsonify({'message': 'Connection deleted successfully'}), 200
     except Exception as e:
@@ -575,7 +570,7 @@ def process_database_connection(db_id):
                 return jsonify({"status": "error", "message": "Something went wrong while summarizing these tables. Please try again."}), 500
 
             for uid in affected_user_ids:
-                generate_router_config(user_id=uid, force=True)
+                generate_router_config(user_id=uid)
             connection.status = 'processed'
             connection.error_message = None
             db.session.commit()
@@ -612,7 +607,7 @@ def process_database_connection(db_id):
                     print(f"⚠️ Table description enrichment failed for connection {connection.id}: {e}")
 
             for uid in affected_user_ids:
-                generate_router_config(user_id=uid, force=True)
+                generate_router_config(user_id=uid)
             # generate_router_config()'s DB introspection already sets
             # connection.status/error_message directly on this row when it
             # can't reach the database - don't clobber an 'error' it just
@@ -888,7 +883,7 @@ def run_agentic_process(conn_id):
             m.user_id for m in ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id).all()
         }
         for uid in affected_user_ids:
-            generate_router_config(user_id=uid, force=True, sap_db_config=sap_db_config)
+            generate_router_config(user_id=uid, sap_db_config=sap_db_config)
 
         log_event('agentic_process_run', company_code=current_user.company_code, user_id=current_user.id,
                    resource_type='database', resource_id=conn_id, details={'log_path': log_path})

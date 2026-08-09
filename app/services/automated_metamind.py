@@ -1,7 +1,8 @@
 """
-Builds each user's personal router config (saved to their row in
-router_configs, see app/models/router_config.py - not a shared file) by
-introspecting:
+Builds each user's personal router config, live, on every call (not a
+shared file, and not cached in any table - DatabaseConnection/
+ApiConnector/FileResource are the single source of truth for MetaMind
+data) by introspecting:
 1. This user's own + resource-mapped PostgreSQL database connections
    (falling back to the legacy DATABRIDGE_TARGET_* env vars if this user
    has none registered) -> DB datasource (SAP-style tables)
@@ -12,14 +13,11 @@ introspecting:
    (RAG document collection, filtered by metadata.document_code)
 
 Features:
-- Detects schema changes via a per-user content hash (fingerprint column)
-- Skips regeneration if nothing changed since last run
 - Skips any datasource that is unreachable/missing instead of failing
 """
 
 import os
 import json
-import hashlib
 import datetime
 
 import psycopg2
@@ -428,8 +426,8 @@ def to_sql_agent_schema(db_tables: dict) -> dict:
     shape the LangGraph SQL agents (databridge_services/agents/*) expect -
     columns keyed by name rather than a list, and foreign keys flattened to
     "table.column" references. Used to feed those agents this specific
-    user's own introspected schema (from their router_configs row) instead
-    of a static, global schema file.
+    user's own live-introspected schema instead of a static, global
+    schema file.
     """
     tables = {}
     for table_name, table_data in (db_tables or {}).items():
@@ -999,66 +997,6 @@ def build_routing_menu(db_tables, api_tools, files_info, spreadsheet_tables=None
 
 
 # ============================================================
-# STEP 5: CHANGE DETECTION (hash-based)
-# ============================================================
-
-def compute_fingerprint(db_tables, api_tools, files_info, spreadsheet_tables=None):
-    """
-    Generates data fingerprints to capture structural state drift.
-    """
-    fingerprint_source = {
-        "db_tables": db_tables or {},
-        "api_tools": api_tools or [],
-        "files_points_count": (files_info or {}).get("points_count", 0),
-        "files_collection": (files_info or {}).get("collection", ""),
-        "files_documents": (files_info or {}).get("documents", []),
-        "spreadsheet_tables": spreadsheet_tables or {}
-    }
-    raw = json.dumps(fingerprint_source, sort_keys=True, default=str)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def _get_or_create_router_config_row(user_id):
-    from app import db
-    from app.models.router_config import RouterConfig
-
-    try:
-        row = RouterConfig.query.filter_by(user_id=user_id).first()
-    except IndexError as e:
-        # Diagnosing a "string index out of range" crash from SQLAlchemy's
-        # own identifier-quoting logic (compiler.py's _requires_quotes) -
-        # the live DB schema for router_configs has been confirmed clean
-        # (matches this model exactly, no phantom columns), so if this
-        # fires, the corruption is in this *process's* in-memory
-        # representation or its compiled-statement cache, not the
-        # database. Dumps everything relevant about RouterConfig's table
-        # before falling back to a plain Core select with the compiled
-        # query cache disabled - if that succeeds, the cache itself was
-        # the corrupted part and this self-heals; either way, this run's
-        # logs get real evidence instead of another guess.
-        table = RouterConfig.__table__
-        print(f"⚠️ [ROUTER CONFIG] IndexError compiling RouterConfig query: {e}")
-        print(f"⚠️ [ROUTER CONFIG] table.name={table.name!r} table.schema={table.schema!r}")
-        print(f"⚠️ [ROUTER CONFIG] columns: {[(c.name, c.key, type(c.name).__name__) for c in table.columns]}")
-        print(f"⚠️ [ROUTER CONFIG] indexes: {[(ix.name, [c.name for c in ix.columns]) for ix in table.indexes]}")
-        print(f"⚠️ [ROUTER CONFIG] constraints: {[(getattr(c, 'name', None), type(c).__name__) for c in table.constraints]}")
-
-        from sqlalchemy import select
-        try:
-            row = db.session.execute(
-                select(RouterConfig).filter_by(user_id=user_id).execution_options(compiled_cache=None)
-            ).scalars().first()
-            print("⚠️ [ROUTER CONFIG] Retry with compiled query cache disabled SUCCEEDED - looks like a corrupted cached statement plan.")
-        except IndexError:
-            print("⚠️ [ROUTER CONFIG] Retry with compiled query cache disabled ALSO failed - not a cache issue.")
-            raise
-    if not row:
-        row = RouterConfig(user_id=user_id)
-        db.session.add(row)
-    return row
-
-
-# ============================================================
 # MAIN ENTRYPOINT
 # ============================================================
 
@@ -1126,22 +1064,31 @@ def build_routing_menu_summary(menu: dict) -> dict:
     }
 
 
-def generate_router_config(user_id, force=False, sap_db_config=None):
+def generate_router_config(user_id, sap_db_config=None):
     """
-    Builds and saves this specific user's router config - which
+    Builds this specific user's router config, live, on every call - which
     datasources/tables/API tools/spreadsheets the smart router considers
-    when answering their questions. Saved to that user's row in
-    router_configs (saarthi_workspace_db), not a shared global file, so
-    two users never see each other's private resources through routing.
+    when answering their questions. Computed fresh each time rather than
+    cached in a shared table, so two users never see each other's private
+    resources through routing, and every datasource here reflects only
+    what this user created or was granted right now, not a stale snapshot.
 
     The external SAP-style database is resolved from this user's own
     PostgreSQL connections (own + resource-mapped) unless sap_db_config is
     given explicitly - see _introspect_visible_databases()'s docstring.
     Qdrant documents (introspect_qdrant) are scoped the same way, via
-    visible_document_codes() - so every datasource here now reflects only
-    what this user created or was granted, not the whole company/system.
+    visible_document_codes().
+
+    Returns the routing menu dict (see build_routing_menu()'s shape), or
+    None if this user has no visible datasources at all - callers that
+    need the trimmed version call build_routing_menu_summary(menu)
+    themselves. Note this still has real side effects beyond the returned
+    value: _introspect_visible_databases()/introspect_api_db() persist
+    connection status/error_message and each resource's own
+    metamind_summary as they go (see their own docstrings) - callers that
+    only care about those side effects (e.g. after saving a connection)
+    still need to call this even when they discard the return value.
     """
-    from app import db
     from app.models.user import User
 
     user = User.query.get(user_id)
@@ -1162,37 +1109,23 @@ def generate_router_config(user_id, force=False, sap_db_config=None):
         print(f"❌ No datasources visible to user {user_id}. Nothing to generate.")
         return None
 
-    row = _get_or_create_router_config_row(user_id)
-
-    new_hash = compute_fingerprint(db_tables, api_tools, files_info, spreadsheet_tables)
-    if not force and new_hash == row.fingerprint and row.config:
-        print("✅ No schema changes detected since last run. Skipping regeneration.")
-        return row
-
     menu = build_routing_menu(db_tables, api_tools, files_info, spreadsheet_tables)
-    summary = build_routing_menu_summary(menu)
 
-    row.company_code = user.company_code
-    row.config = menu
-    row.summary = summary
-    row.fingerprint = new_hash
-    db.session.commit()
-
-    print(f"✅ Router config regenerated for user {user_id}")
+    print(f"✅ Router config computed for user {user_id}")
     print(f"   Active datasources: {list(menu['routing_menu']['datasources'].keys())}")
-    return row
+    return menu
 
 
 if __name__ == "__main__":
     # Manual/dev use only - the live app always calls generate_router_config()
     # as a function, in-process, with a real Flask app context already active.
     import argparse
-    parser = argparse.ArgumentParser(description="Regenerate a user's router config.")
+    parser = argparse.ArgumentParser(description="Compute a user's router config and print it.")
     parser.add_argument("--user-id", type=int, required=True)
-    parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
     from app import create_app
     app = create_app()
     with app.app_context():
-        generate_router_config(user_id=args.user_id, force=args.force)
+        result = generate_router_config(user_id=args.user_id)
+        print(json.dumps(result, indent=2, default=str))

@@ -286,8 +286,8 @@ if __name__ == "__main__":
     )
 
     # No longer persisted to a local JSON snapshot - the live chat SQL
-    # agent (langgraph_agent.py) now builds its schema per-user from
-    # router_configs (via generate_router_config()/introspect_databridge_db())
+    # agent (langgraph_agent.py) now builds its schema per-user live, on
+    # every call, via generate_router_config()/introspect_databridge_db()
     # instead of reading a static global file, so nothing consumes this
     # output on disk anymore.
     print(f"✅ Success! Generated SAP schema with comments for {len(schema.get('tables', {}))} table(s).")

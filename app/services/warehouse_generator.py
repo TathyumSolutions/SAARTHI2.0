@@ -21,16 +21,17 @@ class WarehouseGenerationError(Exception):
 
 
 def _load_metamind_tables(user_id: int) -> Dict[str, Dict[str, Any]]:
-    """Loads this user's own router config row (see app/models/router_config.py)
-    instead of the old shared metamind_router_config.json file."""
-    from app.models.router_config import RouterConfig
+    """Computes this user's own router config live (see
+    automated_metamind.generate_router_config) instead of the old shared
+    metamind_router_config.json file or a cached per-user table."""
+    from app.services.automated_metamind import generate_router_config
 
-    row = RouterConfig.query.filter_by(user_id=user_id).first()
-    if not row or not row.config:
+    menu = generate_router_config(user_id)
+    if not menu:
         raise WarehouseGenerationError("Metamind table metadata not found for this user")
 
     tables = (
-        row.config.get("routing_menu", {})
+        menu.get("routing_menu", {})
         .get("datasources", {})
         .get("DB", {})
         .get("tables", {})

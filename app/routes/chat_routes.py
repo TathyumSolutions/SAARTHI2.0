@@ -38,13 +38,13 @@ def _resolve_feedback_user():
 
 def _resolve_router_snapshot(router_decision: str, user_id: int):
     try:
-        from app.models.router_config import RouterConfig
-        row = RouterConfig.query.filter_by(user_id=user_id).first()
-        if not row or not row.config:
+        from app.services.automated_metamind import generate_router_config
+        menu = generate_router_config(user_id)
+        if not menu:
             return None
 
         decision = (router_decision or '').upper()
-        data_sources = row.config.get('routing_menu', {}).get('datasources', {})
+        data_sources = menu.get('routing_menu', {}).get('datasources', {})
         return data_sources.get(decision)
     except Exception as exc:
         print(f"⚠️ Could not attach metamind info to feedback: {exc}")
