@@ -754,7 +754,24 @@ class RouterService:
             
             router_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0, openai_api_key=openai_api_key)
             response = router_llm.bind_tools(_ALL_TOOLS).invoke(messages)
-            tool_calls = getattr(response, "tool_calls", None) or []
+            raw_tool_calls = getattr(response, "tool_calls", None) or []
+
+            # gpt-4o-mini occasionally returns the exact same tool call twice
+            # in one response (same name, same args) - executing both wastes
+            # a full extra agent run, and having len(results) > 1 wrongly
+            # routes a single-source answer through LAYER 5's multi-source
+            # synthesis (an extra LLM call, and a paraphrased answer instead
+            # of the clean single-tool response). Keep only the first
+            # occurrence of each (name, args) pair.
+            seen_calls = set()
+            tool_calls = []
+            for call in raw_tool_calls:
+                dedup_key = (call["name"], json.dumps(call.get("args", {}) or {}, sort_keys=True, default=str))
+                if dedup_key in seen_calls:
+                    continue
+                seen_calls.add(dedup_key)
+                tool_calls.append(call)
+
             print(f"ðŸ§  Router selected tools: {[c['name'] for c in tool_calls]}")
 
             # No tool needed — model judged it answerable directly.
