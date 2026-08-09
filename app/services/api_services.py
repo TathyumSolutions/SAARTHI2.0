@@ -9,7 +9,28 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from app.services.stream_manager import stream_manager
 from app.utils.network_guard import is_safe_url
 from app.utils.redaction import redact_secrets
+from app.utils.crypto import decrypt
 from app.models.api_connector import ApiConnector
+
+
+def _auth_headers(auth_type, encrypted_token):
+    """
+    Builds the request header(s) for a registered API tool's saved
+    auth_type/api_token - without this, every authenticated integration
+    (auth_type "API Key" or "Bearer Token") gets called with no
+    credentials at all, and fails with a 401/403 that then gets narrated
+    back to the user as "the API endpoint does not exist or access is not
+    permitted", which reads like a broken registration rather than what
+    it actually is (a missing Authorization header).
+    """
+    token = decrypt(encrypted_token) if encrypted_token else None
+    if not token:
+        return {}
+    if auth_type == 'Bearer Token':
+        return {'Authorization': f'Bearer {token}'}
+    if auth_type == 'API Key':
+        return {'X-API-Key': token}
+    return {}
 
 
 def _sanitize_tool_name(name):
@@ -208,10 +229,11 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
 
                     push_tool_event("start", "Calling the Live System", f"Calling the live system with a {method} request.")
 
+                    auth_headers = _auth_headers(tool.auth_type, tool.api_token)
                     if str(method).upper() == "POST":
-                        api_res = requests.post(url=full_target_url, json=tool_args, timeout=15)
+                        api_res = requests.post(url=full_target_url, json=tool_args, headers=auth_headers, timeout=15)
                     else:
-                        api_res = requests.get(url=full_target_url, params=tool_args, timeout=15)
+                        api_res = requests.get(url=full_target_url, params=tool_args, headers=auth_headers, timeout=15)
 
                     raw_data = api_res.json()
                     push_tool_event("complete", "Calling the Live System", "Live system call completed successfully.")

@@ -229,6 +229,8 @@
         const baseUrl = document.getElementById('baseUrl').value;
         const endpoint = document.getElementById('endpoint').value;
         const method = document.getElementById('method').value;
+        const authType = document.getElementById('authType').value;
+        const apiToken = document.getElementById('apiToken').value;
 
         if (!baseUrl || !endpoint) {
             showStatusNotification("⚠️ Please fill out both Base URL and Endpoint fields before testing.", false);
@@ -238,7 +240,12 @@
         authFetch('/api_connectors/test_connection', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ baseUrl, endpoint, method })
+            // authType/apiToken are only sent as typed here, never persisted -
+            // on an edit with an unchanged token the field is blank (the
+            // saved token is never re-sent to the browser), so this tests
+            // without credentials in that one case rather than silently
+            // skipping auth for every tool the way it used to.
+            body: JSON.stringify({ baseUrl, endpoint, method, authType, apiToken })
         })
         .then(res => res.json())
         .then(data => {
