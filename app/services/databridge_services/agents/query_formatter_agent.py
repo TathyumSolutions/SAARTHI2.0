@@ -308,7 +308,7 @@ import os
 import pandas as pd
 import psycopg2
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import json
 import requests
 import traceback
@@ -546,7 +546,14 @@ class QueryFormatterAgent:
             # runaway query gets killed by the database itself rather than
             # tying up the request indefinitely.
             engine = create_engine(db_url, connect_args={"options": "-c statement_timeout=30000"})
-            df = pd.read_sql_query(sql_query, engine)
+            # Wrapped in text() rather than passed as a raw string - pandas
+            # routes a raw SQL string through SQLAlchemy's exec_driver_sql()
+            # path, which under this pandas/SQLAlchemy combo can hand
+            # psycopg2's cursor.execute() an immutabledict instead of a
+            # sequence for its (empty) parameters, raising "immutabledict is
+            # not a sequence" - text() routes through the normal statement
+            # execution path instead, which doesn't hit this.
+            df = pd.read_sql_query(text(sql_query), engine)
             engine.dispose()
 
         except Exception as e:
