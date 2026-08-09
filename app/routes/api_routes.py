@@ -41,18 +41,23 @@ def test_connection():
     if not safe:
         return jsonify({"status": "error", "message": reason}), 400
 
-    # Mirrors the header logic actually used at query time
-    # (app.services.api_services._auth_headers) - the token here is
-    # whatever's currently typed into the form (plaintext), not the
-    # encrypted value read back from storage, so no decrypt() needed.
+    # Mirrors the header/param logic actually used at query time
+    # (app.services.api_services._auth_headers_and_params) - the token
+    # here is whatever's currently typed into the form (plaintext), not
+    # the encrypted value read back from storage, so no decrypt() needed.
+    # "API Key" is sent both as a header and a query param since plenty
+    # of real APIs (e.g. api.metals.dev) only accept the latter.
     headers = {}
-    if api_token and auth_type == 'Bearer Token':
+    params = {}
+    auth_type_normalized = (auth_type or '').strip().casefold()
+    if api_token and auth_type_normalized == 'bearer token':
         headers['Authorization'] = f'Bearer {api_token}'
-    elif api_token and auth_type == 'API Key':
+    elif api_token and auth_type_normalized == 'api key':
         headers['X-API-Key'] = api_token
+        params['api_key'] = api_token
 
     try:
-        response = requests.request(method=method, url=full_url, headers=headers, timeout=5)
+        response = requests.request(method=method, url=full_url, headers=headers, params=params, timeout=5)
         return jsonify({
             "status": "success",
             "code": response.status_code,

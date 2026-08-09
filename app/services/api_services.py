@@ -13,25 +13,33 @@ from app.utils.crypto import decrypt
 from app.models.api_connector import ApiConnector
 
 
-def _auth_headers(auth_type, encrypted_token):
+def _auth_headers_and_params(auth_type, encrypted_token):
     """
-    Builds the request header(s) for a registered API tool's saved
-    auth_type/api_token - without this, every authenticated integration
-    (auth_type "API Key" or "Bearer Token") gets called with no
-    credentials at all, and fails with a 401/403 that then gets narrated
-    back to the user as "the API endpoint does not exist or access is not
-    permitted", which reads like a broken registration rather than what
-    it actually is (a missing Authorization header).
+    Builds the request header(s)/query param(s) for a registered API
+    tool's saved auth_type/api_token - without this, every authenticated
+    integration (auth_type "API Key" or "Bearer Token") gets called with
+    no credentials at all, and fails with a 401/403 that then gets
+    narrated back to the user as "the API endpoint does not exist or
+    access is not permitted", which reads like a broken registration
+    rather than what it actually is (missing credentials).
+
+    "API Key" auth covers a lot of real-world APIs with no single
+    convention - some read a header, but plenty of public data APIs
+    (e.g. api.metals.dev, and much of the free-tier finance/weather/data
+    API space) only accept the key as a `?api_key=...` query parameter
+    and silently ignore any header. Sending it both ways covers both
+    conventions without needing per-integration configuration for where
+    the key goes.
     """
     token = decrypt(encrypted_token) if encrypted_token else None
     normalized_type = (auth_type or '').strip().casefold()
     if not token:
-        return {}
+        return {}, {}
     if normalized_type == 'bearer token':
-        return {'Authorization': f'Bearer {token}'}
+        return {'Authorization': f'Bearer {token}'}, {}
     if normalized_type == 'api key':
-        return {'X-API-Key': token}
-    return {}
+        return {'X-API-Key': token}, {'api_key': token}
+    return {}, {}
 
 
 def _sanitize_tool_name(name):
@@ -230,15 +238,15 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
 
                     push_tool_event("start", "Calling the Live System", f"Calling the live system with a {method} request.")
 
-                    auth_headers = _auth_headers(tool.auth_type, tool.api_token)
+                    auth_headers, auth_params = _auth_headers_and_params(tool.auth_type, tool.api_token)
                     print(f"🔌 DEBUG [{tool.integration_name}] auth_type={tool.auth_type!r} "
                           f"has_token={bool(tool.api_token)} header_sent={list(auth_headers.keys()) or 'none'} "
-                          f"url={full_target_url}")
+                          f"param_sent={list(auth_params.keys()) or 'none'} url={full_target_url}")
 
                     if str(method).upper() == "POST":
-                        api_res = requests.post(url=full_target_url, json=tool_args, headers=auth_headers, timeout=15)
+                        api_res = requests.post(url=full_target_url, json=tool_args, params=auth_params, headers=auth_headers, timeout=15)
                     else:
-                        api_res = requests.get(url=full_target_url, params=tool_args, headers=auth_headers, timeout=15)
+                        api_res = requests.get(url=full_target_url, params={**auth_params, **(tool_args or {})}, headers=auth_headers, timeout=15)
 
                     print(f"🔌 DEBUG [{tool.integration_name}] response status={api_res.status_code} "
                           f"body_preview={api_res.text[:300]!r}")
