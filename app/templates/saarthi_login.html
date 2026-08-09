@@ -585,6 +585,14 @@
     .show-signup .signup-only { display: block; }
     .show-signup .signin-only { display: none; }
 
+    /* .meta-row's own `display: flex` (below) has the same specificity as
+       .signup-only's `display: none` above and comes later in the
+       stylesheet, so it would otherwise win the cascade and keep the
+       Terms & Privacy Policy row visible in Sign In mode too - these two
+       extra-specific rules make sure signup-only still wins. */
+    .meta-row.signup-only { display: none; }
+    .show-signup .meta-row.signup-only { display: flex; }
+
     /* Form elements */
     .field { margin-bottom: 18px; }
 
