@@ -121,3 +121,32 @@ def sync_missing_columns(db):
                     print(f"[DB Bootstrap] Added missing column: {table.name}.{column.name}")
                 except Exception as e:
                     print(f"[DB Bootstrap] Could not add column {table.name}.{column.name}: {e}")
+
+
+def drop_removed_tables(db, table_names):
+    """
+    Explicit, named cleanup for tables whose model was deleted outright
+    (as opposed to a column being removed from a model that's still
+    around, which this deliberately does NOT do - see sync_missing_columns'
+    docstring on why column drops are never automatic). db.create_all()
+    only ever adds tables; a table dropped from the models otherwise sits
+    there forever as dead weight. Tries every bind's engine for each name
+    since a given table only exists in one of them - a DROP against a
+    bind that never had it is just a harmless no-op.
+
+    router_configs is the first (and so far only) use of this: it was a
+    per-user cache of the AI router's config, replaced by computing that
+    config live on every request straight from DatabaseConnection/
+    ApiConnector/FileResource - see automated_metamind.generate_router_
+    config(). Those tables are the single source of truth for MetaMind
+    data now; nothing should live in a separate cache table again.
+    """
+    from sqlalchemy import text
+
+    for bind_key, engine in db.engines.items():
+        for table_name in table_names:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
+            except Exception as e:
+                print(f"[DB Bootstrap] Could not drop '{table_name}' on bind '{bind_key}': {e}")

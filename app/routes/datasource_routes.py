@@ -219,38 +219,33 @@ def update_datasource_description(datasource_type, datasource_id):
     setattr(resource, field_name, description or None)
     db.session.commit()
 
-    from app.models.resource_mapping import ResourceMapping
-    from app.services.automated_metamind import generate_router_config
-    affected_user_ids = {current_user.id, resource.created_by_user_id} | {
-        m.user_id for m in ResourceMapping.query.filter_by(resource_type=datasource_type, resource_id=resource.id).all()
-    }
-    for uid in affected_user_ids:
-        try:
-            generate_router_config(user_id=uid, force=True)
-        except Exception as e:
-            print(f"⚠️ Could not regenerate router config for user {uid} after description update: {e}")
+    # No router config to refresh here anymore - it's computed live from
+    # this resource's own description column on every chat query, so the
+    # very next query already sees the new description with nothing to
+    # proactively warm.
 
     return jsonify({'status': 'success', 'description': getattr(resource, field_name)}), 200
 
 
 def _metadata_for_datasource(user_id, datasource_type, resource):
     """
-    Slices this one user's router config (see app/models/router_config.py)
-    down to just the tables/tools/documents that belong to `resource`, for
-    the Knowledge Base "Details" popup - summary section from
-    RouterConfig.summary, full section from RouterConfig.config. Router
+    Slices this one user's live-computed router config down to just the
+    tables/tools/documents that belong to `resource`, for the Knowledge
+    Base "Details" popup - summary section from build_routing_menu_summary(),
+    full section from generate_router_config()'s own return value. Router
     config tables aren't tagged with which connection produced them once
     merged (see automated_metamind.py's docstrings), so a plain PostgreSQL
     connection's Details show every DB table this user can see; Excel
     connections and files can be scoped exactly via their own table/doc
     codes.
     """
-    from app.models.router_config import RouterConfig
+    from app.services.automated_metamind import generate_router_config, build_routing_menu_summary
     from app.services import spreadsheet_service
 
-    row = RouterConfig.query.filter_by(user_id=user_id).first()
-    summary = ((row.summary or {}).get('routing_menu_summary', {}) if row else {}).get('datasources', {})
-    full = ((row.config or {}).get('routing_menu', {}) if row else {}).get('datasources', {})
+    menu = generate_router_config(user_id)
+    summary_menu = build_routing_menu_summary(menu) if menu else {}
+    summary = (summary_menu.get('routing_menu_summary', {}) if summary_menu else {}).get('datasources', {})
+    full = ((menu or {}).get('routing_menu', {})).get('datasources', {})
 
     # The persisted metamind_summary column (see automated_metamind.py's
     # _persist_metamind_summary) - what the AI router actually last saw for
@@ -506,13 +501,18 @@ def process_unstructured_file(document_code):
             if result.get('content_summary'):
                 resource.metamind_summary = result['content_summary']
 
+            # Sanity check that this file is actually visible to the router
+            # now (e.g. Qdrant is reachable and the new points are there) -
+            # nothing is cached from this call, but a failure here means the
+            # file won't actually be answerable yet, so it's still worth
+            # surfacing as a processing failure rather than a false "processed".
             from app.services.automated_metamind import generate_router_config
             try:
-                generate_router_config(user_id=current_user.id, force=True)
+                generate_router_config(user_id=current_user.id)
             except Exception as e:
-                print(f"❌ Error regenerating router config after processing {document_code}: {e}")
+                print(f"❌ Error verifying router visibility after processing {document_code}: {e}")
                 resource.status = 'error'
-                resource.error_message = 'Processed successfully, but the AI router config could not be regenerated.'
+                resource.error_message = 'Processed successfully, but the AI router could not be verified.'
                 db.session.commit()
                 return jsonify({"status": "error", "message": "Something went wrong while activating this file. Please try again."}), 500
 

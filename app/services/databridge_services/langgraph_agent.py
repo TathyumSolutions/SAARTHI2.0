@@ -22,9 +22,10 @@ from .agents import (
 
 
 # ===== Configuration =====
-# Schema is no longer a static global file - each request builds it from
-# the querying user's own router_configs row (see _build_schema_for_user
-# below), matching the per-user/per-connection model used everywhere else.
+# Schema is no longer a static global file - each request builds it live
+# from the querying user's own visible connections (see
+# _build_schema_for_user below), matching the per-user/per-connection
+# model used everywhere else.
 EMPTY_SCHEMA = {"tables": {}}
 
 LLM_BACKEND = {
@@ -359,24 +360,30 @@ def create_data_bridge_graph():
 langgraph_app = create_data_bridge_graph()
 
 
-def _build_schema_for_user(user_id: int) -> dict:
+def _build_schema_for_user(user_id: int, router_config: dict = None) -> dict:
     """
-    This user's own introspected DB schema (from their router_configs row,
-    populated by generate_router_config()/introspect_databridge_db() - the
-    same data the "Process" button on a database connection builds),
-    converted into the shape the SQL agents below expect. Falls back to an
-    empty schema (never raises) if this user has no router config yet, or
-    it has no DB datasource - same "degrade gracefully" behavior as the
-    rest of the router.
+    This user's own introspected DB schema (populated live by
+    generate_router_config()/introspect_databridge_db() - the same data
+    the "Process" button on a database connection builds), converted into
+    the shape the SQL agents below expect.
+
+    If router_config (the routing menu dict updated_router_services.py
+    already computed for this same chat turn's routing decision) is
+    passed in, reuses it instead of recomputing from scratch - avoids
+    paying for a second full live introspection (DB connections, Qdrant,
+    API tools, spreadsheets) within one turn. Falls back to computing it
+    live via generate_router_config() when called without one - e.g. the
+    CLI/dev entrypoint. Falls back to an empty schema (never raises) if
+    this user has no DB datasource at all - same "degrade gracefully"
+    behavior as the rest of the router.
     """
     try:
-        from app.models.router_config import RouterConfig
-        from app.services.automated_metamind import to_sql_agent_schema
+        from app.services.automated_metamind import generate_router_config, to_sql_agent_schema
 
-        row = RouterConfig.query.filter_by(user_id=user_id).first()
-        if not row or not row.config:
+        menu = router_config if router_config is not None else generate_router_config(user_id)
+        if not menu:
             return dict(EMPTY_SCHEMA)
-        db_tables = row.config.get("routing_menu", {}).get("datasources", {}).get("DB", {}).get("tables", {})
+        db_tables = menu.get("routing_menu", {}).get("datasources", {}).get("DB", {}).get("tables", {})
         return to_sql_agent_schema(db_tables)
     except Exception as e:
         print(f"⚠️ [SCHEMA] Could not load schema for user {user_id}: {e}")
@@ -399,7 +406,7 @@ def _build_db_config_for_user(user_id: int):
         return None
 
 
-def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "", user_id: int = 1) -> dict:
+def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "", user_id: int = 1, router_config: dict = None) -> dict:
     """Run the Data Bridge agent with error recovery"""
     print(f"\n{'='*80}")
     print(f"🚀 Starting LangGraph Data Bridge Agent with Error Recovery")
@@ -411,7 +418,7 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
     # Fresh, request-scoped instances built from this user's own schema -
     # not shared module-level singletons, so concurrent requests from
     # different users never see each other's schema.
-    schema = _build_schema_for_user(user_id)
+    schema = _build_schema_for_user(user_id, router_config)
     db_config = _build_db_config_for_user(user_id)
     agents = {
         "query_simplifier": QuerySimplifierAgent(schema=schema, model_name=LLM_BACKEND["model"], url=LLM_BACKEND["url"]),

@@ -149,8 +149,9 @@ def create_app(config_name='development'):
             configure_mappers()
             print("[DB Bootstrap] Synchronizing schema across core/resources/workspace...")
             db.create_all()
-            from app.services.db_bootstrap import sync_missing_columns
+            from app.services.db_bootstrap import sync_missing_columns, drop_removed_tables
             sync_missing_columns(db)
+            drop_removed_tables(db, ['router_configs'])
             print("[DB Bootstrap] Schema is up to date.")
         except Exception as e:
             import traceback

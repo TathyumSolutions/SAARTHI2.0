@@ -103,7 +103,6 @@ def create_mappings_bulk(current_user):
     }
 
     created, skipped = 0, 0
-    granted_user_ids = set()
     for user_id in user_ids:
         if user_id not in valid_user_ids:
             skipped += len(resources)
@@ -137,15 +136,14 @@ def create_mappings_bulk(current_user):
                 granted_by_user_id=current_user.id,
             ))
             created += 1
-            granted_user_ids.add(user_id)
 
     db.session.commit()
     log_event('resource_mapping_bulk_grant', company_code=company_code, user_id=current_user.id,
                details={'created': created, 'skipped': skipped})
 
-    from app.services.automated_metamind import generate_router_config
-    for uid in granted_user_ids:
-        generate_router_config(user_id=uid, force=True)
+    # No router config to warm for the newly-granted users - it's computed
+    # live from ResourceMapping on every chat query, so their very next
+    # query already reflects this grant with nothing to precompute.
 
     return jsonify({"status": "success", "created": created, "skipped": skipped}), 201
 
@@ -238,8 +236,7 @@ def create_mapping(current_user):
     log_event('resource_mapping_grant', company_code=current_user.company_code, user_id=current_user.id,
                resource_type=resource_type, resource_id=resource_id, details={'granted_to_user_id': user_id})
 
-    from app.services.automated_metamind import generate_router_config
-    generate_router_config(user_id=user_id, force=True)
+    # No router config to warm - see the bulk-grant route above.
 
     return jsonify({"status": "success", "message": "Resource mapped to user."}), 201
 
@@ -261,7 +258,6 @@ def delete_mapping(current_user, mapping_id):
                resource_type=mapping.resource_type, resource_id=mapping.resource_id,
                details={'revoked_from_user_id': revoked_from_user_id})
 
-    from app.services.automated_metamind import generate_router_config
-    generate_router_config(user_id=revoked_from_user_id, force=True)
+    # No router config to warm - see the bulk-grant route above.
 
     return jsonify({"status": "success", "message": "Mapping removed."}), 200

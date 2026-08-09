@@ -128,7 +128,7 @@ def save_tool():
                    resource_type='api', resource_id=tool.id, details={'integration_name': integration_name})
 
         from app.services.automated_metamind import generate_router_config
-        generate_router_config(user_id=current_user.id, force=True)
+        generate_router_config(user_id=current_user.id)
 
         return jsonify({
             "status": "success",
@@ -159,11 +159,6 @@ def delete_tool(integration_name):
         if tool.created_by_user_id != current_user.id and current_user.role != 'admin':
             return jsonify({"status": "error", "message": "Only the creator or a company admin can delete this tool"}), 403
 
-        from app.models.resource_mapping import ResourceMapping
-        affected_user_ids = {current_user.id, tool.created_by_user_id} | {
-            m.user_id for m in ResourceMapping.query.filter_by(resource_type='api', resource_id=tool.id).all()
-        }
-
         tool_id = tool.id
         db.session.delete(tool)
         db.session.commit()
@@ -171,9 +166,9 @@ def delete_tool(integration_name):
         log_event('api_connector_deleted', company_code=current_user.company_code, user_id=current_user.id,
                    resource_type='api', resource_id=tool_id, details={'integration_name': integration_name})
 
-        from app.services.automated_metamind import generate_router_config
-        for uid in affected_user_ids:
-            generate_router_config(user_id=uid, force=True)
+        # No router config to refresh - it's computed live on every chat
+        # query, so a deleted tool simply stops appearing on the very next
+        # query with nothing to proactively clear.
 
         return jsonify({
             "status": "success",
@@ -259,7 +254,7 @@ def process_tool(integration_name):
         from app.services.automated_metamind import generate_router_config
         try:
             for uid in affected_user_ids:
-                generate_router_config(user_id=uid, force=True)
+                generate_router_config(user_id=uid)
             return jsonify({"status": "success", "message": "Tool is now active and ready to use."})
         except Exception as e:
             print(f"❌ Error regenerating router config for '{integration_name}': {e}")

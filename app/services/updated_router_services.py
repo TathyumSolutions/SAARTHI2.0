@@ -131,21 +131,19 @@ def classify_query_heuristic(user_query: str) -> str | None:
 # ============================================================
 def _load_router_config(user_id: int) -> dict:
     """
-    Loads this specific user's router config from their router_configs row
-    - not a shared file, so different users can see entirely different
+    Computes this specific user's router config live, straight from their
+    own DatabaseConnection/ApiConnector/FileResource rows - not a shared
+    file or a cached table, so different users see entirely different
     datasources/tables/tools depending on what they created or were
-    granted via Resource Mapping. Freshness is handled by
-    generate_router_config() elsewhere; this just reflects whatever is
-    currently saved for this user at call time. Returns an empty routing
-    menu if this user has never had one generated yet, rather than
-    raising - the router degrades to GENERAL-only routing in that case.
+    granted via Resource Mapping, and it's always current as of this
+    exact call. Returns an empty routing menu if this user has no visible
+    datasources at all, rather than raising - the router degrades to
+    GENERAL-only routing in that case.
     """
-    from app.models.router_config import RouterConfig
-
-    row = RouterConfig.query.filter_by(user_id=user_id).first()
-    if not row or not row.config:
+    menu = generate_router_config(user_id)
+    if not menu:
         return {"routing_menu": {"datasources": {}, "routing_rules": {}, "instructions": ""}}
-    return row.config
+    return menu
 
 
 def _trim_router_config(config: dict, max_tables: int, max_cols: int,
@@ -550,7 +548,8 @@ def _run_db_track(question: str, ctx: dict) -> dict:
 
     full_result = run_data_bridge_agent(
         enriched_question, session_id=ctx["session_id"],
-        model_name=ctx["model_name"], custom_key=ctx["custom_key"], user_id=ctx.get("user_id", 1)
+        model_name=ctx["model_name"], custom_key=ctx["custom_key"], user_id=ctx.get("user_id", 1),
+        router_config=ctx.get("router_config"),
     )
     chat_ui = full_result.get("chat_ui", {}) if isinstance(full_result, dict) else {}
     return {
@@ -673,14 +672,11 @@ def _push_router_done(session_id: str, is_sql: bool = False) -> None:
 class RouterService:
 
     def __init__(self):
-        # Router configs are per-user now (router_configs table, one row
-        # per user_id) - there's no single "the" config to eagerly warm at
-        # app-boot time the way the old shared metamind_router_config.json
-        # was. Regeneration instead happens per user: explicitly whenever
-        # that user's resources change (create/delete a connection, API
-        # connector, or Resource Mapping grant - see the relevant routes),
-        # and lazily in get_smart_response() below if a user has no row
-        # yet at all.
+        # Router configs are per-user and computed live on every call (see
+        # automated_metamind.generate_router_config()) - there's no shared
+        # state to eagerly warm at app-boot time the way the old shared
+        # metamind_router_config.json was, and no per-user cache to keep
+        # fresh either.
         _load_general_config()
 
     def get_smart_response(
@@ -716,15 +712,6 @@ class RouterService:
             # ------------------------------------------------
             # LAYER 2: Load config + tools, build token-budgeted messages
             # ------------------------------------------------
-            from app.models.router_config import RouterConfig
-            if not RouterConfig.query.filter_by(user_id=user_id).first():
-                # First time this user has ever reached the router - build
-                # their config now instead of leaving it empty until they
-                # happen to trigger an explicit resource change.
-                try:
-                    generate_router_config(user_id=user_id, force=True)
-                except Exception as e:
-                    print(f"[ROUTER CONFIG] Lazy generation failed for user {user_id}: {e}")
             router_config = _load_router_config(user_id)
             active_db_tools = fetch_and_translate_tools()
             live_tools_summary = "\n".join(
