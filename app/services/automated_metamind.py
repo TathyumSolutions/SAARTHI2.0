@@ -1022,7 +1022,36 @@ def _get_or_create_router_config_row(user_id):
     from app import db
     from app.models.router_config import RouterConfig
 
-    row = RouterConfig.query.filter_by(user_id=user_id).first()
+    try:
+        row = RouterConfig.query.filter_by(user_id=user_id).first()
+    except IndexError as e:
+        # Diagnosing a "string index out of range" crash from SQLAlchemy's
+        # own identifier-quoting logic (compiler.py's _requires_quotes) -
+        # the live DB schema for router_configs has been confirmed clean
+        # (matches this model exactly, no phantom columns), so if this
+        # fires, the corruption is in this *process's* in-memory
+        # representation or its compiled-statement cache, not the
+        # database. Dumps everything relevant about RouterConfig's table
+        # before falling back to a plain Core select with the compiled
+        # query cache disabled - if that succeeds, the cache itself was
+        # the corrupted part and this self-heals; either way, this run's
+        # logs get real evidence instead of another guess.
+        table = RouterConfig.__table__
+        print(f"⚠️ [ROUTER CONFIG] IndexError compiling RouterConfig query: {e}")
+        print(f"⚠️ [ROUTER CONFIG] table.name={table.name!r} table.schema={table.schema!r}")
+        print(f"⚠️ [ROUTER CONFIG] columns: {[(c.name, c.key, type(c.name).__name__) for c in table.columns]}")
+        print(f"⚠️ [ROUTER CONFIG] indexes: {[(ix.name, [c.name for c in ix.columns]) for ix in table.indexes]}")
+        print(f"⚠️ [ROUTER CONFIG] constraints: {[(getattr(c, 'name', None), type(c).__name__) for c in table.constraints]}")
+
+        from sqlalchemy import select
+        try:
+            row = db.session.execute(
+                select(RouterConfig).filter_by(user_id=user_id).execution_options(compiled_cache=None)
+            ).scalars().first()
+            print("⚠️ [ROUTER CONFIG] Retry with compiled query cache disabled SUCCEEDED - looks like a corrupted cached statement plan.")
+        except IndexError:
+            print("⚠️ [ROUTER CONFIG] Retry with compiled query cache disabled ALSO failed - not a cache issue.")
+            raise
     if not row:
         row = RouterConfig(user_id=user_id)
         db.session.add(row)
