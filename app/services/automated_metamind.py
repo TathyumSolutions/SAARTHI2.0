@@ -819,14 +819,19 @@ def introspect_qdrant(user_id):
         # once at Process time (see datasource_routes.process_unstructured_file
         # / llm_service.process_to_embeddings) - this function only ever sees
         # chunk counts, not text, and runs on every router config rebuild, so
-        # it must never overwrite that summary with anything derived here.
+        # it must never overwrite that summary with anything derived here. It
+        # must, however, actually be *read* into the routing menu below - the
+        # whole point of generating it was to give the router real content to
+        # route on instead of a generic "Uploaded pdf file." placeholder.
         from app.models.file_resource import FileResource
         documents = []
         for r in FileResource.query.filter(FileResource.document_code.in_(doc_codes)).all():
+            auto_description = r.metamind_summary or f"Uploaded {r.file_type or 'file'}."
+            description = f"{r.description} — {auto_description}".strip(" —") if r.description else auto_description
             documents.append({
                 "document_code": r.document_code,
                 "name": r.file_name,
-                "description": r.description or f"Uploaded {r.file_type or 'file'}.",
+                "description": description,
                 "status": r.status or "uploaded",
             })
 
