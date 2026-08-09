@@ -32,6 +32,8 @@ def test_connection():
     base_url = data.get('baseUrl', '')
     endpoint = data.get('endpoint', '')
     method = data.get('method', 'GET')
+    auth_type = data.get('authType', 'No Auth')
+    api_token = data.get('apiToken') or ''
 
     full_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
 
@@ -39,8 +41,18 @@ def test_connection():
     if not safe:
         return jsonify({"status": "error", "message": reason}), 400
 
+    # Mirrors the header logic actually used at query time
+    # (app.services.api_services._auth_headers) - the token here is
+    # whatever's currently typed into the form (plaintext), not the
+    # encrypted value read back from storage, so no decrypt() needed.
+    headers = {}
+    if api_token and auth_type == 'Bearer Token':
+        headers['Authorization'] = f'Bearer {api_token}'
+    elif api_token and auth_type == 'API Key':
+        headers['X-API-Key'] = api_token
+
     try:
-        response = requests.request(method=method, url=full_url, timeout=5)
+        response = requests.request(method=method, url=full_url, headers=headers, timeout=5)
         return jsonify({
             "status": "success",
             "code": response.status_code,
