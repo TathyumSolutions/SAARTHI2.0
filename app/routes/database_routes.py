@@ -571,6 +571,31 @@ def process_database_connection(db_id):
             })
 
         try:
+            if (connection.type or '').lower() == 'postgresql':
+                # Best-effort: writes an LLM-generated description back onto
+                # any table this connection can see that has no real
+                # COMMENT ON TABLE yet (e.g. unlabeled SAP-replica tables
+                # like MARA/VBAK/KNA1) - see enrich_table_descriptions_with_
+                # llm()'s docstring for why this persists via COMMENT ON
+                # TABLE rather than a separate store, and why it's safe to
+                # run every time Process is clicked (already-commented
+                # tables are left untouched).
+                from app.services.automated_metamind import enrich_table_descriptions_with_llm
+                from app.utils.crypto import decrypt
+                try:
+                    enrich_table_descriptions_with_llm(
+                        {
+                            "host": connection.host,
+                            "port": connection.port or 5432,
+                            "dbname": connection.database,
+                            "user": connection.username,
+                            "password": decrypt(connection.password) if connection.password else "",
+                        },
+                        connection_description=connection.description,
+                    )
+                except Exception as e:
+                    print(f"⚠️ Table description enrichment failed for connection {connection.id}: {e}")
+
             for uid in affected_user_ids:
                 generate_router_config(user_id=uid, force=True)
             # generate_router_config()'s DB introspection already sets

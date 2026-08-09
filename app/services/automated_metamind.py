@@ -25,6 +25,8 @@ import datetime
 import psycopg2
 from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 
 try:
     from qdrant_client import QdrantClient
@@ -296,6 +298,127 @@ def introspect_databridge_db(db_config=None):
 
     print(f"✅ [DB] Found {len(tables_out)} tables in the external SAP database")
     return tables_out
+
+
+def enrich_table_descriptions_with_llm(db_config, connection_description=None):
+    """
+    For every table in this connection that has no real COMMENT ON TABLE
+    (so introspect_databridge_db() above would otherwise fall back to a
+    generic "Table storing X records."), asks an LLM to describe what it
+    actually contains and writes that back as a real COMMENT ON TABLE -
+    so introspect_databridge_db() picks it up like any hand-written
+    comment on every future run, and the connection's own metamind_summary
+    (built from these same per-table descriptions in
+    _introspect_visible_databases) picks it up automatically the next
+    time router config regenerates. No separate storage needed.
+
+    connection_description is the user's own free-text description of
+    this connection (e.g. "Our SAP ECC replica, standard tables") -
+    passed to the LLM as a hint so it can recognize a standard schema
+    (SAP, Salesforce, NetSuite, ...) from its own training knowledge and
+    describe tables like MARA/VBAK/KNA1 by what they actually are in
+    that system, not just guess blind from column names.
+
+    Best-effort throughout: a table this DB user can't COMMENT ON (common
+    for a read-only replica) just doesn't get a persisted description -
+    it's skipped, never fails the whole run. Returns the number of
+    tables successfully enriched.
+    """
+    try:
+        conn = psycopg2.connect(**db_config, connect_timeout=5)
+    except Exception as e:
+        print(f"⚠️ [DB] Could not connect for table description enrichment: {e}")
+        return 0
+
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, openai_api_key=os.getenv("OPENAI_API_KEY"))
+    enriched = 0
+
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            table_rows = _safe_fetchall(
+                cur, conn,
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+                ORDER BY table_name;
+                """,
+                context="table list query (enrichment)",
+            )
+
+            for row in table_rows:
+                table_name = row["table_name"]
+                if table_name in INTERNAL_SYSTEM_TABLES:
+                    continue
+
+                comment_row = _safe_fetchone(
+                    cur, conn,
+                    "SELECT obj_description((quote_ident(%s))::regclass, 'pg_class') AS comment;",
+                    (table_name,),
+                    context=f"table comment query for {table_name} (enrichment)",
+                )
+                if comment_row and comment_row["comment"]:
+                    continue  # already has a real, human-written comment - never overwrite it
+
+                col_rows = _safe_fetchall(
+                    cur, conn,
+                    """
+                    SELECT column_name, data_type
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = %s
+                    ORDER BY ordinal_position;
+                    """,
+                    (table_name,),
+                    context=f"column list for {table_name} (enrichment)",
+                )
+                columns_desc = ", ".join(f"{c['column_name']} ({c['data_type']})" for c in col_rows)
+                if not columns_desc:
+                    continue
+
+                hint = (
+                    f"\n\nContext about this database, from whoever registered it: \"{connection_description}\""
+                    if connection_description else ""
+                )
+                prompt = (
+                    f"A database table is named \"{table_name}\" with columns: {columns_desc}.{hint}\n\n"
+                    "If this table name matches a known standard schema you're aware of (e.g. SAP ECC/S4, "
+                    "Salesforce, NetSuite, Workday, or another well-known ERP/CRM system's table naming "
+                    "convention), identify it precisely using what you know about that system - name the "
+                    "real-world module/entity it represents. Otherwise, infer plausibly from the table and "
+                    "column names. Answer in exactly one sentence, plain business language, no preamble."
+                )
+
+                try:
+                    response = llm.invoke([
+                        SystemMessage(content="You are a database documentation assistant that writes single-sentence table descriptions."),
+                        HumanMessage(content=prompt),
+                    ])
+                    description = (response.content or "").strip()
+                except Exception as e:
+                    print(f"⚠️ [DB] Could not generate a description for {table_name}: {e}")
+                    continue
+
+                if not description:
+                    continue
+
+                try:
+                    cur.execute(
+                        sql.SQL("COMMENT ON TABLE {} IS %s;").format(sql.Identifier(table_name)),
+                        (description,),
+                    )
+                    conn.commit()
+                    enriched += 1
+                except Exception as e:
+                    conn.rollback()
+                    print(f"⚠️ [DB] Could not write COMMENT ON TABLE for {table_name} (likely a read-only connection): {e}")
+
+    except Exception as e:
+        print(f"⚠️ [DB] Error during table description enrichment: {e}")
+    finally:
+        conn.close()
+
+    print(f"✅ [DB] Enriched {enriched} table description(s) via LLM.")
+    return enriched
 
 
 def to_sql_agent_schema(db_tables: dict) -> dict:
