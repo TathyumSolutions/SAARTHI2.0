@@ -24,11 +24,12 @@ def _auth_headers(auth_type, encrypted_token):
     it actually is (a missing Authorization header).
     """
     token = decrypt(encrypted_token) if encrypted_token else None
+    normalized_type = (auth_type or '').strip().casefold()
     if not token:
         return {}
-    if auth_type == 'Bearer Token':
+    if normalized_type == 'bearer token':
         return {'Authorization': f'Bearer {token}'}
-    if auth_type == 'API Key':
+    if normalized_type == 'api key':
         return {'X-API-Key': token}
     return {}
 
@@ -230,10 +231,17 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                     push_tool_event("start", "Calling the Live System", f"Calling the live system with a {method} request.")
 
                     auth_headers = _auth_headers(tool.auth_type, tool.api_token)
+                    print(f"🔌 DEBUG [{tool.integration_name}] auth_type={tool.auth_type!r} "
+                          f"has_token={bool(tool.api_token)} header_sent={list(auth_headers.keys()) or 'none'} "
+                          f"url={full_target_url}")
+
                     if str(method).upper() == "POST":
                         api_res = requests.post(url=full_target_url, json=tool_args, headers=auth_headers, timeout=15)
                     else:
                         api_res = requests.get(url=full_target_url, params=tool_args, headers=auth_headers, timeout=15)
+
+                    print(f"🔌 DEBUG [{tool.integration_name}] response status={api_res.status_code} "
+                          f"body_preview={api_res.text[:300]!r}")
 
                     raw_data = api_res.json()
                     push_tool_event("complete", "Calling the Live System", "Live system call completed successfully.")
