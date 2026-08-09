@@ -131,9 +131,23 @@ def introspect_databridge_db(db_config=None):
     run_agentic_process() to introspect the exact connection it just
     seeded, using that connection's stored credentials directly rather
     than relying on env vars that were only ever set for a subprocess.
+
+    Skips the connection attempt entirely (no error, just a quiet skip)
+    when there's no host to even try - the DATABRIDGE_TARGET_* env-var
+    fallback is a standalone/dev CLI convenience, not something a normal
+    multi-tenant deployment configures, so a user with zero registered
+    PostgreSQL connections would otherwise hit this on every single
+    query: psycopg2.connect(host=None, ...) falls back to a local unix
+    socket that doesn't exist in this container, logging a scary-looking
+    "No such file or directory" warning for what's actually a completely
+    normal, expected state (this user just hasn't connected a database).
     """
+    effective_config = db_config or DB_CONFIG
+    if not effective_config.get("host"):
+        return None
+
     try:
-        conn = psycopg2.connect(**(db_config or DB_CONFIG), connect_timeout=5)
+        conn = psycopg2.connect(**effective_config, connect_timeout=5)
     except Exception as e:
         print(f"⚠️ [DB] Could not connect to the external SAP database: {e}")
         return None
