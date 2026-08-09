@@ -357,12 +357,27 @@ def update_database_connection(db_id):
         affected_user_ids = {current_user.id, connection.created_by_user_id} | {
             m.user_id for m in ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id).all()
         }
-        for uid in affected_user_ids:
-            generate_router_config(user_id=uid, force=True)
+        try:
+            for uid in affected_user_ids:
+                generate_router_config(user_id=uid, force=True)
+            # generate_router_config()'s DB introspection already sets
+            # connection.status/error_message directly on this row when it
+            # can't reach the database (see automated_metamind.py's
+            # _introspect_visible_databases) - only clear a stale error here
+            # if this run didn't just set a fresh one.
+            if connection.status != 'error':
+                connection.status = 'connected'
+                connection.error_message = None
+        except Exception as e:
+            print(f"Router config regeneration error after update: {e}")
+            print(traceback.format_exc())
+            connection.status = 'error'
+            connection.error_message = 'Connection details were saved, but the AI router config could not be regenerated.'
+        db.session.commit()
 
         return jsonify({
             'database': serialize_connection(connection),
-            'message': 'Connection updated successfully'
+            'message': 'Connection updated successfully' if connection.status != 'error' else connection.error_message
         }), 200
     except Exception as e:
         db.session.rollback()
