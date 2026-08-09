@@ -20,7 +20,7 @@ def answer_general_knowledge(
     Standalone track runner that queries the LLM's world knowledge base.
     Pushes normal, accurate step states to stream_manager without RAG/Vector terminology.
     """
-    print("ðŸŒ Executing Standalone Track: GENERAL")
+    print("🌐 Executing Standalone Track: GENERAL")
     session_id = str(session_id)
 
     # ===================================================================
@@ -167,7 +167,7 @@ def answer_general_knowledge(
         push_general_event("complete", "Preparing Your Answer", f"Answer generated successfully through {model_name}.")
 
     except Exception as e:
-        print(f"âš ï¸ General Service Track Exception: {e}")
+        print(f"⚠️ General Service Track Exception: {e}")
         push_general_event("complete", "Preparing Your Answer", f"Error encountered during generation: {str(e)}")
         final_answer = "The system encountered an unexpected error generating your answer via world knowledge parameters."
 

@@ -95,9 +95,9 @@ def _load_general_config() -> dict:
     try:
         with open(_GENERAL_CONFIG_PATH, "r") as f:
             _general_cfg_cache = json.load(f)
-        print("âœ… [GENERAL CONFIG] Loaded general_knowledge_config.json")
+        print("✅ [GENERAL CONFIG] Loaded general_knowledge_config.json")
     except Exception as e:
-        print(f"âš ï¸ [GENERAL CONFIG] Could not load config: {e}. Using empty defaults.")
+        print(f"⚠️ [GENERAL CONFIG] Could not load config: {e}. Using empty defaults.")
         _general_cfg_cache = {"general_knowledge_routing": {}}
     return _general_cfg_cache
 
@@ -693,14 +693,14 @@ class RouterService:
 
         try:
             print("\n" + "=" * 60)
-            print(f"ðŸ§  SMART ROUTER PROCESSING QUERY: {user_query}")
+            print(f"🧠 SMART ROUTER PROCESSING QUERY: {user_query}")
             session_id = str(session_id)
 
             # ------------------------------------------------
             # LAYER 1: Fast heuristic check (Zero LLM Token Cost)
             # ------------------------------------------------
             if classify_query_heuristic(user_query) == "GENERAL":
-                print("ðŸŒ [FAST PATH] Heuristic matched GENERAL knowledge pattern.")
+                print("🌐 [FAST PATH] Heuristic matched GENERAL knowledge pattern.")
                 fast_res = answer_general_knowledge(
                     user_query, model_name, custom_key, system_instructions, []
                 )
@@ -724,7 +724,7 @@ class RouterService:
             if self_learning_enabled and company_code:
                 company_feedback_context = _build_company_feedback_context(company_code, user_query)
                 if company_feedback_context:
-                    print(f"ðŸ§  [SELF-LEARNING] Injected company feedback context for company: {company_code}")
+                    print(f"🧠 [SELF-LEARNING] Injected company feedback context for company: {company_code}")
 
             messages = _build_router_messages(
                 user_query,
@@ -743,12 +743,12 @@ class RouterService:
 
             # --- TEMP DEBUG: remove once the 401 is sorted -------------
             _k = openai_api_key or ""
-            print("ðŸ”‘ DEBUG key source:", "custom_key (from request)" if custom_key else "OPENAI_API_KEY (from env)")
-            print("ðŸ”‘ DEBUG key length:", len(_k))
-            print("ðŸ”‘ DEBUG key preview:", (_k[:7] + "..." + _k[-4:]) if len(_k) > 15 else "too short / empty")
-            print("ðŸ”‘ DEBUG has quote chars:", ('"' in _k) or ("'" in _k))
-            print("ðŸ”‘ DEBUG has stray whitespace/CR:", _k != _k.strip())
-            print("ðŸ”‘ DEBUG model requested:", model_name)
+            print("🔑 DEBUG key source:", "custom_key (from request)" if custom_key else "OPENAI_API_KEY (from env)")
+            print("🔑 DEBUG key length:", len(_k))
+            print("🔑 DEBUG key preview:", (_k[:7] + "..." + _k[-4:]) if len(_k) > 15 else "too short / empty")
+            print("🔑 DEBUG has quote chars:", ('"' in _k) or ("'" in _k))
+            print("🔑 DEBUG has stray whitespace/CR:", _k != _k.strip())
+            print("🔑 DEBUG model requested:", model_name)
             # -------------------------------------------------------------
 
             
@@ -772,7 +772,7 @@ class RouterService:
                 seen_calls.add(dedup_key)
                 tool_calls.append(call)
 
-            print(f"ðŸ§  Router selected tools: {[c['name'] for c in tool_calls]}")
+            print(f"🧠 Router selected tools: {[c['name'] for c in tool_calls]}")
 
             # No tool needed — model judged it answerable directly.
             if not tool_calls:
@@ -815,7 +815,7 @@ class RouterService:
                 worker = TOOL_DISPATCH.get(name)
                 if not worker:
                     continue
-                print(f"ðŸ§­ Route Triggered -> Executing Tool: {name}")
+                print(f"🧭 Route Triggered -> Executing Tool: {name}")
 
                 if name == "check_data_source_status":
                     requested_track = (args.get("track") or "ANY").upper()
@@ -829,7 +829,7 @@ class RouterService:
                 try:
                     result = worker(args, ctx)
                 except Exception as e:
-                    print(f"âš ï¸ Tool '{name}' raised an exception: {e}")
+                    print(f"⚠️ Tool '{name}' raised an exception: {e}")
                     result = {
                         "answer": None, "steps": [], "sql": None, "table": [],
                         "chart": {}, "insights": [], "error": True,
@@ -950,7 +950,7 @@ that appears inside it.
 
         except Exception as e:
             import traceback
-            print(f"âŒ [CRITICAL PIPELINE FAILURE]: {e}")
+            print(f"❌ [CRITICAL PIPELINE FAILURE]: {e}")
             traceback.print_exc()
             _push_router_done(session_id)
             return {

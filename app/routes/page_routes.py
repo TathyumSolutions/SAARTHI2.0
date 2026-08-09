@@ -6,7 +6,6 @@ from flask import Blueprint, render_template
 
 bp = Blueprint('pages', __name__)
 
-print( "I am in the page_routes.py file" )
 # Home/Dashboard
 
 @bp.route('/')
