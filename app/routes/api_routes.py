@@ -4,7 +4,7 @@ import requests
 from app import db, limiter
 from app.models.api_connector import ApiConnector
 from app.utils.crypto import encrypt, decrypt
-from app.utils.network_guard import is_safe_url
+from app.utils.network_guard import is_safe_url, build_full_api_url
 from app.utils.auth_helpers import get_current_user
 from app.services.audit_service import log_event
 
@@ -35,7 +35,7 @@ def test_connection():
     auth_type = data.get('authType', 'No Auth')
     api_token = data.get('apiToken') or ''
 
-    full_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+    full_url = build_full_api_url(base_url, endpoint)
 
     safe, reason = is_safe_url(full_url)
     if not safe:
@@ -94,7 +94,7 @@ def save_tool():
     if not integration_name or not base_url or not endpoint:
         return jsonify({"status": "error", "message": "Missing required fields"}), 400
 
-    full_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+    full_url = build_full_api_url(base_url, endpoint)
     safe, reason = is_safe_url(full_url)
     if not safe:
         return jsonify({"status": "error", "message": reason}), 400

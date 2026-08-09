@@ -7,10 +7,43 @@ services - cloud metadata endpoints, internal admin panels, localhost
 services - and read the response back through the tool's output.
 """
 import ipaddress
+import re
 import socket
 from urllib.parse import urlparse
 
 _BLOCKED_HOSTS = {"localhost", "metadata.google.internal"}
+
+
+def build_full_api_url(base_url: str, endpoint: str) -> str:
+    """
+    Joins a registered API tool's base_url + endpoint into one URL,
+    correctly separating a query string that ended up typed into the
+    endpoint field - e.g. "latest&currency=INR&unit=kg" (missing its
+    leading "?", a common mistake when someone pastes a full query
+    string into just the endpoint box) or "latest?currency=INR&unit=kg"
+    (correctly formed). A naive f"{base_url}/{endpoint}" concatenation
+    leaves the "&key=value" pairs stuck in the URL path with no "?"
+    ahead of them, which the target API then rejects outright as an
+    unrecognized path rather than "latest" with query params - this is
+    exactly what happened calling api.metals.dev.
+
+    Also strips any stray whitespace from the endpoint, since a pasted
+    query string picking up a space (e.g. "INR &unit=kg") breaks the URL
+    just as badly.
+    """
+    endpoint_clean = re.sub(r'\s+', '', endpoint or '')
+
+    if '?' in endpoint_clean:
+        ep_path, _, ep_query = endpoint_clean.partition('?')
+    else:
+        segments = endpoint_clean.split('&')
+        ep_path = segments[0]
+        ep_query = '&'.join(segments[1:])
+
+    full_url = f"{base_url.rstrip('/')}/{ep_path.lstrip('/')}"
+    if ep_query:
+        full_url += '?' + ep_query
+    return full_url
 
 
 def is_safe_url(url: str) -> tuple[bool, str]:

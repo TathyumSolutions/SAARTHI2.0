@@ -7,7 +7,7 @@ import json
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.services.stream_manager import stream_manager
-from app.utils.network_guard import is_safe_url
+from app.utils.network_guard import is_safe_url, build_full_api_url
 from app.utils.redaction import redact_secrets
 from app.utils.crypto import decrypt
 from app.models.api_connector import ApiConnector
@@ -220,7 +220,7 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
 
                 if tool:
                     base_url, endpoint, method = tool.base_url, tool.endpoint, tool.method
-                    full_target_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+                    full_target_url = build_full_api_url(base_url, endpoint)
 
                     # Re-checked here, not just at registration time - the
                     # host this resolves to today might not be the one it
