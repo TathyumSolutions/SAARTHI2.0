@@ -436,6 +436,16 @@ class LLMService:
             # Load the data
             documents = loader.load()
 
+            # Content-aware summary of what this document actually covers -
+            # shown as its MetaMind summary in the Knowledge Base Details
+            # popup, so a user (or the AI router) can tell what's inside
+            # without opening it. Generated once here, from the full loaded
+            # text, rather than on every router config regen (see
+            # automated_metamind.py's introspect_qdrant, which only counts
+            # chunks - it has no access to their text and regenerates too
+            # often to re-summarize on every run).
+            content_summary = self._summarize_document_topics(documents)
+
             # Extract tables and images separately, gated by rag_config.yaml so this
             # is a no-op until those settings are turned on.
             # NOTE: the normal text loader above will still also pull table content
@@ -486,11 +496,39 @@ class LLMService:
             return {
                 "status": "success",
                 "message": "Embeddings are stored in vector database successfully",
-                "chunk_count": len(chunks)
+                "chunk_count": len(chunks),
+                "content_summary": content_summary,
             }
 
         except Exception as e:
             return {"error": f"Processing failed: {str(e)}"}
+
+    def _summarize_document_topics(self, documents):
+        """
+        Short, plain-language summary of what a document actually covers -
+        key topics/sections, not just its filename or file type. Returns
+        None (rather than raising) on empty content or an LLM failure, so a
+        summary hiccup never blocks the embeddings pipeline it's riding
+        alongside.
+        """
+        combined_text = "\n\n".join(d.page_content for d in documents if d.page_content).strip()
+        if not combined_text:
+            return None
+        try:
+            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, openai_api_key=os.getenv("OPENAI_API_KEY"))
+            response = llm.invoke([
+                SystemMessage(content="You write short, plain-language summaries of business documents for a knowledge base index."),
+                HumanMessage(content=(
+                    "Summarize what this document covers in 2-4 sentences, focused on the key "
+                    "topics, sections, or subject matter someone would search for. Skip generic "
+                    "filler like \"This document discusses\" - just the substance.\n\n"
+                    f"Document content:\n{combined_text[:8000]}"
+                )),
+            ])
+            return (response.content or "").strip() or None
+        except Exception as e:
+            print(f"⚠️ [RAG] Could not generate content summary: {e}")
+            return None
 
     
     # def perform_intent_analysis(self, user_query, model_name, custom_key):

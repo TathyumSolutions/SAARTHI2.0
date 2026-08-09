@@ -655,10 +655,7 @@ def introspect_qdrant(user_id):
         # Count chunks by type (text / table / image) so the router knows
         # what kind of content is actually available in FILES - scoped to
         # this user's own/granted documents only, never the whole collection.
-        # Also tracked per-document, so each FileResource's metamind_summary
-        # reflects only its own chunks, not the whole collection's.
         chunk_type_counts = {"text": 0, "table": 0, "image": 0, "other": 0}
-        per_doc_counts = {}
         points_count = 0
         next_offset = None
         while True:
@@ -690,11 +687,6 @@ def introspect_qdrant(user_id):
                     chunk_type = "other"
                 chunk_type_counts[chunk_type] += 1
 
-                doc_code = (payload.get("metadata") or {}).get("document_code")
-                if doc_code:
-                    doc_counts = per_doc_counts.setdefault(doc_code, {"text": 0, "table": 0, "image": 0, "other": 0})
-                    doc_counts[chunk_type] += 1
-
             if next_offset is None:
                 break
 
@@ -702,14 +694,14 @@ def introspect_qdrant(user_id):
             print(f"⚠️ [FILES] No indexed chunks visible to user {user_id}, skipping FILES datasource.")
             return None
 
+        # metamind_summary for files is a content-aware topic summary set
+        # once at Process time (see datasource_routes.process_unstructured_file
+        # / llm_service.process_to_embeddings) - this function only ever sees
+        # chunk counts, not text, and runs on every router config rebuild, so
+        # it must never overwrite that summary with anything derived here.
         from app.models.file_resource import FileResource
         documents = []
         for r in FileResource.query.filter(FileResource.document_code.in_(doc_codes)).all():
-            doc_counts = per_doc_counts.get(r.document_code)
-            if doc_counts:
-                doc_total = sum(doc_counts.values())
-                breakdown = ", ".join(f"{v} {k}" for k, v in doc_counts.items() if v)
-                _persist_metamind_summary(r, f"{doc_total} chunk(s) indexed ({breakdown}).")
             documents.append({
                 "document_code": r.document_code,
                 "name": r.file_name,

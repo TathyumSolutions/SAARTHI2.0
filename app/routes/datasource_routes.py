@@ -498,6 +498,14 @@ def process_unstructured_file(document_code):
                 db.session.commit()
                 return jsonify({"status": "error", "message": "Something went wrong while processing this file. Please try again."}), 500
 
+            # Content-aware topic summary generated once, from the document's
+            # actual text - see llm_service.process_to_embeddings(). Set here
+            # rather than left to introspect_qdrant(), which only ever sees
+            # chunk counts (no text) and regenerates on every router config
+            # rebuild - far too often to also be the one re-summarizing content.
+            if result.get('content_summary'):
+                resource.metamind_summary = result['content_summary']
+
             from app.services.automated_metamind import generate_router_config
             try:
                 generate_router_config(user_id=current_user.id, force=True)
