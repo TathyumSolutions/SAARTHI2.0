@@ -153,7 +153,9 @@ def create_app(config_name='development'):
             sync_missing_columns(db)
             print("[DB Bootstrap] Schema is up to date.")
         except Exception as e:
+            import traceback
             print(f"[DB Bootstrap] Schema sync error: {e}")
+            print(traceback.format_exc())
             db.session.rollback()
 
     # Health check endpoint
