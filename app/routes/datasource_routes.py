@@ -498,8 +498,16 @@ def process_unstructured_file(document_code):
             # rather than left to introspect_qdrant(), which only ever sees
             # chunk counts (no text) and regenerates on every router config
             # rebuild - far too often to also be the one re-summarizing content.
-            if result.get('content_summary'):
-                resource.metamind_summary = result['content_summary']
+            # _summarize_document_topics() deliberately swallows its own LLM
+            # failures and returns None rather than blocking embedding - but
+            # every successfully processed file still needs *some*
+            # metamind_summary stored (it's what the router actually reads to
+            # decide FILES is relevant - see introspect_qdrant()), so a
+            # generic fallback fills in when the rich summary call hiccupped,
+            # instead of silently leaving this file with none at all.
+            resource.metamind_summary = result.get('content_summary') or (
+                f"Uploaded {resource.file_type or 'file'} - {result.get('chunk_count', 0)} chunk(s) indexed."
+            )
 
             # Sanity check that this file is actually visible to the router
             # now (e.g. Qdrant is reachable and the new points are there) -
