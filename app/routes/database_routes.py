@@ -187,11 +187,19 @@ def create_database_connection():
 def create_excel_database():
     """
     Uploads an Excel or CSV file and turns each sheet (or the CSV itself)
-    into a queryable table - WITHOUT writing it into Postgres. There's no
-    spare warehouse to hold this data, and no SQL runs against it: each
-    table is saved as a Parquet file (see spreadsheet_service.py) and
-    queried through a separate pandas-based path, never SQL. Every sheet
-    in a workbook becomes its own table; a CSV file becomes one.
+    into its own independent datasource - WITHOUT writing it into
+    Postgres. There's no spare warehouse to hold this data, and no SQL
+    runs against it: each table is saved as a Parquet file (see
+    spreadsheet_service.py) and queried through a separate pandas-based
+    path, never SQL.
+
+    Each sheet becomes its own DatabaseConnection row, not one row per
+    uploaded file with sheets bundled invisibly inside it - so every
+    sheet gets its own place in the Knowledge Base / Data Sources list,
+    its own Process/Description/Details lifecycle, and its own Resource
+    Mapping sharing grant, the same first-class treatment any other
+    single-table connection gets. A CSV file (which has no sheets) still
+    produces exactly one connection, same as before.
     Request: multipart/form-data with fields 'name' (connection name) and
     'file' (.xlsx/.xls/.csv)
     """
@@ -213,7 +221,7 @@ def create_excel_database():
             sheets = {None: pd.read_csv(file)}
         elif filename_lower.endswith(('.xlsx', '.xls')):
             # sheet_name=None reads every sheet in the workbook, not just
-            # the first - each one becomes its own table below.
+            # the first - each one becomes its own connection below.
             sheets = pd.read_excel(file, sheet_name=None)
         else:
             return jsonify({'error': 'Only .xlsx, .xls, or .csv files are supported'}), 400
@@ -226,62 +234,70 @@ def create_excel_database():
         if not base_table_name:
             return jsonify({'error': 'Could not derive a valid table name from the connection name'}), 400
 
-        # Row created first so its id is available to key the spreadsheet
-        # files/manifest by - filled in with the resulting tables below.
-        connection = DatabaseConnection(
-            name=name,
-            type='Excel',
-            host=None,
-            port=None,
-            database=base_table_name,
-            username=None,
-            password=None,
-            config={'source_tables': []},
-            description=(request.form.get('description') or '').strip() or None,
-            company_code=current_user.company_code,
-            created_by_user_id=current_user.id,
-            status='connected'
-        )
-        db.session.add(connection)
-        db.session.commit()
-
-        # Only suffix table names with the sheet when there's more than one -
-        # keeps the common single-sheet/CSV case's table named exactly after
-        # the connection, same as before.
+        # Only suffix table/connection names with the sheet when there's
+        # more than one - keeps the common single-sheet/CSV case named
+        # exactly after the connection, same as before.
         multi_sheet = len(sheets) > 1
         used_table_names = set()
+        custom_description = (request.form.get('description') or '').strip() or None
+        created_connections = []
         created_tables = []
 
         for sheet_name, df in sheets.items():
             if multi_sheet:
                 table_name = _sanitize_identifier(f"{base_table_name}_{sheet_name}")
+                connection_name = f"{name} - {sheet_name}"
             else:
                 table_name = base_table_name
+                connection_name = name
             if table_name in used_table_names:
                 table_name = _sanitize_identifier(f"{table_name}_{len(used_table_names) + 1}")
             used_table_names.add(table_name)
 
+            # Row created first so its id is available to key the
+            # spreadsheet manifest by - filled in with the resulting
+            # table right after.
+            connection = DatabaseConnection(
+                name=connection_name,
+                type='Excel',
+                host=None,
+                port=None,
+                database=table_name,
+                username=None,
+                password=None,
+                config={'source_tables': []},
+                description=custom_description,
+                company_code=current_user.company_code,
+                created_by_user_id=current_user.id,
+                status='connected'
+            )
+            db.session.add(connection)
+            db.session.commit()
+
             df.columns = _dedupe_identifiers(df.columns)
             record = spreadsheet_service.save_table(connection.id, table_name, sheet_name, df)
-            created_tables.append(record)
+            spreadsheet_service.set_original_filename(connection.id, file.filename)
+            connection.config = {
+                'source_tables': [{'table': record['table'], 'sheet': record['sheet'], 'row_count': record['row_count']}],
+                'original_filename': file.filename,
+                'row_count': record['row_count'],
+            }
+            db.session.commit()
 
-        spreadsheet_service.set_original_filename(connection.id, file.filename)
-        connection.config = {
-            'source_tables': [{'table': t['table'], 'sheet': t['sheet'], 'row_count': t['row_count']} for t in created_tables],
-            'original_filename': file.filename,
-            'row_count': sum(t['row_count'] for t in created_tables)
-        }
-        db.session.commit()
+            created_connections.append(connection)
+            created_tables.append(record)
 
         from app.services.automated_metamind import generate_router_config
         generate_router_config(user_id=current_user.id)
 
-        log_event('database_connection_created', company_code=current_user.company_code, user_id=current_user.id,
-                   resource_type='database', resource_id=connection.id, details={'name': connection.name, 'type': 'Excel'})
+        for connection in created_connections:
+            log_event('database_connection_created', company_code=current_user.company_code, user_id=current_user.id,
+                       resource_type='database', resource_id=connection.id, details={'name': connection.name, 'type': 'Excel'})
 
         table_summary = ', '.join(f'"{t["table"]}" ({t["row_count"]} rows)' for t in created_tables)
         return jsonify({
-            'database': serialize_connection(connection),
+            'database': serialize_connection(created_connections[0]),
+            'databases': [serialize_connection(c) for c in created_connections],
             'message': f'File uploaded: {table_summary}.'
         }), 201
 

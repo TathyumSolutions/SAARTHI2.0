@@ -32,12 +32,15 @@ def _format_bytes(size):
 
 def _database_description(conn):
     if (conn.type or '').lower() == 'excel':
+        # One sheet per connection (see database_routes.create_excel_database) -
+        # so source_tables always has exactly one entry; naming the sheet
+        # here is more useful than a now-always-"1 table(s)" count.
         source_tables = (conn.config or {}).get('source_tables') or []
-        table_count = len(source_tables)
+        sheet_name = source_tables[0].get('sheet') if source_tables else None
         row_count = (conn.config or {}).get('row_count')
-        parts = [f"Spreadsheet upload ({conn.type})"]
-        if table_count:
-            parts.append(f"{table_count} table(s)")
+        parts = ["Spreadsheet upload"]
+        if sheet_name:
+            parts.append(f'sheet "{sheet_name}"')
         if row_count:
             parts.append(f"{row_count} rows")
         return ", ".join(parts) + "."
