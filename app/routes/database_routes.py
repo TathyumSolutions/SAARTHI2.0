@@ -569,10 +569,17 @@ def process_database_connection(db_id):
             tables = [t['table'] for t in spreadsheet_service.get_tables_for_connection(connection.id)]
 
             if not tables:
+                # The most common cause: this connection's row survived in
+                # the database, but the actual parquet file/manifest entry
+                # it points to is gone from disk (e.g. the uploads volume
+                # wasn't persisted across a container rebuild - see
+                # docker-compose.yml's uploads_data volume). There's no
+                # data left to recover here; re-uploading is the only fix.
+                message = 'No data found for this connection - the uploaded file may be missing. Please delete this connection and re-upload the file.'
                 connection.status = 'error'
-                connection.error_message = 'No tables found for this connection.'
+                connection.error_message = message
                 db.session.commit()
-                return jsonify({"status": "error", "message": "No tables found for this connection."}), 404
+                return jsonify({"status": "error", "message": message}), 404
 
             try:
                 for table_name in tables:
