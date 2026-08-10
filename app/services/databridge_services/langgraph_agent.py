@@ -490,6 +490,16 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
     }
     
     streamed_steps = set()
+    # Human-readable, execution-ordered record of each completed step -
+    # streamed_steps (a set, so it can't preserve order or hold anything
+    # but its own dedup keys) was previously dumped straight into the
+    # final "steps" list via list(streamed_steps): unordered, and full of
+    # raw internal keys like "sql_generator_11_completed" instead of the
+    # node_title/desc actually computed below. This list mirrors what's
+    # live-streamed to the user via stream_manager.push_step, in the same
+    # "{title} - {description}" shape the frontend already parses for
+    # every other track (spreadsheet/API/files).
+    ordered_steps = []
     # Create a base dictionary to collect the live updates from the stream
     final_state = dict(initial_state)
     has_sql_executed = False
@@ -596,7 +606,8 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
                     is_sql=is_current_step_sql
                 )
                 streamed_steps.add(step_key)
-                
+                ordered_steps.append(f"{node_title} - {desc}")
+
                 # Creates a clean pacing transition break on the frontend before the next node starts
                 time.sleep(0.4)
             # Gives the UI time to register the new card framework
@@ -622,7 +633,7 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
             "chart": user_facing_response.get("chart_configs", {}),
             "sql": final_state.get("generated_sql", "-- No SQL Generated --"),
             #"steps": final_state.get("steps", []),
-            "steps": list(streamed_steps),
+            "steps": ordered_steps,
             "error": user_facing_response.get("format") == "error",
         },
         "cot_logs": final_state  # This is the "Everything" for your CoT section

@@ -357,6 +357,17 @@ def send_message():
 def stream_steps():
     session_id = str(request.args.get('session_id', '1'))
 
+    # The frontend opens this connection BEFORE sending the actual chat
+    # request (it gates the POST on this stream's onopen firing), so this
+    # is the true start of a new query - clearing history here, before
+    # listen() below flushes whatever's currently buffered, is what stops
+    # a fresh connection from immediately replaying the previous query's
+    # steps. Clearing only in the /message handler (still done, as a
+    # backstop for any caller that isn't this SSE flow) was always too
+    # late: that runs only after this connection already flushed the old
+    # history into the new listener's queue.
+    stream_manager.start_new_query(session_id)
+
     def generate():
         q = stream_manager.listen(session_id)
         try:
