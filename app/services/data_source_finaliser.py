@@ -117,30 +117,39 @@ def finalize_data_source_strategy(user_query: str, router_config: dict):
         return None
 
     resolved_lines = []
-    seen_lookup_tables = set()
+    seen_columns = set()
 
     for table_name, table_info in db_tables.items():
         for column in table_info.get("columns", []):
             hint = column.get("lookup_hint")
             if not hint:
                 continue
-            lookup_key = hint["lookup_table"]
-            if lookup_key in seen_lookup_tables:
-                continue  # already resolved via this lookup table for this question
+            column_key = (table_name, column["name"])
+            if column_key in seen_columns:
+                continue  # already resolved this column for this question
+            seen_columns.add(column_key)
 
+            # Try every candidate term against this column's lookup table -
+            # a comparison question ("steel vs. zinc") needs BOTH terms
+            # resolved, not just whichever one happens to match first.
+            # Stopping at the first match silently drops every other term,
+            # leaving the SQL agent to guess a value for it on its own.
+            matches = []
             for term in terms:
                 result = _resolve_against_lookup(
                     term, hint["lookup_table"], hint["code_column"], hint.get("label_columns", [])
                 )
-                if not result:
-                    continue
-                values = ", ".join(repr(c) for c in result["codes"])
-                resolved_lines.append(
-                    f'- "{term}" -> {table_name}.{column["name"]} IN ({values}) '
-                    f'(resolved via {hint["lookup_table"]}.{result["matched_on"]} = "{result["matched_value"]}")'
-                )
-                seen_lookup_tables.add(lookup_key)
-                break  # one resolved term per lookup table is enough context
+                if result:
+                    matches.append((term, result))
+
+            if not matches:
+                continue
+
+            parts = [f'"{term}" -> {", ".join(repr(c) for c in r["codes"])}' for term, r in matches]
+            resolved_lines.append(
+                f'- {table_name}.{column["name"]}: ' + "; ".join(parts) +
+                f' (resolved via {hint["lookup_table"]})'
+            )
 
     if not resolved_lines:
         return None
