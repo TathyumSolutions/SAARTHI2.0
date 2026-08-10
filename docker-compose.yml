@@ -24,6 +24,16 @@ services:
     volumes:
       - ./app:/app/app
       - ./requirements.txt:/app/requirements.txt:ro
+      # Uploaded documents (upload_routes.py) and spreadsheet-backed tables
+      # (spreadsheet_service.py: parquet files + the JSON manifest tracking
+      # them) both live under /app/uploads, created at runtime - not part of
+      # the ./app bind mount above, so without this volume every container
+      # rebuild wiped them while the DatabaseConnection/FileResource rows
+      # describing them stayed behind in Postgres (a real persisted volume),
+      # leaving orphaned rows pointing at files that no longer exist (e.g.
+      # an Excel connection's Process button failing with "No tables found
+      # for this connection").
+      - uploads_data:/app/uploads
     #command: gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 120 run:app
 
   db:
@@ -81,3 +91,4 @@ volumes:
   redis_data:
   qdrant_data:
   ollama_data:
+  uploads_data:
