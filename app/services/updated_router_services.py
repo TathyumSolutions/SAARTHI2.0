@@ -48,6 +48,7 @@ from app.services.automated_metamind import generate_router_config
 from app.services.general_service import answer_general_knowledge
 from app.services.stream_manager import stream_manager
 from app.services.spreadsheet_query_service import answer_from_spreadsheets
+from app.services.data_source_finaliser import finalize_data_source_strategy
 
 # Token counting is best-effort: fall back to a rough estimate if tiktoken
 # isn't installed, rather than hard-failing the whole router.
@@ -587,6 +588,16 @@ def _run_db_track(question: str, ctx: dict) -> dict:
     enriched_question = question
     if ctx.get("company_feedback_context"):
         enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+
+    # Data Source Finaliser: resolve any business term in the question
+    # (e.g. "copper", "Europe") against this user's uploaded spreadsheet
+    # lookup tables *before* the SQL-generating agents ever see the
+    # question, so they get concrete column/value facts instead of
+    # guessing a code or inventing a column that was never in the DB
+    # schema (see data_source_finaliser.py).
+    resolved_context = finalize_data_source_strategy(question, ctx.get("router_config"))
+    if resolved_context:
+        enriched_question = f"{resolved_context}\n\n{enriched_question}"
 
     full_result = run_data_bridge_agent(
         enriched_question, session_id=ctx["session_id"],

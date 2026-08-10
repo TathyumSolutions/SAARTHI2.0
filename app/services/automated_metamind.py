@@ -450,6 +450,7 @@ def to_sql_agent_schema(db_tables: dict) -> dict:
                 "type": col.get("data_type"),
                 "nullable": col.get("nullable"),
                 "example_values": col.get("sample_values", []),
+                **({"lookup_hint": col["lookup_hint"]} if col.get("lookup_hint") else {}),
             }
             for col in table_data.get("columns", [])
         }
@@ -932,6 +933,84 @@ def introspect_spreadsheets(user_id):
 
 
 # ============================================================
+# STEP 3.6: CROSS-REFERENCE DB columns against spreadsheet lookup tables
+# ============================================================
+
+# A spreadsheet column with more distinct values than this isn't a code/
+# lookup column (e.g. free-text notes, IDs) - skip it so a huge accidental
+# overlap never gets treated as a lookup relationship.
+MAX_LOOKUP_COLUMN_VALUES = 200
+
+
+def _attach_lookup_hints(db_tables: dict, spreadsheet_tables: dict) -> None:
+    """
+    Mutates db_tables in place: for every DB column that has sample_values,
+    checks whether those values are actually a code column translated by
+    one of this user's uploaded spreadsheet lookup tables (e.g.
+    mara.material_group's sample values ['RM01', 'RM02', 'RM03', ...]
+    exactly matching material_lookup_material_group_lookup.group_code).
+    When found, records a "lookup_hint" on that column so
+    data_source_finaliser.py can resolve a business term (e.g. "copper")
+    against the matching spreadsheet table's other columns *before* a SQL
+    question ever reaches the SQL-generating agents - instead of those
+    agents inventing a column that was never in the DB schema (e.g. a
+    "region" column that only ever existed as a spreadsheet lookup).
+
+    Deliberately an exact-value-overlap check, not fuzzy or LLM-driven:
+    a code like "RM03" is unambiguous, and guessing wrong here would
+    silently point the finaliser at the wrong lookup table. Only runs
+    against db_tables/spreadsheet_tables already scoped to one user by
+    the caller (generate_router_config), never across users.
+    """
+    if not db_tables or not spreadsheet_tables:
+        return
+
+    from app.services import spreadsheet_service
+
+    # table_name -> column_name -> set of every actual value in that
+    # column, loaded once. These are small lookup tables (a handful to a
+    # few hundred rows), so loading them whole is cheap and gives an exact
+    # match instead of comparing against only a handful of samples.
+    lookup_value_sets = {}
+    for table_name in spreadsheet_tables.keys():
+        try:
+            df = spreadsheet_service.get_table_df(table_name)
+        except Exception as e:
+            print(f"⚠️ [LOOKUP] Could not load spreadsheet table '{table_name}' for lookup matching: {e}")
+            continue
+        lookup_value_sets[table_name] = {
+            col: {str(v).strip().lower() for v in df[col].dropna().unique()}
+            for col in df.columns
+        }
+
+    for table_name, table_info in db_tables.items():
+        for column in table_info.get("columns", []):
+            sample = column.get("sample_values") or []
+            if not sample:
+                continue
+            sample_set = {str(v).strip().lower() for v in sample}
+
+            for lookup_table, cols in lookup_value_sets.items():
+                match = None
+                for lookup_col, values in cols.items():
+                    if not values or len(values) > MAX_LOOKUP_COLUMN_VALUES:
+                        continue  # not a small code column - skip (e.g. free-text notes)
+                    if sample_set <= values:  # every sampled DB value is a real code in this lookup column
+                        match = lookup_col
+                        break
+                if match:
+                    column["lookup_hint"] = {
+                        "lookup_table": lookup_table,
+                        "code_column": match,
+                        "label_columns": [
+                            c["name"] for c in spreadsheet_tables[lookup_table].get("columns", [])
+                            if c["name"] != match
+                        ],
+                    }
+                    break  # first matching lookup table wins - good enough, avoids ambiguous double-hints
+
+
+# ============================================================
 # STEP 4: BUILD THE ROUTING MENU JSON
 # ============================================================
 
@@ -1123,6 +1202,7 @@ def generate_router_config(user_id, sap_db_config=None):
     api_tools = introspect_api_db(user_id)
     files_info = introspect_qdrant(user_id)
     spreadsheet_tables = introspect_spreadsheets(user_id)
+    _attach_lookup_hints(db_tables, spreadsheet_tables)
 
     if not db_tables and not api_tools and not files_info and not spreadsheet_tables:
         print(f"❌ No datasources visible to user {user_id}. Nothing to generate.")

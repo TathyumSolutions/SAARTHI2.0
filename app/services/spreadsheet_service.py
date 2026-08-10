@@ -55,6 +55,26 @@ def classify_column(series: pd.Series) -> str:
     return "text"
 
 
+def sample_values(series: pd.Series, limit: int = 20) -> list:
+    """Distinct non-null values for a column, same purpose as the
+    sample_values DB introspection already captures per column
+    (automated_metamind.introspect_databridge_db) - lets the router/LLM
+    see real values instead of just a column name, and lets
+    automated_metamind._attach_lookup_hints() detect when a DB column's
+    values are actually explained by one of these spreadsheet columns
+    (a code/lookup table). Capped higher than the DB side's 5 since these
+    tables are small (lookup sheets are a handful to a few hundred rows)
+    and a lookup column's whole value set is exactly what that matching
+    needs to see, not just a preview."""
+    non_null = series.dropna().unique()[:limit]
+    out = []
+    for value in non_null:
+        if not isinstance(value, (str, int, float, bool)):
+            value = str(value)
+        out.append(value)
+    return out
+
+
 def save_table(connection_id: int, table_name: str, sheet_name, df: pd.DataFrame) -> dict:
     """Writes one sheet/CSV as a Parquet file and records it in the
     manifest under the given connection. Returns the table's manifest
@@ -65,7 +85,10 @@ def save_table(connection_id: int, table_name: str, sheet_name, df: pd.DataFrame
     parquet_path = os.path.join(conn_dir, f"{table_name}.parquet")
     df.to_parquet(parquet_path, index=False)
 
-    columns = [{"name": col, "type": classify_column(df[col])} for col in df.columns]
+    columns = [
+        {"name": col, "type": classify_column(df[col]), "sample_values": sample_values(df[col])}
+        for col in df.columns
+    ]
     record = {
         "table": table_name,
         "sheet": sheet_name,
