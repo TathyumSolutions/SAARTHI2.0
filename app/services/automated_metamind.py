@@ -84,6 +84,21 @@ INTERNAL_SYSTEM_TABLES = {
 }
 
 
+def _is_internal_table(table_name: str) -> bool:
+    """
+    True for Saarthi's own app tables (INTERNAL_SYSTEM_TABLES) plus any
+    table named with a leading underscore - the convention the demo
+    seeder (db_setup.py's pad_database_to_target_size / PAD_TABLE_NAME =
+    "_db_size_padding") already uses for tables that exist purely as disk-
+    size filler, not real business data. Without this, that table (just
+    "pad_id"/"filler" columns, tens of thousands of random rows) shows up
+    in the router's known-tables list like any other business table,
+    inviting the SQL agent to consider joining/querying it for a question
+    that has nothing to do with it.
+    """
+    return table_name in INTERNAL_SYSTEM_TABLES or table_name.startswith("_")
+
+
 # ============================================================
 # STEP 1: INTROSPECT the external SAP database -> DB datasource
 # ============================================================
@@ -171,7 +186,7 @@ def introspect_databridge_db(db_config=None):
             for row in table_rows:
                 table_name = row["table_name"]
 
-                if table_name in INTERNAL_SYSTEM_TABLES:
+                if _is_internal_table(table_name):
                     continue
 
                 comment_row = _safe_fetchone(
@@ -360,7 +375,7 @@ def enrich_table_descriptions_with_llm(db_config, connection_description=None):
 
             for row in table_rows:
                 table_name = row["table_name"]
-                if table_name in INTERNAL_SYSTEM_TABLES:
+                if _is_internal_table(table_name):
                     continue
 
                 comment_row = _safe_fetchone(
