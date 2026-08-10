@@ -55,24 +55,32 @@ def classify_column(series: pd.Series) -> str:
     return "text"
 
 
-def sample_values(series: pd.Series, limit: int = 20) -> list:
-    """Distinct non-null values for a column, same purpose as the
-    sample_values DB introspection already captures per column
-    (automated_metamind.introspect_databridge_db) - lets the router/LLM
-    see real values instead of just a column name, and lets
-    automated_metamind._attach_lookup_hints() detect when a DB column's
-    values are actually explained by one of these spreadsheet columns
-    (a code/lookup table). Capped higher than the DB side's 5 since these
+def column_stats(series: pd.Series, sample_limit: int = 20) -> dict:
+    """
+    unique_values / null_count / sample_values for one column - the same
+    shape automated_metamind.introspect_databridge_db already captures
+    per DB column, so a spreadsheet table's metamind Details carry the
+    same depth of information a real database table's does, not just a
+    column name and a handful of samples.
+
+    sample_values is capped higher than the DB side's 5 since these
     tables are small (lookup sheets are a handful to a few hundred rows)
-    and a lookup column's whole value set is exactly what that matching
-    needs to see, not just a preview."""
-    non_null = series.dropna().unique()[:limit]
-    out = []
-    for value in non_null:
+    and a lookup column's whole value set is exactly what
+    automated_metamind._attach_lookup_hints() needs to see to detect a
+    DB column's values are explained by this spreadsheet column, not
+    just a preview.
+    """
+    non_null = series.dropna()
+    samples = []
+    for value in non_null.unique()[:sample_limit]:
         if not isinstance(value, (str, int, float, bool)):
             value = str(value)
-        out.append(value)
-    return out
+        samples.append(value)
+    return {
+        "unique_values": int(series.nunique(dropna=True)),
+        "null_count": int(series.isna().sum()),
+        "sample_values": samples,
+    }
 
 
 def save_table(connection_id: int, table_name: str, sheet_name, df: pd.DataFrame) -> dict:
@@ -86,7 +94,7 @@ def save_table(connection_id: int, table_name: str, sheet_name, df: pd.DataFrame
     df.to_parquet(parquet_path, index=False)
 
     columns = [
-        {"name": col, "type": classify_column(df[col]), "sample_values": sample_values(df[col])}
+        {"name": col, "type": classify_column(df[col]), **column_stats(df[col])}
         for col in df.columns
     ]
     record = {
