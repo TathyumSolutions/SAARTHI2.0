@@ -30,7 +30,45 @@ def _is_function_call_from(sql_query: str, from_pos: int) -> bool:
     return False
 
 
-def _find_invalid_qualified_columns(sql_query: str, schema_tables: Dict[str, Any]) -> List[str]:
+def _extract_table_aliases(sql_query: str, schema_tables: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Maps every alias introduced by "FROM x [AS] y" / "JOIN x [AS] y" back
+    to its real table name, so e.g. "vr.material_id" resolves via
+    vr -> vbak_region. Shared by both the qualified- and bare-column
+    checks below, so a query's referenced-tables list is only ever
+    computed one way.
+    """
+    lower_tables = {name.lower(): name for name in schema_tables.keys()}
+
+    # The optional alias group has a negative lookahead excluding clause
+    # keywords (JOIN, ON, WHERE, ...) - without it, "FROM a JOIN b" lets
+    # the first match's greedy optional-alias group swallow the literal
+    # "JOIN" keyword as if it were a's alias, consuming it so the second
+    # table ("JOIN b") never gets a chance to match at all in the next
+    # finditer() iteration. Table b would then be silently missing from
+    # alias_to_table entirely, and every real column reference qualified
+    # against it (or attributed to it as the query's only table) would
+    # wrongly look invalid.
+    _CLAUSE_KEYWORDS = "on|where|and|or|group|order|limit|inner|left|right|outer|join"
+
+    alias_to_table = {}
+    for m in re.finditer(
+        r"\b(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_]*)"
+        rf"(?:\s+(?:as\s+)?(?!(?:{_CLAUSE_KEYWORDS})\b)([a-zA-Z_][a-zA-Z0-9_]*))?",
+        sql_query, re.IGNORECASE
+    ):
+        table_token, alias_token = m.group(1), m.group(2)
+        if table_token.lower() not in lower_tables:
+            continue
+        real_table = lower_tables[table_token.lower()]
+        alias_to_table[table_token.lower()] = real_table
+        if alias_token:
+            alias_to_table[alias_token.lower()] = real_table
+    return alias_to_table
+
+
+def _find_invalid_qualified_columns(sql_query: str, schema_tables: Dict[str, Any],
+                                     alias_to_table: Dict[str, str] = None) -> List[str]:
     """
     Flags `alias.column` / `table.column` references where the column
     doesn't exist on the table they're qualified against (e.g.
@@ -40,25 +78,8 @@ def _find_invalid_qualified_columns(sql_query: str, schema_tables: Dict[str, Any
     there's no risk of mistaking a SQL keyword or an output alias for an
     invalid column the way unqualified-token scanning would.
     """
-    lower_tables = {name.lower(): name for name in schema_tables.keys()}
-
-    # Map every alias introduced by "FROM x [AS] y" / "JOIN x [AS] y" back
-    # to its real table name, so "vr.material_id" resolves via vr -> vbak_region.
-    alias_to_table = {}
-    for m in re.finditer(
-        r"\b(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+(?:as\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?",
-        sql_query, re.IGNORECASE
-    ):
-        table_token, alias_token = m.group(1), m.group(2)
-        if table_token.lower() not in lower_tables:
-            continue
-        real_table = lower_tables[table_token.lower()]
-        alias_to_table[table_token.lower()] = real_table
-        if alias_token and alias_token.lower() not in (
-            "on", "where", "and", "or", "group", "order", "limit", "inner", "left",
-            "right", "outer", "join"
-        ):
-            alias_to_table[alias_token.lower()] = real_table
+    if alias_to_table is None:
+        alias_to_table = _extract_table_aliases(sql_query, schema_tables)
 
     invalid = []
     for qualifier, column in re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)\b", sql_query):
@@ -80,23 +101,42 @@ _PREDICATE_KEYWORDS = {
 }
 
 
-def _find_invalid_bare_predicate_columns(sql_query: str, schema_tables: Dict[str, Any]) -> List[str]:
+def _find_invalid_bare_predicate_columns(sql_query: str, schema_tables: Dict[str, Any],
+                                          alias_to_table: Dict[str, str] = None) -> List[str]:
     """
     Flags bare (unqualified) identifiers used as the left-hand side of a
-    filter predicate (=, <>, >, <, LIKE, IN, IS, BETWEEN) that don't match
-    any known column anywhere in the schema - e.g. "region = 'Europe'"
-    inside "SELECT country FROM kna1 WHERE region = 'Europe'" when no
-    table in the schema has a region column.
+    filter predicate (=, <>, >, <, LIKE, IN, IS, BETWEEN) that can't
+    belong to any table the query actually references - e.g.
+    "region = 'Europe'" inside "SELECT country FROM kna1 WHERE region =
+    'Europe'" when kna1 has no region column.
 
-    Deliberately checked against the schema's full column set rather than
-    scoped to the one table in play (that would need real SQL parsing) -
-    still catches genuinely invented column names without false-positiving
-    on legitimate columns used unqualified in a single-table query.
+    When the query references exactly one real table (no JOIN - the
+    common case), a bare column can only mean a column on that table, so
+    it's checked against that table specifically: this is what catches a
+    column that's real somewhere in the schema but wrong for the table
+    actually being queried (e.g. "document_date" filtered on ekpo, when
+    only ekpo's parent table ekko - not ekpo itself - has that column;
+    checking the schema's full column set, as below, would miss this
+    since "document_date" is a real column, just never on ekpo).
+
+    For multi-table (JOIN) queries, falls back to checking against the
+    schema's full column set - attributing a bare column to a specific
+    joined table without real SQL parsing would risk false positives on
+    legitimate columns, so those queries only get the coarser check.
     """
-    known_columns = set()
+    if alias_to_table is None:
+        alias_to_table = _extract_table_aliases(sql_query, schema_tables)
+
     known_tables = {name.lower() for name in schema_tables.keys()}
-    for table_info in schema_tables.values():
-        known_columns.update(c.lower() for c in table_info.get("columns", {}).keys())
+    referenced_tables = set(alias_to_table.values())
+
+    if len(referenced_tables) == 1:
+        only_table = next(iter(referenced_tables))
+        known_columns = {c.lower() for c in schema_tables[only_table].get("columns", {}).keys()}
+    else:
+        known_columns = set()
+        for table_info in schema_tables.values():
+            known_columns.update(c.lower() for c in table_info.get("columns", {}).keys())
 
     invalid = []
     for m in re.finditer(
@@ -234,8 +274,9 @@ class QueryValidatorAgent:
             # qualified column (e.g. a hallucinated "kna1.region") is enough
             # to fail validation outright, rather than only tripping on
             # implausibly large amounts of garbage.
-            invalid_predicate_cols = set(_find_invalid_qualified_columns(sql_query, schema_tables))
-            invalid_predicate_cols.update(_find_invalid_bare_predicate_columns(sql_query, schema_tables))
+            alias_to_table = _extract_table_aliases(sql_query, schema_tables)
+            invalid_predicate_cols = set(_find_invalid_qualified_columns(sql_query, schema_tables, alias_to_table))
+            invalid_predicate_cols.update(_find_invalid_bare_predicate_columns(sql_query, schema_tables, alias_to_table))
             if invalid_predicate_cols:
                 return {
                     "status": "failed",
