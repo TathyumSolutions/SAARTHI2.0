@@ -30,6 +30,87 @@ def _is_function_call_from(sql_query: str, from_pos: int) -> bool:
     return False
 
 
+def _find_invalid_qualified_columns(sql_query: str, schema_tables: Dict[str, Any]) -> List[str]:
+    """
+    Flags `alias.column` / `table.column` references where the column
+    doesn't exist on the table they're qualified against (e.g.
+    "kna1.region" when kna1 has no region column). This is a much more
+    reliable signal than checking bare identifiers - a qualified
+    reference unambiguously names both a table/alias and a column, so
+    there's no risk of mistaking a SQL keyword or an output alias for an
+    invalid column the way unqualified-token scanning would.
+    """
+    lower_tables = {name.lower(): name for name in schema_tables.keys()}
+
+    # Map every alias introduced by "FROM x [AS] y" / "JOIN x [AS] y" back
+    # to its real table name, so "vr.material_id" resolves via vr -> vbak_region.
+    alias_to_table = {}
+    for m in re.finditer(
+        r"\b(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+(?:as\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?",
+        sql_query, re.IGNORECASE
+    ):
+        table_token, alias_token = m.group(1), m.group(2)
+        if table_token.lower() not in lower_tables:
+            continue
+        real_table = lower_tables[table_token.lower()]
+        alias_to_table[table_token.lower()] = real_table
+        if alias_token and alias_token.lower() not in (
+            "on", "where", "and", "or", "group", "order", "limit", "inner", "left",
+            "right", "outer", "join"
+        ):
+            alias_to_table[alias_token.lower()] = real_table
+
+    invalid = []
+    for qualifier, column in re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)\b", sql_query):
+        real_table = alias_to_table.get(qualifier.lower())
+        if not real_table:
+            continue  # not a known table/alias - could be a schema-qualified name we don't track, don't guess
+        table_columns = schema_tables[real_table].get("columns", {})
+        if column.lower() not in (c.lower() for c in table_columns.keys()):
+            invalid.append(f"{qualifier}.{column}")
+    return invalid
+
+
+# Identifiers that legitimately precede a comparison operator without being
+# a column reference - SQL keywords/builtins that can sit on the left of
+# =, >, LIKE, etc. in constructs this codebase's generator actually emits.
+_PREDICATE_KEYWORDS = {
+    "current_date", "current_timestamp", "current_time", "now", "true", "false",
+    "null", "interval", "case", "when", "exists", "not", "distinct",
+}
+
+
+def _find_invalid_bare_predicate_columns(sql_query: str, schema_tables: Dict[str, Any]) -> List[str]:
+    """
+    Flags bare (unqualified) identifiers used as the left-hand side of a
+    filter predicate (=, <>, >, <, LIKE, IN, IS, BETWEEN) that don't match
+    any known column anywhere in the schema - e.g. "region = 'Europe'"
+    inside "SELECT country FROM kna1 WHERE region = 'Europe'" when no
+    table in the schema has a region column.
+
+    Deliberately checked against the schema's full column set rather than
+    scoped to the one table in play (that would need real SQL parsing) -
+    still catches genuinely invented column names without false-positiving
+    on legitimate columns used unqualified in a single-table query.
+    """
+    known_columns = set()
+    known_tables = {name.lower() for name in schema_tables.keys()}
+    for table_info in schema_tables.values():
+        known_columns.update(c.lower() for c in table_info.get("columns", {}).keys())
+
+    invalid = []
+    for m in re.finditer(
+        r"\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|<>|!=|>=|<=|<|>|\bLIKE\b|\bILIKE\b|\bIN\b|\bIS\b|\bBETWEEN\b)",
+        sql_query, re.IGNORECASE
+    ):
+        token = m.group(1)
+        low = token.lower()
+        if low in known_columns or low in known_tables or low in _PREDICATE_KEYWORDS:
+            continue
+        invalid.append(token)
+    return invalid
+
+
 class QueryValidatorAgent:
     """
     Agent responsible for validation.
@@ -146,6 +227,20 @@ class QueryValidatorAgent:
                 return {
                     "status": "failed",
                     "message": "⚠️ No valid tables found in generated SQL."
+                }
+
+            # Qualified references (alias.column) are an unambiguous signal -
+            # unlike the noisy bare-token scan below, a single invented
+            # qualified column (e.g. a hallucinated "kna1.region") is enough
+            # to fail validation outright, rather than only tripping on
+            # implausibly large amounts of garbage.
+            invalid_predicate_cols = set(_find_invalid_qualified_columns(sql_query, schema_tables))
+            invalid_predicate_cols.update(_find_invalid_bare_predicate_columns(sql_query, schema_tables))
+            if invalid_predicate_cols:
+                return {
+                    "status": "failed",
+                    "message": f"⚠️ Invalid columns in SQL: {', '.join(sorted(invalid_predicate_cols))}",
+                    "invalid_columns": sorted(invalid_predicate_cols)
                 }
 
             if invalid_columns and len(invalid_columns) > len(all_table_names) + len(all_column_names) + 10:
