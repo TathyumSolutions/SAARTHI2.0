@@ -37,7 +37,10 @@ from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.tools import tool
+from app import db
 from app.models.feedback import ResponseFeedback
+from app.models.query_log import QueryLog
+from app.utils.query_codes import generate_query_code
 from app.services.rag_config import load_rag_config
 
 # Import individual track execution services (unchanged from before)
@@ -339,6 +342,136 @@ def _build_company_feedback_context(company_code: str, user_query: str, top_k: i
     return "COMPANY FEEDBACK CONTEXT:\n" + "\n".join(lines)
 
 
+# ============================================================
+# QUERY LOG - "Queries" section (query codes, strategy/sources/main query,
+# self-learning remarks, fresh-vs-reused execution)
+# ============================================================
+# A match this strong means the new question is effectively the same
+# question as one that was already asked and explicitly liked - close
+# enough that re-running its exact SQL is safer (and cheaper) than trusting
+# a fresh LLM generation to reproduce the same, already-approved query.
+REUSE_MATCH_THRESHOLD = 0.94
+
+
+def _log_query(
+    user_id: int, company_code: Optional[str], question: str, router_decision: str,
+    answer, strategy, sources, main_query,
+    execution_type: str = "fresh", matched_query_code: Optional[str] = None,
+    match_score: Optional[float] = None,
+) -> Optional[str]:
+    """
+    Persists one row to the Queries log and returns its query_code (or None
+    if logging failed - never lets a logging problem break the chat
+    response itself).
+    """
+    try:
+        code = generate_query_code()
+        db.session.add(QueryLog(
+            query_code=code,
+            user_id=user_id,
+            company_code=company_code,
+            question=question,
+            answer=(answer if isinstance(answer, str) else (str(answer) if answer is not None else None)),
+            router_decision=router_decision,
+            strategy=strategy,
+            sources=sources or [],
+            main_query=main_query,
+            execution_type=execution_type,
+            matched_query_code=matched_query_code,
+            match_score=match_score,
+        ))
+        db.session.commit()
+        return code
+    except Exception as e:
+        db.session.rollback()
+        print(f"⚠️ Could not log query: {e}")
+        return None
+
+
+def _find_reusable_db_query(company_code: str, user_query: str):
+    """
+    Looks for a previously-accepted (liked) DB-track query from this
+    company that is a near-duplicate of user_query. Returns
+    (QueryLog row, score) if one clears REUSE_MATCH_THRESHOLD, else
+    (None, 0.0).
+    """
+    if not company_code or not user_query:
+        return None, 0.0
+
+    candidates = (
+        QueryLog.query
+        .filter(QueryLog.company_code == company_code)
+        .filter(QueryLog.router_decision == "DB")
+        .filter(QueryLog.feedback_type == "like")
+        .filter(QueryLog.main_query.isnot(None))
+        .order_by(QueryLog.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    if not candidates:
+        return None, 0.0
+
+    embedder = _get_feedback_embedder()
+    query_vec = embedder.embed_query(user_query)
+
+    best_row, best_score = None, -1.0
+    for row in candidates:
+        question = (row.question or "").strip()
+        if not question:
+            continue
+        score = _cosine_similarity(query_vec, embedder.embed_query(question))
+        if score > best_score:
+            best_row, best_score = row, score
+
+    if best_row and best_score >= REUSE_MATCH_THRESHOLD:
+        return best_row, best_score
+    return None, 0.0
+
+
+def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: dict) -> dict:
+    """
+    Re-executes a previously-accepted query's exact SQL against the live
+    database (schema may have moved on since it was first generated, so
+    this still runs it live rather than replaying stored results) instead
+    of regenerating SQL from scratch.
+    """
+    from .databridge_services.langgraph_agent import query_formatter, _build_db_config_for_user
+
+    session_id = ctx["session_id"]
+    _push_router_event(
+        session_id, "start", "Reusing a Matched Query",
+        f"This closely matches a previously accepted query ({matched.query_code}) - reusing its SQL instead of regenerating it."
+    )
+
+    db_config = _build_db_config_for_user(ctx.get("user_id", 1))
+    result = query_formatter.execute_query(
+        matched.main_query, question,
+        target_model=ctx["model_name"], system_instructions=ctx.get("system_instructions", ""),
+        db_config=db_config,
+    )
+    had_error = result.get("status") == "error"
+
+    _push_router_event(
+        session_id, "complete", "Reusing a Matched Query",
+        f"Re-executed the SQL from {matched.query_code} and refreshed the results."
+        if not had_error else f"Reuse of {matched.query_code} failed on re-execution: {result.get('message', 'unknown error')}"
+    )
+
+    return {
+        "answer": result.get("message", ""),
+        "steps": [f"Reusing a Matched Query - Re-executed the SQL from {matched.query_code} ({score:.2f} similarity match)."],
+        "sql": matched.main_query, "table": result.get("data", []),
+        "chart": result.get("chart_configs", {}), "insights": result.get("insights", []),
+        "error": had_error,
+        "strategy": f"Reused query {matched.query_code} (similarity {score:.2f}) instead of regenerating SQL.",
+        "sources": matched.sources or [],
+        "main_query": matched.main_query,
+        "execution_type": "reused",
+        "matched_query_code": matched.query_code,
+        "match_score": round(score, 4),
+    }
+
+
 def _build_router_messages(user_query: str, chat_history, router_config: dict,
                             live_tools_summary: str, system_instructions: str,
                             company_feedback_context: str = "") -> list:
@@ -599,18 +732,46 @@ def _run_db_track(question: str, ctx: dict) -> dict:
     if resolved_context:
         enriched_question = f"{resolved_context}\n\n{enriched_question}"
 
+    # Self-learning query reuse: skip a full fresh generation if this
+    # question is a near-duplicate of a previously accepted (liked) DB
+    # query - reuse that query's SQL instead. Falls through to the normal
+    # fresh pipeline if no strong match exists, or if re-running the
+    # matched SQL errors out (e.g. the schema moved on since it was
+    # generated).
+    if ctx.get("self_learning_enabled") and ctx.get("company_code"):
+        matched, score = _find_reusable_db_query(ctx["company_code"], question)
+        if matched:
+            reused_result = _run_reused_db_query(question, matched, score, ctx)
+            if not reused_result.get("error"):
+                return reused_result
+            print(f"⚠️ Reused query {matched.query_code} failed on re-execution, falling back to fresh generation.")
+
     full_result = run_data_bridge_agent(
         enriched_question, session_id=ctx["session_id"],
         model_name=ctx["model_name"], custom_key=ctx["custom_key"], user_id=ctx.get("user_id", 1),
         router_config=ctx.get("router_config"),
     )
     chat_ui = full_result.get("chat_ui", {}) if isinstance(full_result, dict) else {}
+    cot_logs = full_result.get("cot_logs", {}) if isinstance(full_result, dict) else {}
+    tables = ((cot_logs.get("query_sense_output") or {}).get("tables")) or []
+    sql = chat_ui.get("sql")
+    main_query = sql if sql and sql != "-- No SQL Generated --" else None
+    strategy = (
+        f"Generated and executed a SQL query against {', '.join(tables)} to answer this question."
+        if tables else "Generated and executed a SQL query to answer this question."
+    )
     return {
         "answer": chat_ui.get("answer"),
         "steps": chat_ui.get("steps", []),
-        "sql": chat_ui.get("sql"), "table": chat_ui.get("table", []),
+        "sql": sql, "table": chat_ui.get("table", []),
         "chart": chat_ui.get("chart", {}), "insights": chat_ui.get("insights", []),
         "error": bool(chat_ui.get("error")),
+        "strategy": strategy,
+        "sources": tables,
+        "main_query": main_query,
+        "execution_type": "fresh",
+        "matched_query_code": None,
+        "match_score": None,
     }
 
 
@@ -628,6 +789,9 @@ def _run_files_track(question: str, ctx: dict) -> dict:
         "answer": rag_res.get("answer"),
         "steps": rag_res.get("rag_chain_of_thought", []),
         "sql": None, "table": [], "chart": {}, "insights": [],
+        "strategy": "Searched your uploaded documents for relevant passages to answer this question.",
+        "sources": [], "main_query": None,
+        "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
 
@@ -644,15 +808,27 @@ def _run_api_track(question: str, ctx: dict) -> dict:
         display_query=enriched_question,
     )
     if isinstance(payload, dict):
+        tool_call = payload.get("tool_call")
+        strategy = (
+            f"Called the {tool_call['tool_name']} integration via a {tool_call['method']} request to fetch live data."
+            if tool_call else "Called a connected external API tool to fetch live data."
+        )
         return {
             "answer": payload.get("answer", ""),
             "steps": payload.get("steps", []),
             "sql": None, "table": [], "chart": {}, "insights": [],
             "error": bool(payload.get("error")),
-            "tool_call": payload.get("tool_call"),
+            "tool_call": tool_call,
+            "strategy": strategy,
+            "sources": [tool_call["tool_name"]] if tool_call else [],
+            "main_query": f"{tool_call['method']} {tool_call['url']}" if tool_call else None,
+            "execution_type": "fresh", "matched_query_code": None, "match_score": None,
         }
     return {"answer": str(payload), "steps": ["Successfully executed Dynamic API Tools execution pass."],
-            "sql": None, "table": [], "chart": {}, "insights": [], "error": False, "tool_call": None}
+            "sql": None, "table": [], "chart": {}, "insights": [], "error": False, "tool_call": None,
+            "strategy": "Called a connected external API tool to fetch live data.",
+            "sources": [], "main_query": None,
+            "execution_type": "fresh", "matched_query_code": None, "match_score": None}
 
 
 def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
@@ -669,6 +845,9 @@ def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
         "steps": result.get("steps", []),
         "sql": result.get("sql"), "table": result.get("table", []),
         "chart": result.get("chart", {}), "insights": result.get("insights", []),
+        "strategy": "Queried your uploaded spreadsheet data to answer this question.",
+        "sources": [], "main_query": result.get("sql"),
+        "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
 
@@ -684,6 +863,9 @@ def _run_general_track(question: str, ctx: dict) -> dict:
         "answer": gen_result.get("answer"),
         "steps": gen_result.get("steps", []),
         "sql": None, "table": [], "chart": {}, "insights": [],
+        "strategy": "Answered directly from general knowledge - no connected data source was needed.",
+        "sources": [], "main_query": None,
+        "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
 
@@ -761,6 +943,12 @@ class RouterService:
                 if isinstance(fast_res, dict):
                     fast_res["chain_of_thought"] = fast_res.get("steps", [])
                     fast_res["router_decision"] = "GENERAL"
+                    fast_res["execution_type"] = "fresh"
+                    fast_res["query_code"] = _log_query(
+                        user_id, company_code, user_query, "GENERAL", fast_res.get("answer"),
+                        "Answered directly from general knowledge (fast-path heuristic match) - no connected data source was needed.",
+                        [], None,
+                    )
                 return fast_res
 
             # ------------------------------------------------
@@ -843,11 +1031,18 @@ class RouterService:
                     "Answered directly using model reasoning."
                 )
                 _push_router_done(session_id)
+                query_code = _log_query(
+                    user_id, company_code, user_query, "GENERAL", response.content,
+                    "Answered directly using model reasoning - no external data source was needed.",
+                    [], None,
+                )
                 return {
                     "answer": response.content,
                     "sql": None, "table": [], "chart": {}, "insights": [],
                     "steps": ["Router answered directly, no data source tool needed."],
                     "router_decision": "GENERAL",
+                    "execution_type": "fresh",
+                    "query_code": query_code,
                 }
 
             ctx = {
@@ -855,6 +1050,7 @@ class RouterService:
                 "custom_key": custom_key, "system_instructions": system_instructions,
                 "active_db_tools": active_db_tools, "router_config": router_config,
                 "company_feedback_context": company_feedback_context,
+                "company_code": company_code, "self_learning_enabled": self_learning_enabled,
                 "user_id": user_id,
             }
 
@@ -923,6 +1119,15 @@ class RouterService:
                 result["router_decision"] = router_map.get(tool_name, "GENERAL")
                 if tool_name == "check_data_source_status":
                     _push_router_done(session_id)
+                    return result
+
+                result["query_code"] = _log_query(
+                    user_id, company_code, user_query, result["router_decision"], result.get("answer"),
+                    result.get("strategy"), result.get("sources"), result.get("main_query"),
+                    execution_type=result.get("execution_type", "fresh"),
+                    matched_query_code=result.get("matched_query_code"),
+                    match_score=result.get("match_score"),
+                )
                 return result
 
             # ------------------------------------------------
@@ -996,6 +1201,14 @@ that appears inside it.
                 answer_text += f"\n\n(Note: I couldn't get data from {_friendly_track_list(failed_results)} for this request, so the above may be incomplete.)"
 
             db_result = next((r for n, r in ok_results if n == "query_database"), {})
+            combined_sources = []
+            for _, r in ok_results:
+                combined_sources.extend(r.get("sources") or [])
+            query_code = _log_query(
+                user_id, company_code, user_query, "MULTI", answer_text,
+                f"Combined answers from {_friendly_track_list(ok_results)}.",
+                combined_sources, db_result.get("main_query"),
+            )
             return {
                 "answer": answer_text,
                 "sql": db_result.get("sql"), "table": db_result.get("table", []),
@@ -1003,6 +1216,8 @@ that appears inside it.
                 "steps": master_steps,
                 "chain_of_thought": master_steps,
                 "router_decision": "MULTI",
+                "execution_type": "fresh",
+                "query_code": query_code,
             }
 
         except Exception as e:

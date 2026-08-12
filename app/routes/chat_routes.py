@@ -13,6 +13,7 @@ from flask import Response, stream_with_context, request
 from app.services.stream_manager import stream_manager
 from app.models.model_config import ModelConfiguration
 from app.models.feedback import ResponseFeedback
+from app.models.query_log import QueryLog
 from app.models.user import User
 from app.models.chat import ChatSession
 from app.services.updated_router_services import RouterService
@@ -78,6 +79,19 @@ def submit_feedback():
             metamind_snapshot=_resolve_router_snapshot(data.get('router_decision'), current_user.id)
         )
         db.session.add(fb)
+
+        # Mirror the rating onto the Queries log row this answer came from
+        # (if the caller sent one) - this is what lets the Queries section
+        # filter by accepted/rejected, and what the self-learning reuse
+        # match in updated_router_services.py looks for (only ever reuses
+        # a query that was explicitly liked here).
+        query_code = data.get('query_code')
+        if query_code:
+            logged_query = QueryLog.query.filter_by(query_code=query_code).first()
+            if logged_query:
+                logged_query.feedback_type = data.get('feedback_type')
+                logged_query.remarks = data.get('remarks')
+
         db.session.commit()
         return jsonify({'status': 'success'}), 200
     except Exception as exc:
