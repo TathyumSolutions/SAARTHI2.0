@@ -4,7 +4,7 @@ Database Models
 3 logical databases (see config/config.py SQLALCHEMY_BINDS):
   - core:      Company, User, ResourceMapping, AuditLog
   - resources: DatabaseConnection, ApiConnector, FileResource
-  - workspace: ChatSession, ModelConfiguration, ResponseFeedback
+  - workspace: ChatSession, ModelConfiguration, ResponseFeedback, QueryLog
 
 The router config (which datasources/tables/tools a user's smart router
 considers) used to be a persisted RouterConfig row per user here. It's
@@ -25,6 +25,7 @@ from .file_resource import FileResource
 from .chat import ChatSession
 from .model_config import ModelConfiguration
 from .feedback import ResponseFeedback
+from .query_log import QueryLog
 
 __all__ = [
     'Company',
@@ -37,4 +38,5 @@ __all__ = [
     'ChatSession',
     'ModelConfiguration',
     'ResponseFeedback',
+    'QueryLog',
 ]

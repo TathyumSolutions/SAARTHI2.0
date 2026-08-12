@@ -755,6 +755,7 @@
             answer: box.dataset.answer,
             sql_query: box.dataset.sql || null,
             router_decision: box.dataset.router || null,
+            query_code: box.dataset.queryCode || null,
             feedback_type: type
         };
 
@@ -1709,7 +1710,8 @@
                         question: lastUserQuestion,
                         answer: ui.answer || '',
                         sql_query: ui.sql || null,
-                        router_decision: ui.router_decision || null
+                        router_decision: ui.router_decision || null,
+                        query_code: ui.query_code || null
                     };
 
                     const shell = renderAssistantMessageShell(time, assistantMeta);
@@ -1746,7 +1748,7 @@
         let feedbackHtml = '';
         if (selfLearningModeEnabled && meta) {
             feedbackHtml = `
-                <div class="feedback-buttons" data-question="${escapeAttr(meta.question)}" data-answer="${escapeAttr(meta.answer)}" data-sql="${escapeAttr(meta.sql_query)}" data-router="${escapeAttr(meta.router_decision)}" style="margin-top: 10px; display: flex; gap: 10px;">
+                <div class="feedback-buttons" data-question="${escapeAttr(meta.question)}" data-answer="${escapeAttr(meta.answer)}" data-sql="${escapeAttr(meta.sql_query)}" data-router="${escapeAttr(meta.router_decision)}" data-query-code="${escapeAttr(meta.query_code)}" style="margin-top: 10px; display: flex; gap: 10px;">
                     <button type="button" onclick="submitFeedback(this, 'like')" style="cursor:pointer; background: #1f2937; color: white; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px;">👍</button>
                     <button type="button" onclick="submitFeedback(this, 'dislike')" style="cursor:pointer; background: #1f2937; color: white; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px;">👎</button>
                 </div>
@@ -1782,7 +1784,7 @@
         let feedbackHtml = '';
         if (isAI && selfLearningModeEnabled && meta) {
             feedbackHtml = `
-                <div class="feedback-buttons" data-question="${escapeAttr(meta.question)}" data-answer="${escapeAttr(meta.answer)}" data-sql="${escapeAttr(meta.sql_query)}" data-router="${escapeAttr(meta.router_decision)}" style="margin-top: 10px; display: flex; gap: 10px;">
+                <div class="feedback-buttons" data-question="${escapeAttr(meta.question)}" data-answer="${escapeAttr(meta.answer)}" data-sql="${escapeAttr(meta.sql_query)}" data-router="${escapeAttr(meta.router_decision)}" data-query-code="${escapeAttr(meta.query_code)}" style="margin-top: 10px; display: flex; gap: 10px;">
                     <button type="button" onclick="submitFeedback(this, 'like')" style="cursor:pointer; background: #1f2937; color: white; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px;">👍</button>
                     <button type="button" onclick="submitFeedback(this, 'dislike')" style="cursor:pointer; background: #1f2937; color: white; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px;">👎</button>
                 </div>
