@@ -1225,6 +1225,7 @@
         "Checking Data Source Status": { icon: "📡", label: "Checking data availability" },
         "Answering Directly": { icon: "💡", label: "Answering from what I know" },
         "Finding the Right Tool": { icon: "🧰", label: "Choosing the right tool" },
+        "Planning the Approach": { icon: "🧭", label: "Working out my strategy" },
         "Calling the Live System": { icon: "🔌", label: "Connecting to your system" },
         "Putting Your Answer Together": { icon: "📝", label: "Putting your answer together" },
         "Query Simplifier Agent": { icon: "🧹", label: "Simplifying your request" },
@@ -1537,6 +1538,44 @@
         thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
     }
 
+    // Shows the exact live API call behind a tool-backed answer - the same
+    // "tucked behind a collapsible toggle" treatment as renderTechnicalQueryDetail
+    // gives the SQL track, so a tool-driven answer is just as traceable back
+    // to what actually produced it (which tool, method, endpoint, params).
+    function renderTechnicalApiCallDetail(toolCall) {
+        const thoughtChainContainer = document.querySelector('.thought-chain');
+        if (!thoughtChainContainer || !toolCall || !toolCall.url) return;
+
+        const toolName = toolCall.tool_name || "the connected tool";
+        const method = (toolCall.method || "GET").toUpperCase();
+        const paramsJson = toolCall.params && Object.keys(toolCall.params).length
+            ? JSON.stringify(toolCall.params, null, 2)
+            : null;
+
+        const requestDetail = `${method} ${toolCall.url}` + (paramsJson ? `\n\nParams:\n${paramsJson}` : '');
+
+        const stepHtml = `
+            <div class="thought-step" style="opacity: 1; transform: translateY(0); transition: all 0.4s ease; margin-bottom: 15px;">
+                <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px; display: flex; align-items: baseline; gap: 6px;">
+                    <span class="thought-icon" aria-hidden="true">🔌</span>
+                    <span>How I found this</span>
+                </div>
+                <div class="thought-description" style="color: #94A3B8; font-size: 13px; margin-top: 4px;">
+                    I looked this up by calling ${escapeAttr(toolName)}, a connected live system.
+                </div>
+                <details style="margin-top: 8px;">
+                    <summary style="cursor: pointer; color: #60A5FA; font-size: 12px;">View technical request</summary>
+                    <pre style="margin-top: 6px; padding: 10px; background: #07091E; border: 1px solid #1F2348; border-radius: 6px; color: #CBD5E1; font-size: 12px; white-space: pre-wrap; word-break: break-word;"><code>${escapeAttr(requestDetail)}</code></pre>
+                </details>
+                <span class="status-indicator" style="color: #10B981; font-size: 11px; display: block; margin-top: 8px;">
+                    ✓ Completed
+                </span>
+            </div>
+        `;
+
+        thoughtChainContainer.insertAdjacentHTML('beforeend', stepHtml);
+    }
+
     // ==========================================
     // CHAT SEND / RENDER
     // ==========================================
@@ -1589,6 +1628,8 @@
                     finalizeLiveSteps(isSqlResult);
                     if (isSqlResult) {
                         renderTechnicalQueryDetail(ui.sql);
+                    } else if (ui.tool_call) {
+                        renderTechnicalApiCallDetail(ui.tool_call);
                     }
 
                     let extraOutput = ``;

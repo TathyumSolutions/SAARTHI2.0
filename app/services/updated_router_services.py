@@ -649,9 +649,10 @@ def _run_api_track(question: str, ctx: dict) -> dict:
             "steps": payload.get("steps", []),
             "sql": None, "table": [], "chart": {}, "insights": [],
             "error": bool(payload.get("error")),
+            "tool_call": payload.get("tool_call"),
         }
     return {"answer": str(payload), "steps": ["Successfully executed Dynamic API Tools execution pass."],
-            "sql": None, "table": [], "chart": {}, "insights": [], "error": False}
+            "sql": None, "table": [], "chart": {}, "insights": [], "error": False, "tool_call": None}
 
 
 def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
