@@ -30,6 +30,7 @@ history first, then the router config.
 import json
 import os
 import math
+import re
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -472,6 +473,92 @@ def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: 
     }
 
 
+# Generic question words that would otherwise spuriously "match" almost any
+# column name if left in the token set below (e.g. "what", "are", "the").
+_ROUTING_HINT_STOPWORDS = {
+    "what", "are", "is", "the", "a", "an", "of", "for", "and", "or", "to",
+    "in", "on", "me", "give", "show", "list", "tell", "different", "all",
+    "any", "does", "do", "can", "you", "have", "current", "please", "with",
+    "about", "your", "data", "value", "values",
+}
+
+
+def _normalize_word(word: str) -> str:
+    """Crude de-pluralizer ("categories" -> "category", "codes" -> "code") -
+    just enough to match a column name against a question without a full
+    stemming library, since exact-token matching alone misses the common
+    singular-vs-plural mismatch between a question and a column name."""
+    if len(word) > 4 and word.endswith("ies"):
+        return word[:-3] + "y"
+    if len(word) > 3 and word.endswith("es"):
+        return word[:-2]
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
+
+
+def _column_name_matches_question(query_words: set, name_tokens: set) -> bool:
+    normalized_query = {_normalize_word(w) for w in query_words}
+    for token in name_tokens:
+        normalized_token = _normalize_word(token)
+        if normalized_token in normalized_query:
+            return True
+        # Substring check catches compound column names (e.g. a question
+        # about "commodity" matching a column named "commodity_category").
+        # Length-gated so short, generic tokens can't match on noise.
+        for qw in normalized_query:
+            if len(qw) >= 4 and len(normalized_token) >= 4 and (qw in normalized_token or normalized_token in qw):
+                return True
+    return False
+
+
+def _find_static_data_hints(user_query: str, router_config: dict) -> list:
+    """
+    Scans this user's SPREADSHEET and DB table/column metadata for overlap
+    with words in user_query - either the column NAME (e.g. "what are the
+    commodity categories" matching a column literally named "category") or
+    an actual sample VALUE already captured for that column (e.g. "copper"
+    matching a value in a lookup column). This is what tells the router a
+    question is really about static classification/reference data that
+    already lives in a connected table, rather than something only a
+    same-topic external API tool could answer - without this, an API tool
+    whose free-text description merely mentions a similar word (e.g.
+    "commodity prices") has nothing to lose against, since it's the only
+    tool description exposed as a short, high-salience bullet list (see
+    live_tools_summary below) instead of buried in the full config JSON.
+    """
+    words = set(re.findall(r"[a-zA-Z][a-zA-Z0-9_]{2,}", user_query.lower())) - _ROUTING_HINT_STOPWORDS
+    if not words:
+        return []
+
+    hints = []
+    datasources = router_config.get("routing_menu", {}).get("datasources", {}) if router_config else {}
+    for source_key in ("SPREADSHEET", "DB"):
+        tables = datasources.get(source_key, {}).get("tables", {}) or {}
+        for table_name, table_data in tables.items():
+            columns = table_data.get("columns") if isinstance(table_data, dict) else None
+            if not isinstance(columns, list):
+                continue
+            for col in columns:
+                if not isinstance(col, dict):
+                    continue
+                col_name = str(col.get("name") or "")
+                if not col_name:
+                    continue
+                name_tokens = set(re.findall(r"[a-z0-9]+", col_name.lower()))
+                sample_values = [str(v) for v in (col.get("sample_values") or [])]
+                matched_value = next((v for v in sample_values if v.strip().lower() in words), None)
+
+                if not _column_name_matches_question(words, name_tokens) and not matched_value:
+                    continue
+
+                values_preview = ", ".join(sample_values[:8]) if sample_values else "(no sample values captured)"
+                reason = f'value "{matched_value}" matches the question' if matched_value else "column name matches the question"
+                hints.append(f"- {source_key} table '{table_name}', column '{col_name}' ({reason}) - sample values: {values_preview}")
+
+    return hints[:6]
+
+
 def _build_router_messages(user_query: str, chat_history, router_config: dict,
                             live_tools_summary: str, system_instructions: str,
                             company_feedback_context: str = "") -> list:
@@ -507,6 +594,19 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
     known_spreadsheet_tables = list(router_config.get("routing_menu", {}).get("datasources", {}).get("SPREADSHEET", {}).get("tables", {}).keys())
     known_spreadsheet_tables_str = ", ".join(known_spreadsheet_tables) if known_spreadsheet_tables else "(no spreadsheet tables uploaded)"
 
+    static_data_hints = _find_static_data_hints(user_query, router_config)
+    static_data_hints_block = (
+        "\n\nSTATIC DATA ALREADY IN YOUR CONNECTED SOURCES (matches words in the question):\n"
+        + "\n".join(static_data_hints)
+        + "\nIf the question is asking about this kind of static category/classification/code/"
+        "reference data, prefer query_database or query_spreadsheet_data (whichever table is listed "
+        "above) over call_external_api - even if a live tool's description mentions a similar-sounding "
+        "topic. Only use call_external_api when the question needs a live/current/real-time value that "
+        "only that API actually returns (e.g. today's price), not a fixed classification already sitting "
+        "in a connected table."
+        if static_data_hints else ""
+    )
+
     system_prompt = f"""You are the enterprise orchestration router for Saarthi AI.
 
 CURRENT QUESTION (this is what you are answering — always prioritize this):
@@ -533,7 +633,14 @@ TOOLS AVAILABLE:
     inside those documents (check the FILES vector_store_info chunk_type_breakdown
     below to see if tables/images are actually available before answering that
     they exist).
-- call_external_api: for questions matching a live registered external tool.
+- call_external_api: ONLY for questions that need a live/current/real-time value
+    that a registered external tool actually returns (e.g. "what's the current
+    price of X"). Do NOT use it just because a tool's short description
+    mentions a similar topic word - if the question is instead asking about a
+    static category, classification, code, or reference list, and that data
+    already exists in a connected spreadsheet or database table (see STATIC
+    DATA ALREADY IN YOUR CONNECTED SOURCES below, if present), use
+    query_database or query_spreadsheet_data for that table instead.
 - query_spreadsheet_data: for questions about data uploaded as an Excel or CSV
     file. These are separate spreadsheet-backed tables, not part of the main
     database, and are answered with a Python/pandas-based path instead of SQL.
@@ -556,7 +663,7 @@ LIVE REGISTERED TOOLS FOR THE 'API' TRACK:
 {live_tools_summary}
 
 CURRENT DATA SOURCE CONFIGURATION (router_metamind.json — may be trimmed for length):
-{config_str}
+{config_str}{static_data_hints_block}
 """
     if company_feedback_context:
         system_prompt += f"\n\n{company_feedback_context}"
