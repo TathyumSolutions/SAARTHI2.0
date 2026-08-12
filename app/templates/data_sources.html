@@ -22,6 +22,7 @@
     .ds-type-database { background: rgba(0, 120, 212, 0.18); color: #5AA9F0; }
     .ds-type-file { background: rgba(78, 201, 176, 0.18); color: var(--accent-green); }
     .ds-type-api { background: rgba(197, 134, 192, 0.18); color: var(--accent-purple); }
+    .ds-type-spreadsheet { background: rgba(255, 167, 38, 0.18); color: #FFA726; }
     .ds-subtype { font-size: 11px; color: var(--text-secondary); }
     .ds-description { font-size: 13px; color: var(--text-secondary); line-height: 1.4; }
     .ds-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 4px; }
@@ -111,6 +112,7 @@
             <input id="dsSearch" class="ds-search" type="text" placeholder="Search by name, description, or creator..." />
             <button type="button" class="ds-filter-btn active" data-filter="all">All</button>
             <button type="button" class="ds-filter-btn" data-filter="database">Databases</button>
+            <button type="button" class="ds-filter-btn" data-filter="spreadsheet">Spreadsheets</button>
             <button type="button" class="ds-filter-btn" data-filter="file">Files</button>
             <button type="button" class="ds-filter-btn" data-filter="api">APIs</button>
         </div>
@@ -200,6 +202,13 @@
     let activeFilter = 'all';
 
     const TYPE_LABELS = { database: 'Database', file: 'File', api: 'API' };
+
+    // 'type' always stays the REST resource type ('database'/'file'/'api') so the
+    // description/metadata API calls keep hitting the right backend routes -
+    // 'category' is what actually distinguishes an Excel-backed database
+    // connection ('spreadsheet') from a real one ('database') for display/filtering.
+    function dsCategory(ds) { return ds.category || ds.type; }
+    function categoryLabel(ds) { return dsCategory(ds) === 'spreadsheet' ? 'Spreadsheet' : (TYPE_LABELS[ds.type] || ds.type); }
     const STATUS_LABELS = {
         active: 'Active', connected: 'Connected', processed: 'Processed', processing: 'Processing',
         uploaded: 'Uploaded', error: 'Error', failed: 'Error', inactive: 'Inactive', success: 'Success'
@@ -212,12 +221,16 @@
     }
 
     function renderStats() {
-        const counts = { database: 0, file: 0, api: 0 };
-        allDatasources.forEach(function (ds) { if (counts[ds.type] !== undefined) counts[ds.type]++; });
+        const counts = { database: 0, spreadsheet: 0, file: 0, api: 0 };
+        allDatasources.forEach(function (ds) {
+            const key = dsCategory(ds);
+            if (counts[key] !== undefined) counts[key]++;
+        });
 
         document.getElementById('dsStats').innerHTML = `
             <div class="ds-stat-card"><div class="ds-stat-value">${allDatasources.length}</div><div class="ds-stat-label">Total Data Sources</div></div>
             <div class="ds-stat-card"><div class="ds-stat-value">${counts.database}</div><div class="ds-stat-label">Databases</div></div>
+            <div class="ds-stat-card"><div class="ds-stat-value">${counts.spreadsheet}</div><div class="ds-stat-label">Spreadsheets</div></div>
             <div class="ds-stat-card"><div class="ds-stat-value">${counts.file}</div><div class="ds-stat-label">Files</div></div>
             <div class="ds-stat-card"><div class="ds-stat-value">${counts.api}</div><div class="ds-stat-label">API Integrations</div></div>
         `;
@@ -228,7 +241,7 @@
         const grid = document.getElementById('dsGrid');
 
         const visible = allDatasources.filter(function (ds) {
-            if (activeFilter !== 'all' && ds.type !== activeFilter) return false;
+            if (activeFilter !== 'all' && dsCategory(ds) !== activeFilter) return false;
             if (!query) return true;
             const haystack = [
                 ds.name, ds.description, ds.subtype,
@@ -251,7 +264,7 @@
                 <div class="ds-card">
                     <div class="ds-card-header">
                         <div class="ds-card-title">${escapeHtml(ds.name || 'Untitled')}</div>
-                        <span class="ds-type-badge ds-type-${ds.type}">${TYPE_LABELS[ds.type] || ds.type}</span>
+                        <span class="ds-type-badge ds-type-${dsCategory(ds)}">${categoryLabel(ds)}</span>
                     </div>
                     ${ds.subtype ? `<div class="ds-subtype">${escapeHtml(ds.subtype)}</div>` : ''}
                     <div class="ds-description">${escapeHtml(ds.description || 'No description available.')}</div>
@@ -290,7 +303,7 @@
     function filteredList() {
         const query = document.getElementById('dsSearch').value.toLowerCase();
         return allDatasources.filter(function (ds) {
-            if (activeFilter !== 'all' && ds.type !== activeFilter) return false;
+            if (activeFilter !== 'all' && dsCategory(ds) !== activeFilter) return false;
             if (!query) return true;
             const haystack = [
                 ds.name, ds.description, ds.subtype,
@@ -304,7 +317,7 @@
         const ds = filteredList()[idx];
         if (!ds) return;
         descTarget = ds;
-        document.getElementById('descModalSubtitle').textContent = `${TYPE_LABELS[ds.type] || ds.type} · ${ds.name || ''}`;
+        document.getElementById('descModalSubtitle').textContent = `${categoryLabel(ds)} · ${ds.name || ''}`;
         document.getElementById('descModalTextarea').value = ds.has_custom_description ? (ds.description || '') : '';
         const msg = document.getElementById('descModalMessage');
         msg.classList.remove('show', 'error', 'success');
@@ -354,7 +367,7 @@
     function openDetailsModal(idx) {
         const ds = filteredList()[idx];
         if (!ds) return;
-        document.getElementById('detailsModalSubtitle').textContent = `${TYPE_LABELS[ds.type] || ds.type} · ${ds.name || ''}`;
+        document.getElementById('detailsModalSubtitle').textContent = `${categoryLabel(ds)} · ${ds.name || ''}`;
         document.getElementById('detailsModalBody').innerHTML = '<div class="ds-modal-body-text">Loading...</div>';
         document.getElementById('detailsModalOverlay').classList.add('show');
 

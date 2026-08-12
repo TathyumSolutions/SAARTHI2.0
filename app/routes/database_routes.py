@@ -246,7 +246,7 @@ def create_excel_database():
         for sheet_name, df in sheets.items():
             if multi_sheet:
                 table_name = _sanitize_identifier(f"{base_table_name}_{sheet_name}")
-                connection_name = f"{name} - {sheet_name}"
+                connection_name = f"{name}_{sheet_name}"
             else:
                 table_name = base_table_name
                 connection_name = name

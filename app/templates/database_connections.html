@@ -658,13 +658,8 @@
             desc: 'Custom database connection',
             defaultPort: null,
             fields: []
-        },
-        'Excel': {
-            icon: '📊',
-            desc: 'Upload an Excel or CSV file - each sheet becomes a queryable table',
-            defaultPort: null,
-            fields: []
         }
+        // Excel/CSV uploads are their own data source now - see /spreadsheets.
     };
 
     let selectedDbType = null;
@@ -1362,6 +1357,8 @@
     }
     
     function displayConnections(connections) {
+        // Excel/CSV-backed connections live on their own /spreadsheets page now.
+        connections = connections.filter(c => (c.type || '').toLowerCase() !== 'excel');
         allConnections = connections;
         console.log('🖼️ Displaying', connections.length, 'connections');
         const tbody = document.getElementById('connectionsTableBody');
