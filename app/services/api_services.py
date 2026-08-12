@@ -194,7 +194,35 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         else:
             raise ValueError(f"Target '{model_name}' has no active route handler.")
 
-        push_tool_event("complete", "Finding the Right Tool", "Tool selection complete.")
+        # Resolve which registered tool the model actually picked *before*
+        # announcing the selection, so the step can name it directly (e.g.
+        # "Selected tool: Metal Price API") instead of a generic "Tool
+        # selection complete." that gives the user nothing to trace.
+        selected_tool = None
+        target_name = None
+        tool_args = {}
+        if has_tools and tool_payload:
+            try:
+                target_name = tool_payload[0]['name'] if isinstance(tool_payload[0], dict) else tool_payload[0].name
+                tool_args = tool_payload[0].get('args', {}) if isinstance(tool_payload[0], dict) else tool_payload[0].arguments
+                if isinstance(tool_args, str):
+                    tool_args = json.loads(tool_args)
+            except Exception:
+                target_name, tool_args = None, {}
+
+            if target_name:
+                selected_tool = next(
+                    (t for t in ApiConnector.query.filter_by(status='Active').all()
+                     if _sanitize_tool_name(t.integration_name) == target_name),
+                    None
+                )
+
+        if selected_tool:
+            push_tool_event("complete", "Finding the Right Tool", f"Selected tool: {selected_tool.integration_name}.")
+        elif has_tools:
+            push_tool_event("complete", "Finding the Right Tool", f"Selected tool: {target_name or 'unknown'} (its connection details could not be found).")
+        else:
+            push_tool_event("complete", "Finding the Right Tool", "No matching tool was found for this request.")
 
         if not has_tools:
             push_tool_event("start", "Putting Your Answer Together", "Preparing your final response.")
@@ -205,18 +233,19 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                 "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
             }
 
+        if selected_tool:
+            push_tool_event(
+                "start",
+                "Planning the Approach",
+                f"Strategy: call {selected_tool.integration_name} with a {selected_tool.method} request to fetch the data needed for your question."
+            )
+            push_tool_event("complete", "Planning the Approach", f"Ready to call {selected_tool.integration_name}.")
+
+        tool_call_detail = None
+
         if has_tools and not generation_text:
             try:
-                target_name = tool_payload[0]['name'] if isinstance(tool_payload[0], dict) else tool_payload[0].name
-                tool_args = tool_payload[0].get('args', {}) if isinstance(tool_payload[0], dict) else tool_payload[0].arguments
-                if isinstance(tool_args, str):
-                    tool_args = json.loads(tool_args)
-
-                tool = next(
-                    (t for t in ApiConnector.query.filter_by(status='Active').all()
-                     if _sanitize_tool_name(t.integration_name) == target_name),
-                    None
-                )
+                tool = selected_tool
 
                 if tool:
                     base_url, endpoint, method = tool.base_url, tool.endpoint, tool.method
@@ -236,7 +265,7 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                             "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
                         }
 
-                    push_tool_event("start", "Calling the Live System", f"Calling the live system with a {method} request.")
+                    push_tool_event("start", "Calling the Live System", f"Calling {tool.integration_name} with a {method} request.")
 
                     auth_headers, auth_params = _auth_headers_and_params(tool.auth_type, tool.api_token)
                     print(f"🔌 DEBUG [{tool.integration_name}] auth_type={tool.auth_type!r} "
@@ -252,7 +281,18 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                           f"body_preview={api_res.text[:300]!r}")
 
                     raw_data = api_res.json()
-                    push_tool_event("complete", "Calling the Live System", "Live system call completed successfully.")
+                    push_tool_event("complete", "Calling the Live System", f"{tool.integration_name} responded successfully.")
+
+                    # Mirrors the "View technical query" detail the SQL track
+                    # shows for its generated query - lets anyone trace this
+                    # answer back to the exact live request that produced it.
+                    tool_call_detail = {
+                        "tool_name": tool.integration_name,
+                        "method": method,
+                        "url": full_target_url,
+                        "params": tool_args or {},
+                    }
+
                     push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
 
                     refinement_sys_msg = "You are an expert data analysis engine. Read the following raw API dataset payload context and provide a precise, targeted answer to the user's specific request. Do not include unneeded object structures or JSON syntax wrappers."
@@ -320,6 +360,7 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
             "tool_calls": tool_payload,
             "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought,
             "error": had_error,
+            "tool_call": tool_call_detail,
         }
 
     except Exception as e:
