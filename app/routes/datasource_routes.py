@@ -98,9 +98,15 @@ def get_visible_datasources(user):
 
     datasources = []
     for conn in databases:
+        is_spreadsheet = (conn.type or '').lower() == 'excel'
         datasources.append({
             'id': conn.id,
             'type': 'database',
+            # 'type' stays 'database' for every DatabaseConnection row (Excel included) so the
+            # existing /api/datasources/database/<id>/... description+metadata endpoints, sharing,
+            # and permission checks keep working unchanged. 'category' is purely a presentation
+            # field so the UI can show Excel uploads as a distinct "Spreadsheet" data source.
+            'category': 'spreadsheet' if is_spreadsheet else 'database',
             'name': conn.name,
             'subtype': conn.type,
             'description': conn.description or _database_description(conn),
@@ -116,6 +122,7 @@ def get_visible_datasources(user):
         datasources.append({
             'id': f.id,
             'type': 'file',
+            'category': 'file',
             'name': f.file_name,
             'subtype': (f.file_type or '').upper() or None,
             'description': f.description or _file_description(f),
@@ -131,6 +138,7 @@ def get_visible_datasources(user):
         datasources.append({
             'id': tool.id,
             'type': 'api',
+            'category': 'api',
             'name': tool.integration_name,
             'subtype': tool.method,
             'description': tool.api_description or f"API integration: {tool.integration_name}",

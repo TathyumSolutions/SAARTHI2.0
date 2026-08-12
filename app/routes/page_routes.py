@@ -140,6 +140,15 @@ def database_connections():
     return render_template('database_connections.html')
 
 
+# Spreadsheet (Excel/CSV) Data Sources - a distinct 4th data source category,
+# backed by the same DatabaseConnection(type='Excel') rows and /api/databases/excel
+# endpoint as before, just no longer mixed into the generic Database Connections page.
+@bp.route('/spreadsheets')
+def spreadsheets_page():
+    """Spreadsheet (Excel/CSV) data sources management page"""
+    return render_template('spreadsheets.html')
+
+
 @bp.route('/build_warehouse')
 def build_warehouse_page():
     """Build Warehouse page"""
