@@ -97,7 +97,7 @@
 
     <div class="ds-tabs">
         <button type="button" class="ds-tab-btn active" data-tab="reports">Reports</button>
-        <button type="button" class="ds-tab-btn" data-tab="queries">Queries</button>
+        <button type="button" class="ds-tab-btn" data-tab="queries">Query Report</button>
     </div>
 
     <div id="reportsSection">
@@ -123,7 +123,7 @@
     </div>
 
     <div id="queriesSection" style="display: none;">
-        <h3 class="ds-section-heading">Queries</h3>
+        <h3 class="ds-section-heading">Query Report</h3>
         <p class="ds-subtitle">
             Every question that reached a data source, with the strategy, sources, and main query used to answer it - plus any self-learning feedback given on it.
         </p>
@@ -568,19 +568,30 @@
             });
         });
 
+        function activateTab(tabName) {
+            const btn = document.querySelector(`.ds-tab-btn[data-tab="${tabName}"]`);
+            if (!btn) return;
+            document.querySelectorAll('.ds-tab-btn').forEach(function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            const isQueries = tabName === 'queries';
+            document.getElementById('reportsSection').style.display = isQueries ? 'none' : '';
+            document.getElementById('queriesSection').style.display = isQueries ? '' : 'none';
+            if (isQueries && !queriesLoadedOnce) {
+                queriesLoadedOnce = true;
+                loadQueryLogs();
+            }
+        }
+
         document.querySelectorAll('.ds-tab-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                document.querySelectorAll('.ds-tab-btn').forEach(function (b) { b.classList.remove('active'); });
-                btn.classList.add('active');
-                const isQueries = btn.dataset.tab === 'queries';
-                document.getElementById('reportsSection').style.display = isQueries ? 'none' : '';
-                document.getElementById('queriesSection').style.display = isQueries ? '' : 'none';
-                if (isQueries && !queriesLoadedOnce) {
-                    queriesLoadedOnce = true;
-                    loadQueryLogs();
-                }
-            });
+            btn.addEventListener('click', function () { activateTab(btn.dataset.tab); });
         });
+
+        // Lets the sidebar's "Query Report" link (/data_sources?tab=queries)
+        // land directly on that tab instead of always defaulting to Reports.
+        const requestedTab = new URLSearchParams(window.location.search).get('tab');
+        if (requestedTab === 'queries') {
+            activateTab('queries');
+        }
 
         document.getElementById('qySearch').addEventListener('input', debounce(loadQueryLogs, 300));
         document.getElementById('qyDataSourceSearch').addEventListener('input', debounce(loadQueryLogs, 300));

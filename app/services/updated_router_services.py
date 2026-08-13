@@ -471,6 +471,7 @@ def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: 
         "sources": matched.sources or [],
         "main_query": matched.main_query,
         "child_query": question,
+        "format": _decide_output_format(result.get("data", [])),
         "execution_type": "reused",
         "matched_query_code": matched.query_code,
         "match_score": round(score, 4),
@@ -890,6 +891,12 @@ def _run_db_track(question: str, ctx: dict) -> dict:
         "sources": _tag_sources(tables, "query_database"),
         "main_query": main_query,
         "child_query": question,
+        # Same row/column-count heuristic used for MULTI (see
+        # _decide_output_format) - previously this was computed deep
+        # inside QueryFormatterAgent and never made it out to the router
+        # response at all, so ui.format was always undefined even for a
+        # DB-only answer.
+        "format": _decide_output_format(chat_ui.get("table", [])),
         "execution_type": "fresh",
         "matched_query_code": None,
         "match_score": None,
@@ -925,7 +932,7 @@ def _run_files_track(question: str, ctx: dict) -> dict:
         "sql": None, "table": [], "chart": {}, "insights": [],
         "strategy": strategy,
         "sources": _tag_sources(file_names, "search_documents"), "main_query": None,
-        "child_query": question,
+        "child_query": question, "format": "text",
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
@@ -957,13 +964,13 @@ def _run_api_track(question: str, ctx: dict) -> dict:
             "strategy": strategy,
             "sources": _tag_sources([tool_call["tool_name"]], "call_external_api") if tool_call else [],
             "main_query": f"{tool_call['method']} {tool_call['url']}" if tool_call else None,
-            "child_query": question,
+            "child_query": question, "format": "text",
             "execution_type": "fresh", "matched_query_code": None, "match_score": None,
         }
     return {"answer": str(payload), "steps": ["Successfully executed Dynamic API Tools execution pass."],
             "sql": None, "table": [], "chart": {}, "insights": [], "error": False, "tool_call": None,
             "strategy": "Called a connected external API tool to fetch live data.",
-            "sources": [], "main_query": None, "child_query": question,
+            "sources": [], "main_query": None, "child_query": question, "format": "text",
             "execution_type": "fresh", "matched_query_code": None, "match_score": None}
 
 
@@ -993,6 +1000,10 @@ def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
         "strategy": strategy,
         "sources": _tag_sources(tables, "query_spreadsheet_data"), "main_query": main_query,
         "child_query": question,
+        # Same format decision DB gets (see _decide_output_format) - a
+        # spreadsheet-only answer used to have no `format` at all, so a
+        # 50+ row result never rendered as anything but a plain table.
+        "format": _decide_output_format(result.get("table", [])),
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
@@ -1010,7 +1021,7 @@ def _run_general_track(question: str, ctx: dict) -> dict:
         "steps": gen_result.get("steps", []),
         "sql": None, "table": [], "chart": {}, "insights": [],
         "strategy": "Answered directly from general knowledge - no connected data source was needed.",
-        "sources": [], "main_query": None, "child_query": question,
+        "sources": [], "main_query": None, "child_query": question, "format": "text",
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
@@ -1266,6 +1277,7 @@ class RouterService:
                     fast_res["chain_of_thought"] = fast_res.get("steps", [])
                     fast_res["router_decision"] = "GENERAL"
                     fast_res["execution_type"] = "fresh"
+                    fast_res.setdefault("format", "text")
                     fast_res["query_code"] = _log_query(
                         user_id, company_code, user_query, "GENERAL", fast_res.get("answer"),
                         "Answered directly from general knowledge (fast-path heuristic match) - no connected data source was needed.",
@@ -1364,6 +1376,7 @@ class RouterService:
                     "steps": ["Router answered directly, no data source tool needed."],
                     "router_decision": "GENERAL",
                     "execution_type": "fresh",
+                    "format": "text",
                     "query_code": query_code,
                 }
 

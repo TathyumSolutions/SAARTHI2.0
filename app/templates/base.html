@@ -447,11 +447,25 @@
                 </div>
             </div>
 
-            <!-- Knowledge Base (was "All Data Sources", moved below Conversations) -->
+            <!-- Knowledge Base (was "All Data Sources", moved below Conversations).
+                 Expandable like Configured Models below, since its two
+                 sub-pages (Reports and Query Report) live as tabs on the
+                 same /data_sources page and weren't otherwise discoverable
+                 from the sidebar - Query Report only ever showed up if you
+                 landed on the page and happened to notice the small tab. -->
             <div class="sidebar-section">
-                <div class="section-item" id="dataSourcesDirectoryIcon" onclick="window.location.href='/data_sources'">
+                <div class="section-item" id="dataSourcesDirectoryIcon">
                     <div class="item-icon">🗂️</div>
                     <span>Knowledge Base</span>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="sub-items">
+                    <div class="sub-item" onclick="window.location.href='/data_sources'">
+                        <span style="margin-right: 8px;">📦</span>Reports
+                    </div>
+                    <div class="sub-item" onclick="window.location.href='/data_sources?tab=queries'">
+                        <span style="margin-right: 8px;">🧾</span>Query Report
+                    </div>
                 </div>
             </div>
 
