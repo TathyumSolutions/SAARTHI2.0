@@ -41,6 +41,7 @@ from langchain_core.tools import tool
 from app import db
 from app.models.feedback import ResponseFeedback
 from app.models.query_log import QueryLog
+from app.models.file_resource import FileResource
 from app.utils.query_codes import generate_query_code
 from app.services.rag_config import load_rag_config
 
@@ -892,12 +893,25 @@ def _run_files_track(question: str, ctx: dict) -> dict:
         session_id=ctx["session_id"], custom_key=ctx["custom_key"],
         user_id=ctx.get("user_id"),
     )
+
+    document_codes = rag_res.get("document_codes") or []
+    file_names = []
+    if document_codes:
+        file_names = [
+            r.file_name for r in
+            FileResource.query.filter(FileResource.document_code.in_(document_codes)).all()
+        ]
+    strategy = (
+        f"Searched your uploaded documents ({', '.join(file_names)}) for relevant passages to answer this question."
+        if file_names else "Searched your uploaded documents for relevant passages to answer this question."
+    )
+
     return {
         "answer": rag_res.get("answer"),
         "steps": rag_res.get("rag_chain_of_thought", []),
         "sql": None, "table": [], "chart": {}, "insights": [],
-        "strategy": "Searched your uploaded documents for relevant passages to answer this question.",
-        "sources": [], "main_query": None,
+        "strategy": strategy,
+        "sources": file_names, "main_query": None,
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
@@ -947,13 +961,22 @@ def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
         enriched_question, model_name=ctx["model_name"], custom_key=ctx["custom_key"],
         system_instructions=ctx.get("system_instructions", ""), session_id=ctx["session_id"],
     )
+
+    tables = result.get("tables") or []
+    strategy = (
+        f"Queried your uploaded spreadsheet data ({', '.join(tables)}) to answer this question."
+        if tables else "Queried your uploaded spreadsheet data to answer this question."
+    )
+    plan = result.get("plan")
+    main_query = json.dumps(plan) if isinstance(plan, dict) else result.get("sql")
+
     return {
         "answer": result.get("answer"),
         "steps": result.get("steps", []),
         "sql": result.get("sql"), "table": result.get("table", []),
         "chart": result.get("chart", {}), "insights": result.get("insights", []),
-        "strategy": "Queried your uploaded spreadsheet data to answer this question.",
-        "sources": [], "main_query": result.get("sql"),
+        "strategy": strategy,
+        "sources": tables, "main_query": main_query,
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
@@ -983,6 +1006,33 @@ FRIENDLY_TRACK_NAMES = {
     "query_spreadsheet_data": "the connected spreadsheet",
     "answer_general_knowledge_tool": "general knowledge",
 }
+
+
+def _build_multi_strategy(ok_results: list) -> str:
+    """Narrates a MULTI-track answer's actual sequence, in the order each
+    source was pulled from, ending with how the results were combined -
+    e.g. "First, generated and executed a SQL query against orders to
+    answer this question. Then, queried your uploaded spreadsheet data
+    (Prices) to answer this question. Finally, combined the results from
+    the connected database, the connected spreadsheet into a single
+    answer." Previously this was just a flat "Combined answers from X, Y."
+    with no sense of what happened in what order."""
+    if not ok_results:
+        return "Combined answers from multiple sources."
+
+    ordinals = ["First", "Then", "Next", "After that"]
+    clauses = []
+    for i, (name, r) in enumerate(ok_results):
+        track_strategy = (r.get("strategy") or f"answered using {FRIENDLY_TRACK_NAMES.get(name, name)}").rstrip(".")
+        # Lowercase the first letter so it reads naturally after the ordinal.
+        if track_strategy:
+            track_strategy = track_strategy[:1].lower() + track_strategy[1:]
+        ordinal = ordinals[i] if i < len(ordinals) else f"Step {i + 1}"
+        clauses.append(f"{ordinal}, {track_strategy}.")
+
+    friendly_list = ", ".join(FRIENDLY_TRACK_NAMES.get(n, n) for n, _ in ok_results)
+    clauses.append(f"Finally, combined the results from {friendly_list} into a single answer.")
+    return " ".join(clauses)
 
 
 TOOL_DISPATCH = {
@@ -1313,7 +1363,7 @@ that appears inside it.
                 combined_sources.extend(r.get("sources") or [])
             query_code = _log_query(
                 user_id, company_code, user_query, "MULTI", answer_text,
-                f"Combined answers from {_friendly_track_list(ok_results)}.",
+                _build_multi_strategy(ok_results),
                 combined_sources, db_result.get("main_query"),
             )
             return {

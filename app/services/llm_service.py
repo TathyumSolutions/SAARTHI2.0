@@ -950,12 +950,17 @@ class LLMService:
             # Final execution loop boundary closeout
             stream_manager.push_step(session_id, "DONE", is_sql=False)
 
+            document_codes = sorted({
+                d.metadata.get("document_code") for d in docs if d.metadata.get("document_code")
+            })
+
             return {
                 "answer": final_answer,
-                "sql": None,  
+                "sql": None,
                 "table": [],
                 "chart": {},
-                "rag_chain_of_thought": rag_chain_of_thought
+                "rag_chain_of_thought": rag_chain_of_thought,
+                "document_codes": document_codes,
             }
 
         except Exception as e:

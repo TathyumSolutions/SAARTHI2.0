@@ -372,6 +372,7 @@ def answer_from_spreadsheets(
                 "answer": answer_text,
                 "sql": None, "table": [], "chart": {}, "insights": [],
                 "steps": master_steps,
+                "tables": [table_name],
             }
 
         push_event("start", "Building the Data Query", "Working out how to filter, group, and join the relevant tables.")
@@ -438,6 +439,8 @@ def answer_from_spreadsheets(
             "chart": {},
             "insights": [],
             "steps": master_steps,
+            "tables": plan["tables"],
+            "plan": plan,
         }
 
     except Exception as e:
