@@ -174,17 +174,56 @@ def get_uploaded_files():
     return jsonify({'files': files}), 200
 
 
+def _can_access_file(resource, user):
+    """Own, admin, or explicitly granted via Resource Mapping - same
+    "own + granted" rule used everywhere else (see datasource_routes.py's
+    get_visible_datasources)."""
+    if resource.created_by_user_id == user.id or user.role == 'admin':
+        return True
+    from app.models.resource_mapping import ResourceMapping
+    return ResourceMapping.query.filter_by(
+        resource_type='file', resource_id=resource.id, user_id=user.id
+    ).first() is not None
+
+
 @upload_bp.route('/api/files/view/<document_code>', methods=['GET'])
 @jwt_required()
 def view_file(document_code):
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
+
     resource = FileResource.query.filter_by(document_code=document_code).first()
     if not resource:
         return jsonify({'error': 'File not found'}), 404
+
+    if not _can_access_file(resource, current_user):
+        return jsonify({'error': 'You do not have access to this file'}), 403
 
     if not resource.file_path or not os.path.exists(resource.file_path):
         return jsonify({'error': 'File not found on disk'}), 404
 
     return send_file(resource.file_path, as_attachment=False)
+
+
+@upload_bp.route('/api/files/download/<document_code>', methods=['GET'])
+@jwt_required()
+def download_file(document_code):
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
+
+    resource = FileResource.query.filter_by(document_code=document_code).first()
+    if not resource:
+        return jsonify({'error': 'File not found'}), 404
+
+    if not _can_access_file(resource, current_user):
+        return jsonify({'error': 'You do not have access to this file'}), 403
+
+    if not resource.file_path or not os.path.exists(resource.file_path):
+        return jsonify({'error': 'File not found on disk'}), 404
+
+    return send_file(resource.file_path, as_attachment=True, download_name=resource.file_name)
 
 
 @upload_bp.route('/api/files/<document_code>', methods=['DELETE'])

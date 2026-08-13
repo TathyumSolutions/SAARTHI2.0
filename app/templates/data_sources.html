@@ -278,6 +278,14 @@
                     <div class="ds-actions">
                         <button type="button" class="ds-action-btn" onclick="openDescriptionModal(${idx})">📝 Description</button>
                         <button type="button" class="ds-action-btn" onclick="openDetailsModal(${idx})">🔍 Details</button>
+                        ${dsCategory(ds) === 'file' ? `
+                            <button type="button" class="ds-action-btn" onclick="viewFileCard(${idx})">👁️ View</button>
+                            <button type="button" class="ds-action-btn" onclick="downloadFileCard(${idx})">⬇️ Download</button>
+                        ` : ''}
+                        ${dsCategory(ds) === 'spreadsheet' ? `
+                            <button type="button" class="ds-action-btn" onclick="viewSpreadsheetCard(${idx})">👁️ View</button>
+                            <button type="button" class="ds-action-btn" onclick="downloadSpreadsheetCard(${idx})">⬇️ Download</button>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -389,6 +397,65 @@
                         <div class="ds-meta-pre">${escapeHtml(JSON.stringify(data.metadata, null, 2))}</div>
                     </div>
                 `;
+            })
+            .catch(function () {
+                document.getElementById('detailsModalBody').innerHTML =
+                    '<div class="ds-modal-body-text">Error connecting to backend.</div>';
+            });
+    }
+
+    // ===================== File view/download =====================
+    function viewFileCard(idx) {
+        const ds = filteredList()[idx];
+        if (!ds) return;
+        window.open(`/api/files/view/${ds.document_code}`, '_blank');
+    }
+
+    function downloadFileCard(idx) {
+        const ds = filteredList()[idx];
+        if (!ds) return;
+        window.open(`/api/files/download/${ds.document_code}`, '_blank');
+    }
+
+    // ===================== Spreadsheet view/download =====================
+    function downloadSpreadsheetCard(idx) {
+        const ds = filteredList()[idx];
+        if (!ds) return;
+        window.open(`/api/databases/${ds.id}/download`, '_blank');
+    }
+
+    function viewSpreadsheetCard(idx) {
+        const ds = filteredList()[idx];
+        if (!ds) return;
+        document.getElementById('detailsModalSubtitle').textContent = `Preview · ${ds.name || ''}`;
+        document.getElementById('detailsModalBody').innerHTML = '<div class="ds-modal-body-text">Loading...</div>';
+        document.getElementById('detailsModalOverlay').classList.add('show');
+
+        authFetch(`/api/databases/${ds.id}/preview`)
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.status !== 'success') {
+                    document.getElementById('detailsModalBody').innerHTML =
+                        `<div class="ds-modal-body-text">${escapeHtml(data.error || 'Could not load a preview for this data source.')}</div>`;
+                    return;
+                }
+                document.getElementById('detailsModalBody').innerHTML = data.tables.map(function (t) {
+                    const cols = t.columns;
+                    const rowsHtml = t.rows.map(function (row) {
+                        return '<tr>' + cols.map(function (c) { return `<td style="padding: 6px 10px; border-bottom: 1px solid var(--border-color);">${escapeHtml(row[c])}</td>`; }).join('') + '</tr>';
+                    }).join('');
+                    return `
+                        <div class="ds-modal-section">
+                            <div class="ds-modal-section-title">${escapeHtml(t.sheet || t.table)} (${t.row_count} rows${t.truncated ? ', showing first 50' : ''})</div>
+                            <div style="overflow-x: auto;">
+                                <table style="border-collapse: collapse; width: 100%; font-size: 13px;">
+                                    <thead><tr>${cols.map(function (c) { return `<th style="text-align: left; padding: 6px 10px; background: var(--hover-bg); border-bottom: 1px solid var(--border-color);">${escapeHtml(c)}</th>`; }).join('')}</tr></thead>
+                                    <tbody>${rowsHtml}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
             })
             .catch(function () {
                 document.getElementById('detailsModalBody').innerHTML =

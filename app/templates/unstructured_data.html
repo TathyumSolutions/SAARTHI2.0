@@ -574,6 +574,7 @@
                     '</td>' +
                     '<td>' +'<button class="btn btn-primary" style="padding: 6px 12px; margin-right: 4px;" onclick="window.processFile(\'' + file.document_code + '\', this)">Process</button>' +
                     '<button class="btn btn-secondary" style="padding: 6px 12px; margin-right: 4px;" onclick="viewFile(\'' + file.document_code + '\')">View</button>' +
+                    '<button class="btn btn-secondary" style="padding: 6px 12px; margin-right: 4px;" onclick="downloadFile(\'' + file.document_code + '\')">Download</button>' +
                     '<button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteFile(\'' + file.document_code + '\')">Delete</button>' +
                     '</td>' +
                     '</tr>';
@@ -662,6 +663,10 @@
         
         window.viewFile = function(documentCode) {
             window.open('/api/files/view/' + documentCode, '_blank');
+        };
+
+        window.downloadFile = function(documentCode) {
+            window.open('/api/files/download/' + documentCode, '_blank');
         };
 
 

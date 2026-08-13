@@ -5,7 +5,8 @@ Handles database connections, schema discovery, and connection testing
 import time
 import traceback
 import re
-from flask import Blueprint, request, jsonify
+import io
+from flask import Blueprint, request, jsonify, send_file
 from app import db
 from app.models.database_connection import DatabaseConnection
 import subprocess
@@ -437,6 +438,197 @@ def delete_database_connection(db_id):
         print(f"DELETE error: {str(e)}")
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
+
+def _excel_sheet_names(tables):
+    """Unique, <=31-char sheet names (Excel's own limit) for a set of
+    spreadsheet_service table records, preserving their stored sheet name
+    where possible."""
+    used = set()
+    names = []
+    for table in tables:
+        base = (table.get('sheet') or table['table'])[:31] or table['table'][:31]
+        name = base
+        n = 2
+        while name in used:
+            suffix = f"_{n}"
+            name = base[:31 - len(suffix)] + suffix
+            n += 1
+        used.add(name)
+        names.append(name)
+    return names
+
+
+@bp.route('/<int:db_id>/download', methods=['GET'])
+@jwt_required()
+def download_excel_connection(db_id):
+    """Reconstructs a .xlsx from this connection's Parquet-backed table(s) -
+    there's no original upload kept on disk (create_excel_database parses
+    straight into Parquet), so this is generated on demand, one sheet per
+    table for connections that still hold more than one (a shape from
+    before Excel connections were split one-table-per-connection)."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
+
+    connection = DatabaseConnection.query.get(db_id)
+    if not connection or not _can_view_connection(current_user, connection):
+        return jsonify({'error': 'Connection not found'}), 404
+    if (connection.type or '').lower() != 'excel':
+        return jsonify({'error': 'Download is only available for spreadsheet connections'}), 400
+
+    tables = spreadsheet_service.get_tables_for_connection(db_id)
+    if not tables:
+        return jsonify({'error': 'No data found for this connection - the uploaded file may be missing.'}), 404
+
+    sheet_names = _excel_sheet_names(tables)
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        for table, sheet_name in zip(tables, sheet_names):
+            spreadsheet_service.get_table_df(table['table']).to_excel(writer, sheet_name=sheet_name, index=False)
+    buffer.seek(0)
+
+    download_name = _sanitize_identifier(connection.name) or f"connection_{db_id}"
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f"{download_name}.xlsx",
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
+@bp.route('/<int:db_id>/preview', methods=['GET'])
+@jwt_required()
+def preview_excel_connection(db_id):
+    """First 50 rows of every table under this connection, for the
+    Spreadsheet page's 'View' action - a raw file preview doesn't make
+    sense here since there's no original file, only Parquet-backed data."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
+
+    connection = DatabaseConnection.query.get(db_id)
+    if not connection or not _can_view_connection(current_user, connection):
+        return jsonify({'error': 'Connection not found'}), 404
+    if (connection.type or '').lower() != 'excel':
+        return jsonify({'error': 'Preview is only available for spreadsheet connections'}), 400
+
+    tables = spreadsheet_service.get_tables_for_connection(db_id)
+    if not tables:
+        return jsonify({'error': 'No data found for this connection - the uploaded file may be missing.'}), 404
+
+    import json as _json
+    preview_tables = []
+    for table in tables:
+        df = spreadsheet_service.get_table_df(table['table'])
+        head = df.head(50)
+        preview_tables.append({
+            'table': table['table'],
+            'sheet': table.get('sheet'),
+            'columns': list(df.columns),
+            'rows': _json.loads(head.to_json(orient='records', date_format='iso')),
+            'row_count': len(df),
+            'truncated': len(df) > 50,
+        })
+
+    return jsonify({'status': 'success', 'tables': preview_tables}), 200
+
+
+@bp.route('/<int:db_id>/excel', methods=['PUT'])
+@jwt_required()
+def update_excel_connection(db_id):
+    """
+    Renames/re-describes an Excel connection, and optionally replaces its
+    single table's data with a newly uploaded single-sheet Excel/CSV file -
+    the "Edit" flow on the Spreadsheet page. Deliberately restricted to
+    connections backing exactly one table, uploading exactly one sheet:
+    Excel connections are one-table-per-connection everywhere else in the
+    app (router config, chat table lookups), so letting an edit reshape
+    that into a different table count would break those invariants -
+    delete and re-upload instead for that case.
+    """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({'error': 'Authentication required'}), 401
+
+    connection = DatabaseConnection.query.get(db_id)
+    if not connection or not _can_modify_connection(current_user, connection):
+        return jsonify({'error': 'Connection not found'}), 404
+    if (connection.type or '').lower() != 'excel':
+        return jsonify({'error': 'This endpoint is only for spreadsheet connections'}), 400
+
+    try:
+        name = (request.form.get('name') or '').strip()
+        if name:
+            connection.name = name
+
+        if 'description' in request.form:
+            connection.description = request.form.get('description', '').strip() or None
+
+        file = request.files.get('file')
+        if file and file.filename:
+            existing_tables = spreadsheet_service.get_tables_for_connection(db_id)
+            if len(existing_tables) > 1:
+                return jsonify({
+                    'error': 'This connection has multiple tables bundled together - replacing its file '
+                             'isn\'t supported here. Delete this connection and re-upload instead.'
+                }), 400
+
+            filename_lower = file.filename.lower()
+            if filename_lower.endswith('.csv'):
+                sheets = {None: pd.read_csv(file)}
+            elif filename_lower.endswith(('.xlsx', '.xls')):
+                sheets = pd.read_excel(file, sheet_name=None)
+            else:
+                return jsonify({'error': 'Only .xlsx, .xls, or .csv files are supported'}), 400
+
+            sheets = {sheet_name: df for sheet_name, df in sheets.items() if not df.empty}
+            if not sheets:
+                return jsonify({'error': 'The file has no data rows'}), 400
+            if len(sheets) > 1:
+                return jsonify({
+                    'error': 'This connection holds a single table - upload a single-sheet Excel or CSV to '
+                              'replace it. For a multi-sheet file, delete this connection and upload it fresh '
+                              'so each sheet gets its own connection.'
+                }), 400
+
+            sheet_name, df = next(iter(sheets.items()))
+            table_name = existing_tables[0]['table'] if existing_tables else (
+                _sanitize_identifier(connection.database or connection.name)
+            )
+
+            df.columns = _dedupe_identifiers(df.columns)
+            record = spreadsheet_service.save_table(connection.id, table_name, sheet_name, df)
+            spreadsheet_service.set_original_filename(connection.id, file.filename)
+            connection.config = {
+                'source_tables': [{'table': record['table'], 'sheet': record['sheet'], 'row_count': record['row_count']}],
+                'original_filename': file.filename,
+                'row_count': record['row_count'],
+            }
+            # Stale after a data swap - Process regenerates it against the new data.
+            connection.metamind_summary = None
+            connection.status = 'connected'
+            connection.error_message = None
+
+        db.session.commit()
+
+        from app.services.automated_metamind import generate_router_config
+        from app.models.resource_mapping import ResourceMapping
+        affected_user_ids = {current_user.id, connection.created_by_user_id} | {
+            m.user_id for m in ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id).all()
+        }
+        for uid in affected_user_ids:
+            generate_router_config(user_id=uid)
+
+        log_event('database_connection_updated', company_code=current_user.company_code, user_id=current_user.id,
+                   resource_type='database', resource_id=connection.id)
+
+        return jsonify({'database': serialize_connection(connection), 'message': 'Connection updated successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"PUT /excel error: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
 
 @bp.route('/<int:db_id>/test', methods=['POST'])
 @jwt_required()
