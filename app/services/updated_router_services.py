@@ -31,9 +31,11 @@ import json
 import os
 import math
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
+from flask import current_app
 from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -468,6 +470,7 @@ def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: 
         "strategy": f"Reused query {matched.query_code} (similarity {score:.2f}) instead of regenerating SQL.",
         "sources": matched.sources or [],
         "main_query": matched.main_query,
+        "child_query": question,
         "execution_type": "reused",
         "matched_query_code": matched.query_code,
         "match_score": round(score, 4),
@@ -656,6 +659,15 @@ one tool rather than guessing - for example call both query_database and
 search_documents if the question could reasonably be answered by either.
 It is better to check two sources and combine the answer than to pick the
 wrong one.
+
+When you call more than one tool for the same question, give EACH tool call
+its own focused `question` argument, rewritten for what that specific
+source should answer - never just resend the original question unmodified
+to every tool. For example, for "price of major metal commodities" split
+into a query_spreadsheet_data call asking "what are the major metal
+commodities?" and a call_external_api call asking "what is the latest price
+of each major metal?" - two independent sub-queries that get executed in
+parallel and merged, not one vague question repeated twice.
 
 ANSWER GUIDELINES:
 {_load_answer_guidelines()}
@@ -875,8 +887,9 @@ def _run_db_track(question: str, ctx: dict) -> dict:
         "chart": chat_ui.get("chart", {}), "insights": chat_ui.get("insights", []),
         "error": bool(chat_ui.get("error")),
         "strategy": strategy,
-        "sources": tables,
+        "sources": _tag_sources(tables, "query_database"),
         "main_query": main_query,
+        "child_query": question,
         "execution_type": "fresh",
         "matched_query_code": None,
         "match_score": None,
@@ -911,7 +924,8 @@ def _run_files_track(question: str, ctx: dict) -> dict:
         "steps": rag_res.get("rag_chain_of_thought", []),
         "sql": None, "table": [], "chart": {}, "insights": [],
         "strategy": strategy,
-        "sources": file_names, "main_query": None,
+        "sources": _tag_sources(file_names, "search_documents"), "main_query": None,
+        "child_query": question,
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
@@ -941,14 +955,15 @@ def _run_api_track(question: str, ctx: dict) -> dict:
             "error": bool(payload.get("error")),
             "tool_call": tool_call,
             "strategy": strategy,
-            "sources": [tool_call["tool_name"]] if tool_call else [],
+            "sources": _tag_sources([tool_call["tool_name"]], "call_external_api") if tool_call else [],
             "main_query": f"{tool_call['method']} {tool_call['url']}" if tool_call else None,
+            "child_query": question,
             "execution_type": "fresh", "matched_query_code": None, "match_score": None,
         }
     return {"answer": str(payload), "steps": ["Successfully executed Dynamic API Tools execution pass."],
             "sql": None, "table": [], "chart": {}, "insights": [], "error": False, "tool_call": None,
             "strategy": "Called a connected external API tool to fetch live data.",
-            "sources": [], "main_query": None,
+            "sources": [], "main_query": None, "child_query": question,
             "execution_type": "fresh", "matched_query_code": None, "match_score": None}
 
 
@@ -976,7 +991,8 @@ def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
         "sql": result.get("sql"), "table": result.get("table", []),
         "chart": result.get("chart", {}), "insights": result.get("insights", []),
         "strategy": strategy,
-        "sources": tables, "main_query": main_query,
+        "sources": _tag_sources(tables, "query_spreadsheet_data"), "main_query": main_query,
+        "child_query": question,
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
@@ -994,7 +1010,7 @@ def _run_general_track(question: str, ctx: dict) -> dict:
         "steps": gen_result.get("steps", []),
         "sql": None, "table": [], "chart": {}, "insights": [],
         "strategy": "Answered directly from general knowledge - no connected data source was needed.",
-        "sources": [], "main_query": None,
+        "sources": [], "main_query": None, "child_query": question,
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
     }
 
@@ -1007,32 +1023,111 @@ FRIENDLY_TRACK_NAMES = {
     "answer_general_knowledge_tool": "general knowledge",
 }
 
+# Short type tag appended to every entry in a result's `sources` list, e.g.
+# "orders<Database>", "Metal price API<API>" - so a data source's *kind* is
+# always visible right alongside its name, both in query_logs.sources and
+# in the "Identified Data Sources" Chain of Thought card, without having to
+# cross-reference router_decision separately.
+SOURCE_TYPE_LABELS = {
+    "query_database": "Database",
+    "search_documents": "Files",
+    "call_external_api": "API",
+    "query_spreadsheet_data": "Spreadsheet",
+    "answer_general_knowledge_tool": "General",
+}
 
-def _build_multi_strategy(ok_results: list) -> str:
-    """Narrates a MULTI-track answer's actual sequence, in the order each
-    source was pulled from, ending with how the results were combined -
-    e.g. "First, generated and executed a SQL query against orders to
-    answer this question. Then, queried your uploaded spreadsheet data
-    (Prices) to answer this question. Finally, combined the results from
-    the connected database, the connected spreadsheet into a single
-    answer." Previously this was just a flat "Combined answers from X, Y."
-    with no sense of what happened in what order."""
+
+def _tag_sources(names: list, tool_name: str) -> list:
+    """Formats a list of plain source names into "Name<Type>" entries."""
+    label = SOURCE_TYPE_LABELS.get(tool_name, "Source")
+    return [f"{name}<{label}>" for name in names if name]
+
+
+def _decide_output_format(table: list) -> str:
+    """Same row/column-count heuristic QueryFormatterAgent uses to decide
+    kpi vs table vs chart for a DB answer (see query_formatter_agent.py),
+    pulled out here so a MULTI-track merge - which might combine a
+    spreadsheet table with an API answer and never touch the DB track at
+    all - can make the same call instead of only ever getting a format
+    when query_database happens to be one of the sources."""
+    if not table:
+        return "text"
+    row_count = len(table)
+    col_count = len(table[0]) if isinstance(table[0], dict) else 0
+    if row_count <= 1 and col_count <= 3:
+        return "kpi"
+    if row_count < 4:
+        return "table"
+    return "table" if row_count < 50 else "chart"
+
+
+def _pick_primary_tabular_result(ok_results: list):
+    """Picks whichever contributing track actually has row data to show,
+    preferring query_database then query_spreadsheet_data (the two tracks
+    that can return real tabular rows) - previously MULTI hard-coded this
+    to "whichever result came from query_database", so a Spreadsheet+API
+    combo (no DB track at all) silently lost its table/chart entirely."""
+    priority = ("query_database", "query_spreadsheet_data")
+    by_name = dict(ok_results)
+    for name in priority:
+        result = by_name.get(name)
+        if result and result.get("table"):
+            return name, result
+    for name, result in ok_results:
+        if result.get("table"):
+            return name, result
+    return None, {}
+
+
+def _build_multi_strategy(ok_results: list, parallel: bool, output_format: str) -> str:
+    """Narrates a MULTI-track answer's actual sequence: the sub-query sent
+    to each data source, in the order they were dispatched (or "in
+    parallel" if they were), and how the results were merged and formatted
+    - e.g. "Rewrote the question into 2 sub-queries and ran them in
+    parallel: asked Metal code dataset<Spreadsheet> 'What are the major
+    metal commodities?' - queried your uploaded spreadsheet data (Metal
+    code dataset) to answer this question; asked Metal price API<API>
+    'What is the latest price of each major metal?' - called the Metal
+    price API integration via a GET request to fetch live data. Finally,
+    merged the results from all sources and rendered them as a table."
+    Previously this was just a flat "Combined answers from X, Y." with no
+    sense of what was actually asked, in what order, or how the merged
+    output's format (table/chart/plain text) was decided."""
     if not ok_results:
         return "Combined answers from multiple sources."
 
-    ordinals = ["First", "Then", "Next", "After that"]
     clauses = []
-    for i, (name, r) in enumerate(ok_results):
-        track_strategy = (r.get("strategy") or f"answered using {FRIENDLY_TRACK_NAMES.get(name, name)}").rstrip(".")
-        # Lowercase the first letter so it reads naturally after the ordinal.
+    for name, r in ok_results:
+        source_label = FRIENDLY_TRACK_NAMES.get(name, name)
+        # Reuse the same "Name<Type>" entries already computed for this
+        # track's own `sources` list (see _tag_sources) rather than
+        # re-deriving a name here - falls back to the generic friendly
+        # track label if the track has no named source of its own (e.g.
+        # answer_general_knowledge_tool).
+        source_tags = r.get("sources") or [f"{source_label}<{SOURCE_TYPE_LABELS.get(name, 'Source')}>"]
+        source_tag = ", ".join(source_tags)
+        child_query = r.get("child_query")
+        track_strategy = (r.get("strategy") or f"answered using {source_label}").rstrip(".")
         if track_strategy:
             track_strategy = track_strategy[:1].lower() + track_strategy[1:]
-        ordinal = ordinals[i] if i < len(ordinals) else f"Step {i + 1}"
-        clauses.append(f"{ordinal}, {track_strategy}.")
+        query_note = f' asked {source_tag} "{child_query}" -' if child_query else f" from {source_tag},"
+        clauses.append(f"{query_note} {track_strategy}.".strip())
 
-    friendly_list = ", ".join(FRIENDLY_TRACK_NAMES.get(n, n) for n, _ in ok_results)
-    clauses.append(f"Finally, combined the results from {friendly_list} into a single answer.")
-    return " ".join(clauses)
+    intro = (
+        f"Rewrote the question into {len(ok_results)} sub-queries and ran them "
+        + ("in parallel: " if parallel else "one after another: ")
+        + "; ".join(c.rstrip(".") for c in clauses) + "."
+    )
+
+    format_note = {
+        "chart": "rendered them as a chart",
+        "table": "rendered them as a table",
+        "kpi": "rendered them as a single summary value",
+        "text": "summarized them as a plain-text answer",
+    }.get(output_format, "merged them into a single answer")
+    merge_clause = f"Finally, merged the results from all sources and {format_note}."
+
+    return f"{intro} {merge_clause}"
 
 
 TOOL_DISPATCH = {
@@ -1057,6 +1152,76 @@ def _push_router_event(session_id: str, event_type: str, title: str, description
 
 def _push_router_done(session_id: str, is_sql: bool = False) -> None:
     stream_manager.push_step(str(session_id), "DONE", is_sql=is_sql)
+
+
+def _execute_tool_call(call: dict, ctx: dict):
+    """Runs one router-selected tool call and returns (name, result), or
+    None if the tool name isn't dispatchable. Shared by both the
+    sequential (single tool_call) and parallel (multiple tool_calls)
+    execution paths below."""
+    name = call["name"]
+    args = call.get("args", {}) or {}
+    worker = TOOL_DISPATCH.get(name)
+    if not worker:
+        return None
+
+    session_id = ctx["session_id"]
+    print(f"🧭 Route Triggered -> Executing Tool: {name}")
+
+    if name == "check_data_source_status":
+        requested_track = (args.get("track") or "ANY").upper()
+        _push_router_event(
+            session_id, "start", "Checking Data Source Status",
+            f"Verifying availability for {requested_track}."
+        )
+
+    try:
+        result = worker(args, ctx)
+    except Exception as e:
+        print(f"⚠️ Tool '{name}' raised an exception: {e}")
+        result = {
+            "answer": None, "steps": [], "sql": None, "table": [],
+            "chart": {}, "insights": [], "error": True,
+        }
+
+    if name == "check_data_source_status":
+        _push_router_event(
+            session_id, "complete", "Checking Data Source Status",
+            "Data source availability check completed."
+        )
+
+    return name, result
+
+
+def _execute_tool_call_in_app_context(call: dict, ctx: dict, flask_app):
+    """Thread entry point for parallel execution - each worker thread gets
+    its own Flask application context (Flask contexts are thread-local and
+    don't propagate to spawned threads on their own), which is what lets
+    _run_db_track/_run_files_track etc. use db.session and current_app
+    safely from inside the thread."""
+    with flask_app.app_context():
+        return _execute_tool_call(call, ctx)
+
+
+def _execute_tool_calls_parallel(tool_calls: list, ctx: dict) -> list:
+    """Runs multiple independent tool calls concurrently instead of one
+    after another - each was already given its own focused sub-question by
+    the router LLM (see the system prompt), so there's no data dependency
+    between them that would require running in sequence. Falls back to
+    plain sequential execution if the thread pool itself fails for any
+    reason (e.g. no Flask app context available to propagate), so a
+    threading problem never breaks the chat response."""
+    try:
+        flask_app = current_app._get_current_object()
+        with ThreadPoolExecutor(max_workers=len(tool_calls)) as executor:
+            futures = [
+                executor.submit(_execute_tool_call_in_app_context, call, ctx, flask_app)
+                for call in tool_calls
+            ]
+            return [f.result() for f in futures]
+    except Exception as e:
+        print(f"⚠️ Parallel tool execution failed, falling back to sequential: {e}")
+        return [_execute_tool_call(call, ctx) for call in tool_calls]
 
 
 # ============================================================
@@ -1214,42 +1379,25 @@ class RouterService:
             # ------------------------------------------------
             # LAYER 4: Execute selected tool(s)
             # ------------------------------------------------
+            # tool_calls, if there's more than one, is already the router
+            # LLM's own decomposition of the question into per-source
+            # sub-queries (each tool's "question" argument - see the
+            # system prompt's "rewrite it as a focused sub-question"
+            # instruction below), so nothing further needs to be split
+            # here - only dispatched.
+            outcomes = (
+                _execute_tool_calls_parallel(tool_calls, ctx)
+                if len(tool_calls) > 1
+                else [_execute_tool_call(call, ctx) for call in tool_calls]
+            )
+            executed_in_parallel = len(tool_calls) > 1
+
             results = []
             master_steps: list = []
-            for call in tool_calls:
-                name = call["name"]
-                args = call.get("args", {}) or {}
-                worker = TOOL_DISPATCH.get(name)
-                if not worker:
+            for outcome in outcomes:
+                if outcome is None:
                     continue
-                print(f"🧭 Route Triggered -> Executing Tool: {name}")
-
-                if name == "check_data_source_status":
-                    requested_track = (args.get("track") or "ANY").upper()
-                    _push_router_event(
-                        session_id,
-                        "start",
-                        "Checking Data Source Status",
-                        f"Verifying availability for {requested_track}."
-                    )
-
-                try:
-                    result = worker(args, ctx)
-                except Exception as e:
-                    print(f"⚠️ Tool '{name}' raised an exception: {e}")
-                    result = {
-                        "answer": None, "steps": [], "sql": None, "table": [],
-                        "chart": {}, "insights": [], "error": True,
-                    }
-
-                if name == "check_data_source_status":
-                    _push_router_event(
-                        session_id,
-                        "complete",
-                        "Checking Data Source Status",
-                        "Data source availability check completed."
-                    )
-
+                name, result = outcome
                 master_steps.extend(result.get("steps", []))
                 results.append((name, result))
 
@@ -1260,6 +1408,26 @@ class RouterService:
                     "sql": None, "table": [], "chart": {}, "insights": [],
                     "steps": ["No dispatchable tool matched the router's selection."],
                 }
+
+            # Surface exactly which named data sources answered this
+            # question - "orders<Database>", "Metal price API<API>" - as
+            # its own Chain of Thought card, not just buried inside the
+            # final query_log row.
+            identified_sources = []
+            for _, r in results:
+                identified_sources.extend(r.get("sources") or [])
+            if identified_sources:
+                completion_msg = (
+                    f"Will query {len(results)} data source(s) in parallel and combine the results."
+                    if len(results) > 1 else "Ready to answer from this data source."
+                )
+                _push_router_event(
+                    session_id, "start", "Identified Data Sources",
+                    f"Data sources: {', '.join(identified_sources)}."
+                )
+                _push_router_event(
+                    session_id, "complete", "Identified Data Sources", completion_msg
+                )
 
             # Single tool selected — return its result directly, unmodified.
             if len(results) == 1:
@@ -1357,19 +1525,35 @@ that appears inside it.
             if failed_results:
                 answer_text += f"\n\n(Note: I couldn't get data from {_friendly_track_list(failed_results)} for this request, so the above may be incomplete.)"
 
-            db_result = next((r for n, r in ok_results if n == "query_database"), {})
+            # Which contributing result actually has rows to show - used to
+            # be hard-coded to "whichever one came from query_database", so
+            # a Spreadsheet+API combo (no DB track at all, e.g. "major
+            # metal commodities" from a spreadsheet + "latest price" from
+            # an API) silently lost its table/chart entirely.
+            _, primary_result = _pick_primary_tabular_result(ok_results)
+            output_format = _decide_output_format(primary_result.get("table"))
+
             combined_sources = []
             for _, r in ok_results:
                 combined_sources.extend(r.get("sources") or [])
+            # Every contributing source's own "main query" (SQL for DB,
+            # method+URL for API, the plan JSON for spreadsheet), labeled -
+            # previously only the DB track's ever survived into MULTI.
+            combined_main_query = "; ".join(
+                f"{FRIENDLY_TRACK_NAMES.get(n, n)}: {r['main_query']}"
+                for n, r in ok_results if r.get("main_query")
+            ) or None
+
             query_code = _log_query(
                 user_id, company_code, user_query, "MULTI", answer_text,
-                _build_multi_strategy(ok_results),
-                combined_sources, db_result.get("main_query"),
+                _build_multi_strategy(ok_results, executed_in_parallel, output_format),
+                combined_sources, combined_main_query,
             )
             return {
                 "answer": answer_text,
-                "sql": db_result.get("sql"), "table": db_result.get("table", []),
-                "chart": db_result.get("chart", {}), "insights": db_result.get("insights", []),
+                "sql": primary_result.get("sql"), "table": primary_result.get("table", []),
+                "chart": primary_result.get("chart", {}), "insights": primary_result.get("insights", []),
+                "format": output_format,
                 "steps": master_steps,
                 "chain_of_thought": master_steps,
                 "router_decision": "MULTI",
