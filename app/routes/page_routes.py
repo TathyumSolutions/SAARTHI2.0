@@ -42,6 +42,12 @@ def data_sources_page():
     """All Data Sources directory: databases, files, and API connectors the current user can see."""
     return render_template('data_sources.html')
 
+# Query Logs - Every question that reached a data source, independent page (no longer a tab)
+@bp.route('/query_logs')
+def query_logs_page():
+    """Query log directory: every logged chat query with its strategy, sources, and feedback."""
+    return render_template('query_logs.html')
+
 # Data Sources - Unstructured Data
 @bp.route('/unstructured_data')
 def unstructured_data():

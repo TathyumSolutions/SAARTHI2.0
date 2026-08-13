@@ -447,25 +447,20 @@
                 </div>
             </div>
 
-            <!-- Knowledge Base (was "All Data Sources", moved below Conversations).
-                 Expandable like Configured Models below, since its two
-                 sub-pages (Reports and Query Report) live as tabs on the
-                 same /data_sources page and weren't otherwise discoverable
-                 from the sidebar - Query Report only ever showed up if you
-                 landed on the page and happened to notice the small tab. -->
+            <!-- Reports (was "Knowledge Base"). Reports and Query Logs are
+                 two independent pages, not tabs on one page, so they're
+                 two flat, always-visible links here instead of an
+                 expand/collapse group. -->
             <div class="sidebar-section">
-                <div class="section-item" id="dataSourcesDirectoryIcon">
-                    <div class="item-icon">🗂️</div>
-                    <span>Knowledge Base</span>
-                    <span class="expand-icon">▼</span>
+                <div class="section-title">Reports</div>
+
+                <div class="section-item" id="dataSourcesDirectoryIcon" onclick="window.location.href='/data_sources'">
+                    <div class="item-icon">📦</div>
+                    <span>Reports</span>
                 </div>
-                <div class="sub-items">
-                    <div class="sub-item" onclick="window.location.href='/data_sources'">
-                        <span style="margin-right: 8px;">📦</span>Reports
-                    </div>
-                    <div class="sub-item" onclick="window.location.href='/data_sources?tab=queries'">
-                        <span style="margin-right: 8px;">🧾</span>Query Report
-                    </div>
+                <div class="section-item" id="queryLogsIcon" onclick="window.location.href='/query_logs'">
+                    <div class="item-icon">🧾</div>
+                    <span>Query Logs</span>
                 </div>
             </div>
 
