@@ -70,6 +70,7 @@ def submit_feedback():
         fb = ResponseFeedback(
             user_id=current_user.id,
             company_code=current_user.company_code,
+            query_code=data.get('query_code'),
             question=data.get('question'),
             answer=data.get('answer'),
             sql_query=data.get('sql_query'),
