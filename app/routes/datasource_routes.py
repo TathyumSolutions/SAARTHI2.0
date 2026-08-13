@@ -121,6 +121,7 @@ def get_visible_datasources(user):
     for f in files:
         datasources.append({
             'id': f.id,
+            'document_code': f.document_code,
             'type': 'file',
             'category': 'file',
             'name': f.file_name,

@@ -261,9 +261,9 @@
                     <div class="form-hint">Friendly name for this upload - each sheet becomes "&lt;name&gt;_&lt;sheet&gt;"</div>
                 </div>
                 <div class="form-group" id="excelFileFieldContainer">
-                    <label class="form-label">Excel or CSV File *</label>
+                    <label class="form-label" id="excelFileLabel">Excel or CSV File *</label>
                     <input type="file" id="excelFileInput" class="form-input" accept=".xlsx,.xls,.csv">
-                    <div class="form-hint">Each sheet in an Excel workbook becomes its own table (a CSV becomes one). Column headers become column names.</div>
+                    <div class="form-hint" id="excelFileHint">Each sheet in an Excel workbook becomes its own table (a CSV becomes one). Column headers become column names.</div>
                 </div>
             </div>
 
@@ -307,6 +307,17 @@
                 </tr>
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- Preview modal -->
+<div id="previewModalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center;">
+    <div style="background: var(--panel-bg, #1e1e1e); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px; max-width: 90vw; max-height: 85vh; overflow: auto; min-width: 400px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 id="previewModalTitle" style="margin: 0; color: var(--text-primary);">Preview</h3>
+            <button type="button" class="btn btn-secondary" onclick="closePreviewModal()">Close</button>
+        </div>
+        <div id="previewModalBody"></div>
     </div>
 </div>
 {% endblock %}
@@ -359,19 +370,20 @@
         }
 
         if (editingConnectionId) {
-            // Renaming/re-describing an existing spreadsheet - the underlying
-            // file can't be swapped here, only its display name/description.
+            // Renaming/re-describing an existing spreadsheet, and optionally
+            // replacing its data with a newly chosen single-sheet file.
             if (saveBtn) saveBtn.disabled = true;
             if (saveBtnText) saveBtnText.innerHTML = '<span class="loading-spinner"></span> Saving...';
 
-            authFetch(`/api/databases/${editingConnectionId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: nameInput.value.trim(),
-                    description: descriptionEl ? descriptionEl.value.trim() : ''
-                })
-            })
+            const editFormData = new FormData();
+            editFormData.append('name', nameInput.value.trim());
+            editFormData.append('description', descriptionEl ? descriptionEl.value.trim() : '');
+            const editFileInput = document.getElementById('excelFileInput');
+            if (editFileInput && editFileInput.files.length) {
+                editFormData.append('file', editFileInput.files[0]);
+            }
+
+            authFetch(`/api/databases/${editingConnectionId}/excel`, { method: 'PUT', body: editFormData })
                 .then(res => res.json())
                 .then(data => {
                     if (data.error) {
@@ -477,6 +489,8 @@
                     <td>
                         <div class="action-btn-group">
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id}, this)">Process</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="viewConnection(${conn.id})">View</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="downloadConnection(${conn.id})">Download</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
                             <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>
                         </div>
@@ -503,20 +517,72 @@
                 const descriptionEl = document.getElementById('connectionDescription');
                 if (descriptionEl) descriptionEl.value = conn.description || '';
 
-                // Can't swap the underlying file from here - only rename/re-describe.
-                const fileFieldContainer = document.getElementById('excelFileFieldContainer');
-                if (fileFieldContainer) fileFieldContainer.style.display = 'none';
+                // File is optional while editing - choosing one replaces this
+                // connection's data (single-sheet only), leaving it empty just
+                // renames/re-describes.
+                const fileInput = document.getElementById('excelFileInput');
+                if (fileInput) fileInput.value = '';
+                const excelFileLabel = document.getElementById('excelFileLabel');
+                if (excelFileLabel) excelFileLabel.textContent = 'Replace file (optional)';
+                const excelFileHint = document.getElementById('excelFileHint');
+                if (excelFileHint) excelFileHint.textContent = 'Choose a single-sheet Excel or CSV to replace this connection\'s data, or leave empty to just rename/re-describe it.';
 
                 const saveBtnText = document.getElementById('saveBtnText');
                 if (saveBtnText) saveBtnText.innerHTML = '✏️ Update';
 
                 document.getElementById('formTitle').textContent = 'Edit Spreadsheet';
-                showFormAlert('Editing existing spreadsheet. The uploaded file itself cannot be replaced here - delete and re-upload for that.', 'info');
+                showFormAlert('Editing existing spreadsheet. Choose a file only if you want to replace its data.', 'info');
                 document.getElementById('connectionForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             })
             .catch(error => {
                 console.error('Edit error:', error);
                 showAlert(`Failed to load connection: ${error.message}`, 'error');
+            });
+    }
+
+    function downloadConnection(connectionId) {
+        window.open(`/api/databases/${connectionId}/download`, '_blank');
+    }
+
+    function closePreviewModal() {
+        document.getElementById('previewModalOverlay').style.display = 'none';
+    }
+
+    function viewConnection(connectionId) {
+        const conn = allConnections.find(c => c.id === connectionId);
+        document.getElementById('previewModalTitle').textContent = 'Preview' + (conn ? ' · ' + conn.name : '');
+        document.getElementById('previewModalBody').innerHTML = '<div style="color: var(--text-secondary);">Loading...</div>';
+        document.getElementById('previewModalOverlay').style.display = 'flex';
+
+        authFetch(`/api/databases/${connectionId}/preview`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.status !== 'success') {
+                    document.getElementById('previewModalBody').innerHTML =
+                        `<div style="color: var(--text-secondary);">${escapeHtml(data.error || 'Could not load a preview for this connection.')}</div>`;
+                    return;
+                }
+
+                const html = data.tables.map(t => {
+                    const cols = t.columns;
+                    const rowsHtml = t.rows.map(row => (
+                        '<tr>' + cols.map(c => `<td style="padding: 6px 10px; border-bottom: 1px solid var(--border-color);">${escapeHtml(row[c])}</td>`).join('') + '</tr>'
+                    )).join('');
+                    return `
+                        <h4 style="color: var(--accent-green); margin: 16px 0 8px;">${escapeHtml(t.sheet || t.table)} (${t.row_count} rows${t.truncated ? ', showing first 50' : ''})</h4>
+                        <div style="overflow-x: auto;">
+                            <table style="border-collapse: collapse; width: 100%; font-size: 13px;">
+                                <thead><tr>${cols.map(c => `<th style="text-align: left; padding: 6px 10px; background: var(--hover-bg); border-bottom: 1px solid var(--border-color);">${escapeHtml(c)}</th>`).join('')}</tr></thead>
+                                <tbody>${rowsHtml}</tbody>
+                            </table>
+                        </div>
+                    `;
+                }).join('');
+                document.getElementById('previewModalBody').innerHTML = html;
+            })
+            .catch(error => {
+                document.getElementById('previewModalBody').innerHTML =
+                    `<div style="color: var(--text-secondary);">Failed to load preview: ${escapeHtml(error.message)}</div>`;
             });
     }
 
@@ -545,8 +611,10 @@
         const fileInput = document.getElementById('excelFileInput');
         if (fileInput) fileInput.value = '';
 
-        const fileFieldContainer = document.getElementById('excelFileFieldContainer');
-        if (fileFieldContainer) fileFieldContainer.style.display = 'block';
+        const excelFileLabel = document.getElementById('excelFileLabel');
+        if (excelFileLabel) excelFileLabel.textContent = 'Excel or CSV File *';
+        const excelFileHint = document.getElementById('excelFileHint');
+        if (excelFileHint) excelFileHint.textContent = 'Each sheet in an Excel workbook becomes its own table (a CSV becomes one). Column headers become column names.';
 
         editingConnectionId = null;
 
