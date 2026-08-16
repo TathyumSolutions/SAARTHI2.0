@@ -300,19 +300,28 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def _build_company_feedback_context(company_code: str, user_query: str, top_k: int = 4) -> str:
-    if not company_code or not user_query:
+def _build_feedback_context(company_code: Optional[str], user_id: Optional[int], user_query: str, top_k: int = 4) -> str:
+    """
+    company_code is only what makes feedback SHARED across a company's
+    users - it is not a precondition for self-learning itself. A user with
+    no company_code is working in an individual capacity, and their own
+    past feedback still applies to them; it's just scoped to user_id
+    instead of being pooled with anyone else's.
+    """
+    if not user_query or (not company_code and not user_id):
         return ""
 
-    candidates = (
+    candidates_query = (
         ResponseFeedback.query
-        .filter(ResponseFeedback.company_code == company_code)
         .filter(ResponseFeedback.question.isnot(None))
         .filter(ResponseFeedback.answer.isnot(None))
-        .order_by(ResponseFeedback.created_at.desc())
-        .limit(200)
-        .all()
     )
+    candidates_query = (
+        candidates_query.filter(ResponseFeedback.company_code == company_code)
+        if company_code else
+        candidates_query.filter(ResponseFeedback.user_id == user_id)
+    )
+    candidates = candidates_query.order_by(ResponseFeedback.created_at.desc()).limit(200).all()
 
     if not candidates:
         return ""
@@ -392,26 +401,31 @@ def _log_query(
         return None
 
 
-def _find_reusable_db_query(company_code: str, user_query: str):
+def _find_reusable_db_query(company_code: Optional[str], user_id: Optional[int], user_query: str):
     """
-    Looks for a previously-accepted (liked) DB-track query from this
-    company that is a near-duplicate of user_query. Returns
-    (QueryLog row, score) if one clears REUSE_MATCH_THRESHOLD, else
-    (None, 0.0).
+    Looks for a previously-accepted (liked) DB-track query that is a
+    near-duplicate of user_query. Scoped to the company (shared across
+    every user of that company) when company_code is set; otherwise
+    scoped to just this user's own liked queries - a company_code is not
+    required for an individual account's own self-learning to work.
+    Returns (QueryLog row, score) if one clears REUSE_MATCH_THRESHOLD,
+    else (None, 0.0).
     """
-    if not company_code or not user_query:
+    if not user_query or (not company_code and not user_id):
         return None, 0.0
 
-    candidates = (
+    candidates_query = (
         QueryLog.query
-        .filter(QueryLog.company_code == company_code)
         .filter(QueryLog.router_decision == "DB")
         .filter(QueryLog.feedback_type == "like")
         .filter(QueryLog.main_query.isnot(None))
-        .order_by(QueryLog.created_at.desc())
-        .limit(200)
-        .all()
     )
+    candidates_query = (
+        candidates_query.filter(QueryLog.company_code == company_code)
+        if company_code else
+        candidates_query.filter(QueryLog.user_id == user_id)
+    )
+    candidates = candidates_query.order_by(QueryLog.created_at.desc()).limit(200).all()
     if not candidates:
         return None, 0.0
 
@@ -566,7 +580,7 @@ def _find_static_data_hints(user_query: str, router_config: dict) -> list:
 
 def _build_router_messages(user_query: str, chat_history, router_config: dict,
                             live_tools_summary: str, system_instructions: str,
-                            company_feedback_context: str = "") -> list:
+                            feedback_context: str = "") -> list:
     """
     Assembles the message list for the routing LLM call under a fixed token
     budget. Priority order when something has to be cut:
@@ -679,8 +693,8 @@ LIVE REGISTERED TOOLS FOR THE 'API' TRACK:
 CURRENT DATA SOURCE CONFIGURATION (router_metamind.json — may be trimmed for length):
 {config_str}{static_data_hints_block}
 """
-    if company_feedback_context:
-        system_prompt += f"\n\n{company_feedback_context}"
+    if feedback_context:
+        system_prompt += f"\n\n{feedback_context}"
 
     if system_instructions and system_instructions.strip():
         system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
@@ -840,8 +854,8 @@ def _answer_status_check(args: dict, router_config: dict) -> dict:
 # ============================================================
 def _run_db_track(question: str, ctx: dict) -> dict:
     enriched_question = question
-    if ctx.get("company_feedback_context"):
-        enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+    if ctx.get("feedback_context"):
+        enriched_question = f"{ctx['feedback_context']}\n\nUser question: {question}"
 
     # Data Source Finaliser: resolve any business term in the question
     # (e.g. "copper", "Europe") against this user's uploaded spreadsheet
@@ -859,8 +873,8 @@ def _run_db_track(question: str, ctx: dict) -> dict:
     # fresh pipeline if no strong match exists, or if re-running the
     # matched SQL errors out (e.g. the schema moved on since it was
     # generated).
-    if ctx.get("self_learning_enabled") and ctx.get("company_code"):
-        matched, score = _find_reusable_db_query(ctx["company_code"], question)
+    if ctx.get("self_learning_enabled"):
+        matched, score = _find_reusable_db_query(ctx.get("company_code"), ctx.get("user_id"), question)
         if matched:
             reused_result = _run_reused_db_query(question, matched, score, ctx)
             if not reused_result.get("error"):
@@ -905,8 +919,8 @@ def _run_db_track(question: str, ctx: dict) -> dict:
 
 def _run_files_track(question: str, ctx: dict) -> dict:
     enriched_question = question
-    if ctx.get("company_feedback_context"):
-        enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+    if ctx.get("feedback_context"):
+        enriched_question = f"{ctx['feedback_context']}\n\nUser question: {question}"
 
     rag_res = answer_from_docs(
         enriched_question, model_name=ctx["model_name"],
@@ -939,8 +953,8 @@ def _run_files_track(question: str, ctx: dict) -> dict:
 
 def _run_api_track(question: str, ctx: dict) -> dict:
     enriched_question = question
-    if ctx.get("company_feedback_context"):
-        enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+    if ctx.get("feedback_context"):
+        enriched_question = f"{ctx['feedback_context']}\n\nUser question: {question}"
 
     payload = ask_dynamic_model_with_tools(
         user_message=enriched_question, llm_tools_list=ctx["active_db_tools"],
@@ -976,8 +990,8 @@ def _run_api_track(question: str, ctx: dict) -> dict:
 
 def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
     enriched_question = question
-    if ctx.get("company_feedback_context"):
-        enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+    if ctx.get("feedback_context"):
+        enriched_question = f"{ctx['feedback_context']}\n\nUser question: {question}"
 
     result = answer_from_spreadsheets(
         enriched_question, model_name=ctx["model_name"], custom_key=ctx["custom_key"],
@@ -1010,8 +1024,8 @@ def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
 
 def _run_general_track(question: str, ctx: dict) -> dict:
     enriched_question = question
-    if ctx.get("company_feedback_context"):
-        enriched_question = f"{ctx['company_feedback_context']}\n\nUser question: {question}"
+    if ctx.get("feedback_context"):
+        enriched_question = f"{ctx['feedback_context']}\n\nUser question: {question}"
 
     gen_result = answer_general_knowledge(
         enriched_question, ctx["model_name"], ctx["custom_key"], ctx["system_instructions"], []
@@ -1296,11 +1310,12 @@ class RouterService:
             ) or "No active external tools registered currently."
 
             self_learning_enabled = bool(load_rag_config().get("self_learning", {}).get("enabled", False))
-            company_feedback_context = ""
-            if self_learning_enabled and company_code:
-                company_feedback_context = _build_company_feedback_context(company_code, user_query)
-                if company_feedback_context:
-                    print(f"🧠 [SELF-LEARNING] Injected company feedback context for company: {company_code}")
+            feedback_context = ""
+            if self_learning_enabled:
+                feedback_context = _build_feedback_context(company_code, user_id, user_query)
+                if feedback_context:
+                    scope_label = f"company {company_code}" if company_code else f"user {user_id}"
+                    print(f"🧠 [SELF-LEARNING] Injected feedback context for {scope_label}")
 
             messages = _build_router_messages(
                 user_query,
@@ -1308,7 +1323,7 @@ class RouterService:
                 router_config,
                 live_tools_summary,
                 system_instructions,
-                company_feedback_context,
+                feedback_context,
             )
 
             # ------------------------------------------------
@@ -1384,7 +1399,7 @@ class RouterService:
                 "user_query": user_query, "model_name": model_name, "session_id": session_id,
                 "custom_key": custom_key, "system_instructions": system_instructions,
                 "active_db_tools": active_db_tools, "router_config": router_config,
-                "company_feedback_context": company_feedback_context,
+                "feedback_context": feedback_context,
                 "company_code": company_code, "self_learning_enabled": self_learning_enabled,
                 "user_id": user_id,
             }

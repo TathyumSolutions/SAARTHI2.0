@@ -18,8 +18,8 @@ exactly how a hallucinated column (e.g. a nonexistent "region" column) or
 a wrong guess makes it into generated SQL. This module resolves the term
 deterministically first (a validated pandas lookup, not an LLM guess) and
 hands the DB agents a concrete "X resolves to column = value" fact
-instead, the same way company_feedback_context is already injected ahead
-of the question in updated_router_services.py.
+instead, the same way feedback_context is already injected ahead of the
+question in updated_router_services.py.
 
 Deliberately no LLM call anywhere in this module - resolution is exact
 value/substring matching against small, already-uploaded lookup tables,
