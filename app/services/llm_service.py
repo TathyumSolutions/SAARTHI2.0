@@ -674,35 +674,16 @@ class LLMService:
                 elif str(model_name).startswith("api://"):
                     actual_model = model_name.replace("api://", "").lower()
                     messages = [HumanMessage(content=analysis_prompt)]
-                    
-                    if "claude" in actual_model:
-                        from langchain_anthropic import ChatAnthropic
-                        dynamic_llm = ChatAnthropic(
-                            model=actual_model,
-                            temperature=self.rag_config["generation"]["temperature"],
-                            anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY")
-                        )
-                    elif "gemini" in actual_model:
-                        from langchain_google_genai import ChatGoogleGenerativeAI
-                        dynamic_llm = ChatGoogleGenerativeAI(
-                            model=actual_model,
-                            temperature=self.rag_config["generation"]["temperature"],
-                            google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY")
-                        )
-                    elif "deepseek" in actual_model:
-                        dynamic_llm = ChatOpenAI(
-                            model=actual_model,
-                            temperature=self.rag_config["generation"]["temperature"],
-                            openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"),
-                            openai_api_base="https://api.deepseek.com/v1"
-                        )
-                    else:  # Custom GPT models
-                        dynamic_llm = ChatOpenAI(
-                            model=actual_model,
-                            temperature=self.rag_config["generation"]["temperature"],
-                            openai_api_key=custom_key if custom_key else self.openai_key
-                        )
-                    
+
+                    from app.services.llm_providers import resolve_dynamic_llm
+                    dynamic_llm = resolve_dynamic_llm(
+                        actual_model,
+                        custom_key,
+                        temperature=self.rag_config["generation"]["temperature"],
+                        openai_fallback_key=self.openai_key,
+                        strict=False,
+                    )
+
                     ai_response = dynamic_llm.invoke(messages)
                     analysis_text = ai_response.content.strip()
 
@@ -870,53 +851,16 @@ class LLMService:
                     HumanMessage(content=user_query)
                 ]
 
-                # 1. ANTHROPIC CLAUDE MODELS
-                if "claude" in actual_model:
-                    from langchain_anthropic import ChatAnthropic
-                    dynamic_llm = ChatAnthropic(
-                        model=actual_model,
-                        temperature=self.rag_config["generation"]["temperature"],
-                        anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY")
-                    )
-                    ai_response = dynamic_llm.invoke(messages)
-                    final_answer = ai_response.content
-
-                # 2. GOOGLE GEMINI MODELS
-                elif "gemini" in actual_model:
-                    from langchain_google_genai import ChatGoogleGenerativeAI
-                    dynamic_llm = ChatGoogleGenerativeAI(
-                        model=actual_model,
-                        temperature=self.rag_config["generation"]["temperature"],
-                        google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY")
-                    )
-                    ai_response = dynamic_llm.invoke(messages)
-                    final_answer = ai_response.content
-
-                # 3. DEEPSEEK MODELS
-                elif "deepseek" in actual_model:
-                    dynamic_llm = ChatOpenAI(
-                        model=actual_model,
-                        temperature=self.rag_config["generation"]["temperature"],
-                        openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"),
-                        openai_api_base="https://api.deepseek.com/v1"
-                    )
-                    ai_response = dynamic_llm.invoke(messages)
-                    final_answer = ai_response.content
-
-                # 4. EXPLICIT CUSTOM OPENAI MODELS
-                elif "gpt" in actual_model or "openai" in actual_model:
-                    dynamic_llm = ChatOpenAI(
-                        model=actual_model,
-                        temperature=self.rag_config["generation"]["temperature"],
-                        openai_api_key=custom_key if custom_key else self.openai_key
-                    )
-                    ai_response = dynamic_llm.invoke(messages)
-                    final_answer = ai_response.content
-                else:
-                    raise ValueError(
-                        f"Custom cloud provider mapping failed: Identifier '{actual_model}' "
-                        f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
-                    )
+                from app.services.llm_providers import resolve_dynamic_llm
+                dynamic_llm = resolve_dynamic_llm(
+                    actual_model,
+                    custom_key,
+                    temperature=self.rag_config["generation"]["temperature"],
+                    openai_fallback_key=self.openai_key,
+                    strict=True,
+                )
+                ai_response = dynamic_llm.invoke(messages)
+                final_answer = ai_response.content
 
             elif str(model_name).startswith("ollama://"):
                 actual_model = model_name.replace("ollama://", "")

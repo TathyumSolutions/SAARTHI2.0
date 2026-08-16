@@ -101,7 +101,6 @@ def create_app(config_name='development'):
         api_v1_routes,
         llm_routes,
         database_routes,
-        query_routes,
         datasource_routes,
         query_log_routes,
         analytics_routes,
@@ -124,7 +123,6 @@ def create_app(config_name='development'):
     app.register_blueprint(workspace_routes.bp)
     app.register_blueprint(llm_routes.bp)
     app.register_blueprint(database_routes.bp)
-    app.register_blueprint(query_routes.bp)
     app.register_blueprint(datasource_routes.bp)
     app.register_blueprint(query_log_routes.bp)
     app.register_blueprint(analytics_routes.bp)

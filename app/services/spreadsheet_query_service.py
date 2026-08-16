@@ -91,9 +91,11 @@ def _build_metadata_answer(table_name: str, info: dict) -> str:
 
 def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_content: str) -> str:
     """Same multi-provider dispatch pattern used throughout the other
-    tracks (general_service.py, llm_service.py) - kept local to this file
-    rather than shared, to avoid touching those modules for this feature."""
+    tracks (general_service.py, llm_service.py) - the api:// branch is
+    shared via llm_providers.resolve_dynamic_llm(), kept local otherwise
+    since the gpt-4o/ollama handling here differs from those modules."""
     from langchain_core.messages import SystemMessage, HumanMessage
+    from app.services.llm_providers import resolve_dynamic_llm
 
     messages = [SystemMessage(content=system_content), HumanMessage(content=user_content)]
 
@@ -104,18 +106,13 @@ def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_cont
 
     if str(model_name).startswith("api://"):
         actual_model = model_name.replace("api://", "").lower()
-        if "claude" in actual_model:
-            from langchain_anthropic import ChatAnthropic
-            llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key or os.getenv("ANTHROPIC_API_KEY"))
-        elif "gemini" in actual_model:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            llm = ChatGoogleGenerativeAI(model=actual_model, temperature=0, google_api_key=custom_key or os.getenv("GOOGLE_API_KEY"))
-        elif "deepseek" in actual_model:
-            from langchain_openai import ChatOpenAI
-            llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key or os.getenv("DEEPSEEK_API_KEY"), openai_api_base="https://api.deepseek.com/v1")
-        else:
-            from langchain_openai import ChatOpenAI
-            llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key or os.getenv("OPENAI_API_KEY"))
+        llm = resolve_dynamic_llm(
+            actual_model,
+            custom_key,
+            temperature=0,
+            openai_fallback_key=custom_key or os.getenv("OPENAI_API_KEY"),
+            strict=False,
+        )
         return llm.invoke(messages).content
 
     if str(model_name).startswith("ollama://") or model_name == "llama3":

@@ -113,49 +113,16 @@ Return ONLY valid JSON.
                 actual_model = model_to_use.replace("api://", "").lower()
                 print(f"🌐 [DataInsightGeneratorAgent] Dynamic Routing insights to Custom Cloud API model: {actual_model}")
 
-                if "claude" in actual_model:
-                    from langchain_anthropic import ChatAnthropic
-                    dynamic_llm = ChatAnthropic(
-                        model=actual_model,
-                        temperature=0.3,
-                        anthropic_api_key=self.custom_key if self.custom_key else os.getenv("ANTHROPIC_API_KEY")
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    response_text = ai_response.content.strip()
-
-                elif "gemini" in actual_model:
-                    from langchain_google_genai import ChatGoogleGenerativeAI
-                    dynamic_llm = ChatGoogleGenerativeAI(
-                        model=actual_model,
-                        temperature=0.3,
-                        google_api_key=self.custom_key if self.custom_key else os.getenv("GOOGLE_API_KEY")
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    response_text = ai_response.content.strip()
-
-                elif "deepseek" in actual_model:
-                    dynamic_llm = ChatOpenAI(
-                        model=actual_model,
-                        temperature=0.3,
-                        openai_api_key=self.custom_key if self.custom_key else os.getenv("DEEPSEEK_API_KEY"),
-                        openai_api_base="https://api.deepseek.com/v1"
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    response_text = ai_response.content.strip()
-
-                elif "gpt" in actual_model or "openai" in actual_model:
-                    dynamic_llm = ChatOpenAI(
-                        model=actual_model,
-                        temperature=0.3,
-                        openai_api_key=self.custom_key if self.custom_key else self.openai_key
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    response_text = ai_response.content.strip()
-                else:
-                    raise ValueError(
-                        f"Custom cloud provider mapping failed: Identifier '{actual_model}' "
-                        f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
-                    )
+                from app.services.llm_providers import resolve_dynamic_llm
+                dynamic_llm = resolve_dynamic_llm(
+                    actual_model,
+                    self.custom_key,
+                    temperature=0.3,
+                    openai_fallback_key=self.openai_key,
+                    strict=True,
+                )
+                ai_response = dynamic_llm.invoke(prompt)
+                response_text = ai_response.content.strip()
 
             elif str(model_to_use).startswith("ollama://"):
                 actual_model = model_to_use.replace("ollama://", "")

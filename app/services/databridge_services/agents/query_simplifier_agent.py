@@ -157,53 +157,16 @@ Return ONLY the simplified query, nothing else.
                 actual_model = target_model.replace("api://", "").lower()
                 print(f"🌐 [QuerySimplifierAgent] Dynamic Routing payload to Custom Cloud API model: {actual_model}")
                 
-                # Anthropic Claude Models
-                if "claude" in actual_model:
-                    from langchain_anthropic import ChatAnthropic
-                    dynamic_llm = ChatAnthropic(
-                        model=actual_model,
-                        temperature=0,
-                        anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY")
-                    )
-                    response = dynamic_llm.invoke(prompt)
-                    return response.content.strip()
-
-                # Google Gemini Models
-                elif "gemini" in actual_model:
-                    from langchain_google_genai import ChatGoogleGenerativeAI
-                    dynamic_llm = ChatGoogleGenerativeAI(
-                        model=actual_model,
-                        temperature=0,
-                        google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY")
-                    )
-                    response = dynamic_llm.invoke(prompt)
-                    return response.content.strip()
-
-                # DeepSeek Models
-                elif "deepseek" in actual_model:
-                    dynamic_llm = ChatOpenAI(
-                        model=actual_model,
-                        temperature=0,
-                        openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"),
-                        openai_api_base="https://api.deepseek.com/v1"
-                    )
-                    response = dynamic_llm.invoke(prompt)
-                    return response.content.strip()
-
-                # Custom OpenAI Models
-                elif "gpt" in actual_model or "openai" in actual_model:
-                    dynamic_llm = ChatOpenAI(
-                        model=actual_model,
-                        temperature=0,
-                        openai_api_key=custom_key if custom_key else self.openai_key
-                    )
-                    response = dynamic_llm.invoke(prompt)
-                    return response.content.strip()
-                else:
-                    raise ValueError(
-                        f"Custom cloud provider mapping failed: Identifier '{actual_model}' "
-                        f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
-                    )
+                from app.services.llm_providers import resolve_dynamic_llm
+                dynamic_llm = resolve_dynamic_llm(
+                    actual_model,
+                    custom_key,
+                    temperature=0,
+                    openai_fallback_key=self.openai_key,
+                    strict=True,
+                )
+                response = dynamic_llm.invoke(prompt)
+                return response.content.strip()
 
             # --- 4. DYNAMIC LOCAL OLLAMA ROUTING BLOCK (ollama://) ---
             elif str(target_model).startswith("ollama://"):
