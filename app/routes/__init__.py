@@ -17,7 +17,8 @@ from . import (
     upload_routes,
     settings_routes,
     resource_mapping_routes,
-    warehouse_routes
+    warehouse_routes,
+    bi_semantics_routes
 )
 
 __all__ = [
@@ -36,5 +37,6 @@ __all__ = [
     'upload_routes',
     'settings_routes',
     'resource_mapping_routes',
-    'warehouse_routes'
+    'warehouse_routes',
+    'bi_semantics_routes'
 ]

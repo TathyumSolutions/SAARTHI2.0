@@ -70,6 +70,7 @@ import requests
 import json
 import os
 from langchain_openai import ChatOpenAI
+from app.services.bi_semantics_service import build_measure_guidance
 
 
 class SQLGeneratorAgent:
@@ -128,7 +129,8 @@ class SQLGeneratorAgent:
         simplified_query: str,
         error_feedback: str = "",
         target_model: str = "llama3",
-        system_instructions: str = ""
+        system_instructions: str = "",
+        bi_semantics_hint: str = ""
 
     ) -> str:
         """Generate SQL from QuerySense output using LLM (Ollama-safe)"""
@@ -143,10 +145,11 @@ SIMPLIFIED QUERY: {simplified_query}
 QUERY SENSE OUTPUT:
 {json.dumps(query_sense_output, indent=2)}
 ERROR FEEDBACK: {error_feedback}
+{bi_semantics_hint}
 
 STRICT RULES:
-1. Use ONLY tables and columns present in Query Sense Output. Nothing else.
-2. NEVER invent columns like some_metric, score, rank, total_amount unless in Query Sense Output.
+1. Use ONLY tables and columns present in Query Sense Output, or a measure column named in BI SEMANTICS GUIDANCE above (if present). Nothing else.
+2. NEVER invent columns like some_metric, score, rank, total_amount unless in Query Sense Output or explicitly named in BI SEMANTICS GUIDANCE.
 3. Use PostgreSQL syntax ONLY.
 4. Output ONLY raw executable PostgreSQL query. No markdown, no backticks, no explanation.
 5.DO NOT append explanations, notes, or reasoning about why clauses were included or skipped.
@@ -289,6 +292,20 @@ Return ONLY the PostgreSQL query, nothing else.
             system_instructions = state.get("system_instructions", "")
             self.custom_key = custom_key
 
+            # Consult the BI semantics config (app/services/bi_semantics_service.py)
+            # for the tables this question touches: if QuerySense found no
+            # explicit aggregation, a business entity like "sales orders" should
+            # default to SUM(net_value) rather than a raw row per order that
+            # degenerates into a meaningless one-count-per-row chart downstream.
+            try:
+                bi_semantics_hint = build_measure_guidance(
+                    query_sense_output.get("tables") or [],
+                    query_sense_output,
+                    user_id=state.get("user_id", 1),
+                )
+            except Exception as e:
+                print(f"⚠️ [SQLGeneratorAgent] BI semantics lookup failed: {e}")
+                bi_semantics_hint = ""
 
             sql = self.generate_sql_from_querysense(
                 user_query,
@@ -296,7 +313,8 @@ Return ONLY the PostgreSQL query, nothing else.
                 simplified_query,
                 error_feedback,
                 chosen_model,
-                system_instructions=system_instructions
+                system_instructions=system_instructions,
+                bi_semantics_hint=bi_semantics_hint
             )
 
             if not sql:

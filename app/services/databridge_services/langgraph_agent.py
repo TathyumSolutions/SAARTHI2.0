@@ -213,6 +213,46 @@ def error_diagnosis_node(state: DataBridgeState) -> DataBridgeState:
     return error_diagnosis.execute(state)
 
 
+def _compose_final_answer(state: DataBridgeState) -> str:
+    """
+    Build the natural-language answer shown to the user from what this
+    request actually retrieved, instead of a generic template like "I have
+    gathered data from multiple sources, yielding a total of N entries" that
+    ignores what was actually found. Combines the real row/column shape of
+    the result, the chart-worthiness note from DataVisualizerAgent (e.g.
+    "this is a lookup mapping, here's the data as a table"), and 1-2 of the
+    concrete insights already computed by DataInsightGeneratorAgent.
+    """
+    base_message = (state.get("message") or "").strip()
+    fmt = state.get("format")
+
+    if fmt == "error" or not state.get("columns"):
+        return base_message or "I wasn't able to retrieve any data for this request."
+
+    columns = state.get("columns") or []
+    row_count = state.get("row_count", 0)
+
+    parts = []
+    if row_count and columns:
+        row_word = "row" if row_count == 1 else "rows"
+        col_word = "column" if len(columns) == 1 else "columns"
+        parts.append(
+            f"Retrieved {row_count} {row_word} across {len(columns)} {col_word} ({', '.join(columns)})."
+        )
+    elif base_message:
+        parts.append(base_message)
+
+    chart_note = (state.get("chart_configs") or {}).get("note")
+    if chart_note:
+        parts.append(chart_note)
+
+    concrete_insights = [i.strip() for i in (state.get("insights") or []) if isinstance(i, str) and i.strip()]
+    if concrete_insights:
+        parts.append("Key findings: " + " ".join(concrete_insights[:2]))
+
+    return " ".join(parts) if parts else (base_message or "No analysis found.")
+
+
 def response_builder_node(state: DataBridgeState) -> DataBridgeState:
     """Build final response"""
     print(f"\n🤖 [ResponseBuilder] Building final response...")
@@ -225,7 +265,7 @@ def response_builder_node(state: DataBridgeState) -> DataBridgeState:
 
     qs_output = state.get("query_sense_output", {})
     execution_steps = qs_output.get("steps", [])
-    
+
     response = {
         "query": state["user_query"],
         "simplified_query": state.get("simplified_query"),
@@ -234,7 +274,7 @@ def response_builder_node(state: DataBridgeState) -> DataBridgeState:
         "sql": state.get("generated_sql"),
         "format": state.get("format", "unknown"),
         "case": state.get("case"),
-        "message": state.get("message", ""),
+        "message": _compose_final_answer(state),
         "columns": state.get("columns", []),
         "row_count": state.get("row_count", 0),
         "data": state.get("data", []),
@@ -243,10 +283,10 @@ def response_builder_node(state: DataBridgeState) -> DataBridgeState:
         "chart_configs": state.get("chart_configs", {"bar": {}, "line": {}, "pie": {}, "recommended": "bar"}),
         "steps": execution_steps
     }
-    
+
     state["response"] = response
     state["current_step"] = "response_builder"
-    
+
     print(f"✅ [ResponseBuilder] Response built successfully\n")
     return state
 
@@ -553,7 +593,15 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
             elif "formatter" in chk_key:
                 node_title = "Query Formatter Agent"
                 rows = final_state.get("row_count", 0)
-                desc = f"Sanitized layout keywords and executed query. Retrieved {rows} rows." if rows else "Sanitizing structural keywords and executing query..."
+                cols = final_state.get("columns") or []
+                executed_sql = final_state.get("generated_sql")
+                if rows and executed_sql:
+                    col_part = f" across {len(cols)} column{'s' if len(cols) != 1 else ''} ({', '.join(cols)})" if cols else ""
+                    desc = f"Ran: {executed_sql} — returned {rows} row{'s' if rows != 1 else ''}{col_part}."
+                elif rows:
+                    desc = f"Executed the generated query. Retrieved {rows} rows."
+                else:
+                    desc = "Sanitizing structural keywords and executing query..."
                 
             elif "insight" in chk_key:
                 node_title = "Data Insight Agent"

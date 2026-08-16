@@ -166,6 +166,11 @@ def model_selection_page():
     """Model Selection page"""
     return render_template('model_selection.html')
 
+@bp.route('/bi_semantics')
+def bi_semantics_page():
+    """BI Semantics config page - per-entity default measure/aggregation"""
+    return render_template('bi_semantics.html')
+
 #API integration
 @bp.route('/api_connectors/rest_apis')
 def rest_apis_page():
