@@ -571,7 +571,7 @@ class LLMService:
     #         print(f"Analysis Error: {e}")
     #         return "Analyzing natural language inquiry for document matching modules."    
 
-    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions='',user_id=None):
+    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions='',user_id=None,feedback_context=''):
         """
         Retrieves relevant chunks from Qdrant and updates the live steps
         using the new structured event payload layout. Retrieval is scoped
@@ -787,6 +787,15 @@ class LLMService:
             )
             if system_instructions.strip():
                 system_prompt += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
+            if feedback_context:
+                print(f"🧠 [FEEDBACK-DEBUG] [FILES] Using feedback context:\n{feedback_context}")
+                system_prompt += (
+                    f"\n\n{feedback_context}\n\n"
+                    "That is feedback on how PAST similar questions were answered, not part of "
+                    "this question. It can be about anything - missed context, wrong section "
+                    "cited, wrong tone, too much/too little detail. If any of it is still "
+                    "relevant here, apply it; ignore whatever doesn't apply to this question."
+                )
 
             if model_name == "llama3":
                 print("🦙 Routing payload to local Ollama [llama3] container layer...")
@@ -920,7 +929,7 @@ class LLMService:
 
 _shared_llm_service = LLMService()
 
-def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions='', user_id=None):
+def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions='', user_id=None, feedback_context=''):
     """
     Top-level module function mapping so your orchestrator router can import
     it cleanly without needing class-level structural instantiation overhead.
@@ -932,6 +941,7 @@ def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system
         custom_key=custom_key,
         system_instructions=system_instructions,
         user_id=user_id,
+        feedback_context=feedback_context,
     )
        
 

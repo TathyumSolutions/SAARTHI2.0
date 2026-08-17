@@ -76,7 +76,7 @@ def fetch_and_translate_tools():
     ]
 
 
-def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', ollama_config=None,display_query=None,system_instructions=''):
+def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', ollama_config=None,display_query=None,system_instructions='',feedback_context=''):
     """
     Dynamically routes queries to models, strictly enforcing tool execution,
     performs the actual API execution, and returns a fully parsed response context.
@@ -110,6 +110,15 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
     )
     if system_instructions.strip():
         system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
+    if feedback_context:
+        print(f"🧠 [FEEDBACK-DEBUG] [API] Using feedback context:\n{feedback_context}")
+        system_prompt += (
+            f"\n\n{feedback_context}\n\n"
+            "That is feedback on how PAST similar requests were handled, not part of this "
+            "request. It can be about anything - wrong tool picked, wrong parameter value, "
+            "wrong endpoint, a formatting problem. If any of it is still relevant here, adjust "
+            "which tool or arguments you pick accordingly; ignore whatever doesn't apply."
+        )
 
     try:
         push_tool_event("start", "Your Question", f"\"{user_message}\"")

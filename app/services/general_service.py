@@ -14,7 +14,8 @@ def answer_general_knowledge(
     custom_key: str,
     system_instructions: str,
     master_steps: list,
-    session_id: str = "1"
+    session_id: str = "1",
+    feedback_context: str = "",
 ) -> dict:
     """
     Standalone track runner that queries the LLM's world knowledge base.
@@ -72,6 +73,15 @@ def answer_general_knowledge(
     )
     if system_instructions and system_instructions.strip():
         system_content += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
+    if feedback_context:
+        print(f"🧠 [FEEDBACK-DEBUG] [GENERAL] Using feedback context:\n{feedback_context}")
+        system_content += (
+            f"\n\n{feedback_context}\n\n"
+            "That is feedback on how PAST similar questions were answered, not part of this "
+            "question. It can be about anything - wrong facts, too much/too little detail, "
+            "wrong tone, a wrong assumption, missing a caveat. If any of it is still relevant "
+            "here, apply it to how you answer; ignore whatever doesn't apply to this question."
+        )
 
     push_general_event("complete", "Checking What I Already Know", "I matched your question with the most relevant knowledge.")
 

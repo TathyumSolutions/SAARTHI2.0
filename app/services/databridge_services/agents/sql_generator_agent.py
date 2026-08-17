@@ -130,13 +130,31 @@ class SQLGeneratorAgent:
         error_feedback: str = "",
         target_model: str = "llama3",
         system_instructions: str = "",
-        bi_semantics_hint: str = ""
+        bi_semantics_hint: str = "",
+        feedback_context: str = ""
 
     ) -> str:
         """Generate SQL from QuerySense output using LLM (Ollama-safe)"""
 
 
         try:
+            self_learning_block = ""
+            if feedback_context:
+                self_learning_block = f"""
+{feedback_context}
+
+The block above is feedback on how PAST similar questions were answered -
+it is NOT part of the current question. It can describe any kind of
+problem: a missing/wrong WHERE filter, wrong JOIN, wrong aggregation or
+GROUP BY, wrong columns selected, wrong sort/limit, or a data-quality
+issue (placeholder/"not applicable" values like "n/a" that should be
+excluded). If a DISLIKED note is still relevant to this question, adjust
+the SQL to address it - using ONLY tables/columns present in QUERY SENSE
+OUTPUT above, never inventing one. If a LIKED note confirms a past
+approach worked, prefer reusing it when it fits. Ignore anything in the
+feedback that doesn't apply to this specific question.
+"""
+
             prompt = f"""
 You are a strict PostgreSQL query generator.
 
@@ -146,6 +164,7 @@ QUERY SENSE OUTPUT:
 {json.dumps(query_sense_output, indent=2)}
 ERROR FEEDBACK: {error_feedback}
 {bi_semantics_hint}
+{self_learning_block}
 
 STRICT RULES:
 1. Use ONLY tables and columns present in Query Sense Output, or a measure column named in BI SEMANTICS GUIDANCE above (if present). Nothing else.
@@ -290,7 +309,11 @@ Return ONLY the PostgreSQL query, nothing else.
             chosen_model = state.get("model_name", self.llm_backend["model"])
             custom_key = state.get("custom_key", "")
             system_instructions = state.get("system_instructions", "")
+            feedback_context = state.get("feedback_context", "")
             self.custom_key = custom_key
+
+            if feedback_context:
+                print(f"🧠 [FEEDBACK-DEBUG] [SQL] Using feedback context for SQL generation:\n{feedback_context}")
 
             # Consult the BI semantics config (app/services/bi_semantics_service.py)
             # for the tables this question touches: if QuerySense found no
@@ -314,7 +337,8 @@ Return ONLY the PostgreSQL query, nothing else.
                 error_feedback,
                 chosen_model,
                 system_instructions=system_instructions,
-                bi_semantics_hint=bi_semantics_hint
+                bi_semantics_hint=bi_semantics_hint,
+                feedback_context=feedback_context,
             )
 
             if not sql:

@@ -868,8 +868,6 @@ def _answer_status_check(args: dict, router_config: dict) -> dict:
 # ============================================================
 def _run_db_track(question: str, ctx: dict) -> dict:
     enriched_question = question
-    if ctx.get("feedback_context"):
-        enriched_question = f"{ctx['feedback_context']}\n\nUser question: {question}"
 
     # Data Source Finaliser: resolve any business term in the question
     # (e.g. "copper", "Europe") against this user's uploaded spreadsheet
@@ -898,7 +896,7 @@ def _run_db_track(question: str, ctx: dict) -> dict:
     full_result = run_data_bridge_agent(
         enriched_question, session_id=ctx["session_id"],
         model_name=ctx["model_name"], custom_key=ctx["custom_key"], user_id=ctx.get("user_id", 1),
-        router_config=ctx.get("router_config"),
+        router_config=ctx.get("router_config"), feedback_context=ctx.get("feedback_context", ""),
     )
     chat_ui = full_result.get("chat_ui", {}) if isinstance(full_result, dict) else {}
     cot_logs = full_result.get("cot_logs", {}) if isinstance(full_result, dict) else {}
@@ -932,14 +930,10 @@ def _run_db_track(question: str, ctx: dict) -> dict:
 
 
 def _run_files_track(question: str, ctx: dict) -> dict:
-    enriched_question = question
-    if ctx.get("feedback_context"):
-        enriched_question = f"{ctx['feedback_context']}\n\nUser question: {question}"
-
     rag_res = answer_from_docs(
-        enriched_question, model_name=ctx["model_name"],
+        question, model_name=ctx["model_name"],
         session_id=ctx["session_id"], custom_key=ctx["custom_key"],
-        user_id=ctx.get("user_id"),
+        user_id=ctx.get("user_id"), feedback_context=ctx.get("feedback_context", ""),
     )
 
     document_codes = rag_res.get("document_codes") or []
@@ -966,16 +960,13 @@ def _run_files_track(question: str, ctx: dict) -> dict:
 
 
 def _run_api_track(question: str, ctx: dict) -> dict:
-    enriched_question = question
-    if ctx.get("feedback_context"):
-        enriched_question = f"{ctx['feedback_context']}\n\nUser question: {question}"
-
     payload = ask_dynamic_model_with_tools(
-        user_message=enriched_question, llm_tools_list=ctx["active_db_tools"],
+        user_message=question, llm_tools_list=ctx["active_db_tools"],
         model_name=ctx["model_name"], session_id=ctx["session_id"],
         custom_key=ctx["custom_key"],
         ollama_config={"url": "http://ollama:11434/api/chat", "temperature": 0},
-        display_query=enriched_question,
+        display_query=question,
+        feedback_context=ctx.get("feedback_context", ""),
     )
     if isinstance(payload, dict):
         tool_call = payload.get("tool_call")
@@ -1041,12 +1032,9 @@ def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
 
 
 def _run_general_track(question: str, ctx: dict) -> dict:
-    enriched_question = question
-    if ctx.get("feedback_context"):
-        enriched_question = f"{ctx['feedback_context']}\n\nUser question: {question}"
-
     gen_result = answer_general_knowledge(
-        enriched_question, ctx["model_name"], ctx["custom_key"], ctx["system_instructions"], []
+        question, ctx["model_name"], ctx["custom_key"], ctx["system_instructions"], [],
+        feedback_context=ctx.get("feedback_context", ""),
     )
     return {
         "answer": gen_result.get("answer"),

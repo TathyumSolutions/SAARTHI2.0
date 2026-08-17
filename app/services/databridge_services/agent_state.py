@@ -17,6 +17,12 @@ class DataBridgeState(TypedDict):
     user_id: Optional[int]
     custom_key: Optional[str]
     system_instructions: Optional[str]
+    # Self-learning context built from past response_feedback (like/dislike)
+    # rows on similar questions - see _build_feedback_context() in
+    # updated_router_services.py. Read by SQLGeneratorAgent to adjust the
+    # generated SQL (filters/joins/aggregations/columns) when a past
+    # DISLIKED remark is still relevant to this question.
+    feedback_context: Optional[str]
     steps: Optional[List[str]]
 
     # ===== Internal (not persisted/streamed, request-scoped only) =====

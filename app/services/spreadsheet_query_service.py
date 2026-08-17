@@ -159,17 +159,21 @@ def _build_plan_prompt(available_tables: dict, feedback_context: str = "") -> st
 {feedback_context}
 
 The block above is feedback on how PAST similar questions were answered -
-it is not part of the current question. Use it to adjust this plan:
-- A DISLIKED remark that describes a data-quality problem (placeholder or
-  "not applicable" values like "n/a"/"unknown"/"tbd", duplicate rows,
-  wrong grouping, an irrelevant column) means you should add a "filters"
-  entry to exclude those rows: "op": "!=" for one exact placeholder value,
-  or "op": "not_contains" to exclude every value containing a shared
-  fragment (e.g. column contains "n/a" in any form) - but only if the
-  relevant column is listed under AVAILABLE TABLES; never invent a column
-  or value that isn't there.
-- A LIKED remark confirms the previous grouping/columns/filters worked -
-  reuse that same approach if it fits this question.
+it is not part of the current question. It can be about anything: a
+placeholder/"not applicable" value that shouldn't have been included, the
+wrong table or join, a wrong "group_by"/aggregation, a wrong sort order or
+limit, a missing filter, or an irrelevant column. If a DISLIKED remark is
+still relevant to this question, translate it into a matching change in
+this plan - e.g. a "filters" entry to exclude specific values ("op": "!="
+for one exact value, "op": "not_contains" to exclude every value sharing a
+fragment like "n/a" in any form), a different "group_by"/"aggregations",
+a different "sort_by"/"limit", or different "tables"/"join" - but only
+using tables/columns listed under AVAILABLE TABLES; never invent one. If
+a LIKED remark confirms a previous approach worked, reuse it when it fits.
+Ignore anything in the feedback that doesn't apply to this question, and
+leave the plan alone if none of it maps onto the fields this plan
+supports (e.g. feedback about tone or wording - that's for the answer
+step, not this plan).
 """
 
     return f"""You turn a business question into a strict JSON query plan
@@ -452,11 +456,14 @@ def answer_from_spreadsheets(
             system_content += (
                 f"\n\n{feedback_context}\n\n"
                 "That is feedback on how PAST similar questions were answered, not part of "
-                "this question. If a DISLIKED remark flagged a data-quality problem (e.g. "
-                "placeholder/'not applicable' rows) and the result below still contains rows "
-                "matching that complaint - the query plan wasn't able to filter it out - "
-                "do not present those rows as if they were real answers; note briefly that "
-                "they're excluded/unclear instead of listing them."
+                "this question. It can be about anything - wrong tone, too much/too little "
+                "detail, a data-quality problem, a wrong assumption. If any of it is still "
+                "relevant, apply it to how you write this answer. If a DISLIKED remark flagged "
+                "a data-quality problem (e.g. placeholder/'not applicable' rows) and the result "
+                "below still contains rows matching that complaint - the query plan wasn't able "
+                "to filter it out - do not present those rows as if they were real answers; "
+                "note briefly that they're excluded/unclear instead of listing them. Ignore "
+                "whatever in the feedback doesn't apply to this question."
             )
         try:
             final_answer = _invoke_llm(model_name, custom_key, system_content, answer_prompt).strip()
