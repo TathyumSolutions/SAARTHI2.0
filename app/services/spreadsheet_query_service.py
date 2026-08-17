@@ -21,7 +21,7 @@ import pandas as pd
 from app.services.stream_manager import stream_manager
 from app.services import spreadsheet_service
 
-ALLOWED_FILTER_OPS = {"==", "!=", ">", "<", ">=", "<=", "in", "contains"}
+ALLOWED_FILTER_OPS = {"==", "!=", ">", "<", ">=", "<=", "in", "contains", "not_contains"}
 ALLOWED_AGG_FUNCS = {"sum", "mean", "count", "min", "max", "median", "nunique"}
 ALLOWED_JOIN_HOW = {"inner", "left", "right", "outer"}
 MAX_ROW_LIMIT = 5000
@@ -145,19 +145,39 @@ def _extract_json(text: str) -> dict:
     return json.loads(match.group(0))
 
 
-def _build_plan_prompt(available_tables: dict) -> str:
+def _build_plan_prompt(available_tables: dict, feedback_context: str = "") -> str:
     tables_desc = []
     for table_name, info in available_tables.items():
         cols = ", ".join(f"{c['name']} ({c['type']})" for c in info.get("columns", []))
         tables_desc.append(f"- {table_name}: {info.get('description', '')}\n  columns: {cols}")
     tables_block = "\n".join(tables_desc) if tables_desc else "(no tables available)"
 
+    feedback_block = ""
+    if feedback_context:
+        feedback_block = f"""
+
+{feedback_context}
+
+The block above is feedback on how PAST similar questions were answered -
+it is not part of the current question. Use it to adjust this plan:
+- A DISLIKED remark that describes a data-quality problem (placeholder or
+  "not applicable" values like "n/a"/"unknown"/"tbd", duplicate rows,
+  wrong grouping, an irrelevant column) means you should add a "filters"
+  entry to exclude those rows: "op": "!=" for one exact placeholder value,
+  or "op": "not_contains" to exclude every value containing a shared
+  fragment (e.g. column contains "n/a" in any form) - but only if the
+  relevant column is listed under AVAILABLE TABLES; never invent a column
+  or value that isn't there.
+- A LIKED remark confirms the previous grouping/columns/filters worked -
+  reuse that same approach if it fits this question.
+"""
+
     return f"""You turn a business question into a strict JSON query plan
 against spreadsheet-derived tables. You never write code - only this JSON.
 
 AVAILABLE TABLES:
 {tables_block}
-
+{feedback_block}
 Return ONLY a JSON object with this shape (omit fields you don't need,
 but "tables" is always required):
 {{
@@ -173,7 +193,7 @@ but "tables" is always required):
 
 Rules:
 - Only reference tables and columns listed above under AVAILABLE TABLES - never invent one.
-- "op" must be one of: == != > < >= <= in contains
+- "op" must be one of: == != > < >= <= in contains not_contains
 - "func" must be one of: sum mean count min max median nunique
 - "how" must be one of: inner left right outer
 - Use "join" only when the question needs data from two tables together.
@@ -268,6 +288,8 @@ def _apply_filter(df: pd.DataFrame, column: str, op: str, value) -> pd.DataFrame
         return df[series.isin(values)]
     if op == "contains":
         return df[series.astype(str).str.contains(str(value), case=False, na=False)]
+    if op == "not_contains":
+        return df[~series.astype(str).str.contains(str(value), case=False, na=False)]
     raise PlanValidationError(f"Unsupported filter operator '{op}'.")
 
 
@@ -334,9 +356,12 @@ def answer_from_spreadsheets(
     custom_key: str = "",
     system_instructions: str = "",
     session_id: str = "1",
+    feedback_context: str = "",
 ) -> dict:
     session_id = str(session_id)
     master_steps = []
+    if feedback_context:
+        print(f"🧠 [FEEDBACK-DEBUG] [SPREADSHEET] Using feedback context for plan-building and answer-writing:\n{feedback_context}")
 
     def push_event(event_type, title, description):
         payload = {"event": event_type, "title": title, "description": description, "is_sql": False}
@@ -373,7 +398,7 @@ def answer_from_spreadsheets(
             }
 
         push_event("start", "Building the Data Query", "Working out how to filter, group, and join the relevant tables.")
-        plan_prompt = _build_plan_prompt(available_tables)
+        plan_prompt = _build_plan_prompt(available_tables, feedback_context)
         raw_plan = _invoke_llm(model_name, custom_key, plan_prompt, user_query)
 
         try:
@@ -387,6 +412,8 @@ def answer_from_spreadsheets(
                 "sql": None, "table": [], "chart": {}, "insights": [],
                 "steps": master_steps,
             }
+        if feedback_context:
+            print(f"🧠 [FEEDBACK-DEBUG] [SPREADSHEET] Plan built with feedback context in scope - filters: {plan.get('filters')}")
         push_event("complete", "Building the Data Query", "Prepared a plan: " + ", ".join(plan["tables"]) + ".")
 
         push_event("start", "Running the Query", "Applying filters, joins, and aggregations to your spreadsheet data.")
@@ -421,6 +448,16 @@ def answer_from_spreadsheets(
         system_content = "You are Saarthi AI, acting as a data analyst for this enterprise."
         if system_instructions and system_instructions.strip():
             system_content += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
+        if feedback_context:
+            system_content += (
+                f"\n\n{feedback_context}\n\n"
+                "That is feedback on how PAST similar questions were answered, not part of "
+                "this question. If a DISLIKED remark flagged a data-quality problem (e.g. "
+                "placeholder/'not applicable' rows) and the result below still contains rows "
+                "matching that complaint - the query plan wasn't able to filter it out - "
+                "do not present those rows as if they were real answers; note briefly that "
+                "they're excluded/unclear instead of listing them."
+            )
         try:
             final_answer = _invoke_llm(model_name, custom_key, system_content, answer_prompt).strip()
         except Exception as e:

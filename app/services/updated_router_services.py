@@ -308,7 +308,10 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
     past feedback still applies to them; it's just scoped to user_id
     instead of being pooled with anyone else's.
     """
+    scope_label = f"company_code={company_code}" if company_code else f"user_id={user_id}"
+
     if not user_query or (not company_code and not user_id):
+        print(f"🧠 [FEEDBACK-DEBUG] Skipped - no user_query or no scope (company_code={company_code}, user_id={user_id}).")
         return ""
 
     candidates_query = (
@@ -323,6 +326,7 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
     )
     candidates = candidates_query.order_by(ResponseFeedback.created_at.desc()).limit(200).all()
 
+    print(f"🧠 [FEEDBACK-DEBUG] scope={scope_label} query=\"{user_query}\" -> {len(candidates)} candidate feedback row(s) in range.")
     if not candidates:
         return ""
 
@@ -338,8 +342,16 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
         scored.append((score, row))
 
     scored.sort(key=lambda x: x[0], reverse=True)
+
+    top_preview = ", ".join(
+        f"[{score:.3f} {row.feedback_type} q=\"{(row.question or '')[:60]}\"]"
+        for score, row in scored[:top_k]
+    ) or "(none)"
+    print(f"🧠 [FEEDBACK-DEBUG] Top {top_k} scored candidates: {top_preview}")
+
     best = [row for score, row in scored[:top_k] if score > 0]
     if not best:
+        print(f"🧠 [FEEDBACK-DEBUG] None of the top candidates cleared the score > 0 threshold - no context injected.")
         return ""
 
     lines = []
@@ -352,7 +364,9 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
         else:
             lines.append("- A similar question was LIKED before - this style of answer worked well.")
 
-    return "COMPANY FEEDBACK CONTEXT:\n" + "\n".join(lines)
+    context = "COMPANY FEEDBACK CONTEXT:\n" + "\n".join(lines)
+    print(f"🧠 [FEEDBACK-DEBUG] Built context from {len(best)} matched row(s):\n{context}")
+    return context
 
 
 # ============================================================
@@ -989,13 +1003,17 @@ def _run_api_track(question: str, ctx: dict) -> dict:
 
 
 def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
-    enriched_question = question
-    if ctx.get("feedback_context"):
-        enriched_question = f"{ctx['feedback_context']}\n\nUser question: {question}"
-
+    # feedback_context is passed through as its own argument (not glued onto
+    # the question string) - see answer_from_spreadsheets, which puts it in
+    # the plan-building and answer-writing SYSTEM prompts with explicit
+    # instructions on how to act on it. Splicing it into the question text
+    # used to both corrupt the literal "Question: ..." line the answer LLM
+    # sees and give the plan-building LLM no indication it was even meant
+    # to change the query plan (e.g. filter out flagged placeholder values).
     result = answer_from_spreadsheets(
-        enriched_question, model_name=ctx["model_name"], custom_key=ctx["custom_key"],
+        question, model_name=ctx["model_name"], custom_key=ctx["custom_key"],
         system_instructions=ctx.get("system_instructions", ""), session_id=ctx["session_id"],
+        feedback_context=ctx.get("feedback_context", ""),
     )
 
     tables = result.get("tables") or []
