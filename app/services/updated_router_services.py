@@ -1311,11 +1311,21 @@ class RouterService:
 
             self_learning_enabled = bool(load_rag_config().get("self_learning", {}).get("enabled", False))
             feedback_context = ""
+            router_level_steps: list = []
             if self_learning_enabled:
+                scope_label = f"company {company_code}" if company_code else f"user {user_id}"
+                _push_router_event(
+                    session_id, "start", "Checking Self-Learning Feedback",
+                    f"Looking for past like/dislike feedback on similar questions for {scope_label}."
+                )
                 feedback_context = _build_feedback_context(company_code, user_id, user_query)
                 if feedback_context:
-                    scope_label = f"company {company_code}" if company_code else f"user {user_id}"
                     print(f"🧠 [SELF-LEARNING] Injected feedback context for {scope_label}")
+                    feedback_step_desc = "Found relevant past feedback - added it to the prompt to guide this answer."
+                else:
+                    feedback_step_desc = "No relevant past feedback found for a question like this yet."
+                _push_router_event(session_id, "complete", "Checking Self-Learning Feedback", feedback_step_desc)
+                router_level_steps.append(f"Checking Self-Learning Feedback - {feedback_step_desc}")
 
             messages = _build_router_messages(
                 user_query,
@@ -1385,10 +1395,12 @@ class RouterService:
                     "Answered directly using model reasoning - no external data source was needed.",
                     [], None,
                 )
+                no_tool_steps = router_level_steps + ["Router answered directly, no data source tool needed."]
                 return {
                     "answer": response.content,
                     "sql": None, "table": [], "chart": {}, "insights": [],
-                    "steps": ["Router answered directly, no data source tool needed."],
+                    "steps": no_tool_steps,
+                    "chain_of_thought": no_tool_steps,
                     "router_decision": "GENERAL",
                     "execution_type": "fresh",
                     "format": "text",
@@ -1421,7 +1433,7 @@ class RouterService:
             executed_in_parallel = len(tool_calls) > 1
 
             results = []
-            master_steps: list = []
+            master_steps: list = list(router_level_steps)
             for outcome in outcomes:
                 if outcome is None:
                     continue
@@ -1434,7 +1446,7 @@ class RouterService:
                 return {
                     "answer": "I don't have a connected data source that covers this request.",
                     "sql": None, "table": [], "chart": {}, "insights": [],
-                    "steps": ["No dispatchable tool matched the router's selection."],
+                    "steps": router_level_steps + ["No dispatchable tool matched the router's selection."],
                 }
 
             # Surface exactly which named data sources answered this
