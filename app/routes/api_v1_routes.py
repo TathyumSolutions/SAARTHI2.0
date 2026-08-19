@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from app.services.updated_router_services import RouterService
+from app.services.router_service import RouterService
 from flask_jwt_extended import jwt_required
 from app import limiter
 from app.utils.auth_helpers import get_current_user

@@ -407,7 +407,7 @@ def _build_schema_for_user(user_id: int, router_config: dict = None) -> dict:
     the "Process" button on a database connection builds), converted into
     the shape the SQL agents below expect.
 
-    If router_config (the routing menu dict updated_router_services.py
+    If router_config (the routing menu dict router_service.py
     already computed for this same chat turn's routing decision) is
     passed in, reuses it instead of recomputing from scratch - avoids
     paying for a second full live introspection (DB connections, Qdrant,

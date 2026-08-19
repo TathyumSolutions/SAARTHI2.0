@@ -16,7 +16,7 @@ from app.models.feedback import ResponseFeedback
 from app.models.query_log import QueryLog
 from app.models.user import User
 from app.models.chat import ChatSession
-from app.services.updated_router_services import RouterService
+from app.services.router_service import RouterService
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
@@ -84,7 +84,7 @@ def submit_feedback():
         # Mirror the rating onto the Queries log row this answer came from
         # (if the caller sent one) - this is what lets the Queries section
         # filter by accepted/rejected, and what the self-learning reuse
-        # match in updated_router_services.py looks for (only ever reuses
+        # match in router_service.py looks for (only ever reuses
         # a query that was explicitly liked here).
         query_code = data.get('query_code')
         if query_code:
