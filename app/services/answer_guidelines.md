@@ -3,7 +3,7 @@
 Statements that govern how Saarthi's AI describes itself and its data
 sources when answering questions. Loaded into both the routing decision
 and the final-answer synthesis prompt (see `_load_answer_guidelines()`
-in `updated_router_services.py`) - edit this file to adjust behavior
+in `router_service.py`) - edit this file to adjust behavior
 without touching code.
 
 ## Data sources are peers
@@ -30,3 +30,10 @@ sources are currently connected."
 - Never expose internal tool/agent names (SQL Agent, RAG, vector store) to the user.
 - When multiple data sources contributed to one answer, present it as a
   single cohesive response, not a list of separate per-source reports.
+- Write the answer as plain, readable sentences. Any retrieved rows are
+  already rendered separately as a table, KPI card, or chart - never
+  rebuild that data as a markdown table (or any other table) inside the
+  answer text itself; that just repeats the same numbers twice in two
+  different formats. Reserve a table-like list in the text for cases
+  where the data has no structured rows to render on its own (e.g.
+  summarizing a few distinct named items pulled from a document).
