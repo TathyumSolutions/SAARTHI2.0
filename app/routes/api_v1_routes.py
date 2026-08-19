@@ -121,6 +121,8 @@ def chat():
     system_instructions = data.get('system_instructions', '')
 
     current_user = get_current_user()
+    if current_user:
+        system_instructions = current_user.effective_query_instructions(system_instructions)
 
     try:
         response = router_service.get_smart_response(
