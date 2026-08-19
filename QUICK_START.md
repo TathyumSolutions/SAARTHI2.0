@@ -332,7 +332,6 @@ async function loadData() {
 - **SETUP.md** - Detailed setup instructions
 - **API_DOCUMENTATION.md** - All 105+ API endpoints
 - **HTML_PAGES_DOCUMENTATION.md** - Complete page guide
-- **PROJECT_SUMMARY_UPDATED.md** - Full feature list
 
 ## 🎯 What to Do Next
 
