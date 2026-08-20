@@ -31,6 +31,7 @@ import json
 import os
 import math
 import re
+from itertools import zip_longest
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Literal, Optional
 
@@ -559,12 +560,23 @@ def _find_static_data_hints(user_query: str, router_config: dict) -> list:
     "commodity prices") has nothing to lose against, since it's the only
     tool description exposed as a short, high-salience bullet list (see
     live_tools_summary below) instead of buried in the full config JSON.
+
+    Emits at most one hint per (source, table) - a wide lookup table that
+    matches on four different columns (material_id, material_name,
+    material_group_code, material_group_name, say) used to fill the whole
+    hint budget with four near-duplicate lines for itself, silently
+    crowding out every DB table that also had a real match (e.g. a
+    question about material "net worth" matching ekpo.material_id and
+    mara.material_id got no hint at all once a same-named spreadsheet
+    table's columns had already used up the cap). Table-level hints from
+    SPREADSHEET and DB are then interleaved so one source with many
+    matching tables can't starve the other of hint slots either.
     """
     words = set(re.findall(r"[a-zA-Z][a-zA-Z0-9_]{2,}", user_query.lower())) - _ROUTING_HINT_STOPWORDS
     if not words:
         return []
 
-    hints = []
+    per_source_hints = {"SPREADSHEET": [], "DB": []}
     datasources = router_config.get("routing_menu", {}).get("datasources", {}) if router_config else {}
     for source_key in ("SPREADSHEET", "DB"):
         tables = datasources.get(source_key, {}).get("tables", {}) or {}
@@ -572,6 +584,8 @@ def _find_static_data_hints(user_query: str, router_config: dict) -> list:
             columns = table_data.get("columns") if isinstance(table_data, dict) else None
             if not isinstance(columns, list):
                 continue
+
+            best_hint = None  # a value match beats a name-only match
             for col in columns:
                 if not isinstance(col, dict):
                     continue
@@ -582,14 +596,28 @@ def _find_static_data_hints(user_query: str, router_config: dict) -> list:
                 sample_values = [str(v) for v in (col.get("sample_values") or [])]
                 matched_value = next((v for v in sample_values if v.strip().lower() in words), None)
 
-                if not _column_name_matches_question(words, name_tokens) and not matched_value:
+                if not matched_value and not _column_name_matches_question(words, name_tokens):
                     continue
 
                 values_preview = ", ".join(sample_values[:8]) if sample_values else "(no sample values captured)"
                 reason = f'value "{matched_value}" matches the question' if matched_value else "column name matches the question"
-                hints.append(f"- {source_key} table '{table_name}', column '{col_name}' ({reason}) - sample values: {values_preview}")
+                hint = f"- {source_key} table '{table_name}', column '{col_name}' ({reason}) - sample values: {values_preview}"
+                if matched_value:
+                    best_hint = hint
+                    break
+                if best_hint is None:
+                    best_hint = hint
 
-    return hints[:6]
+            if best_hint:
+                per_source_hints[source_key].append(best_hint)
+
+    # Round-robin SPREADSHEET/DB so a source with more matching tables
+    # can't push the other's tables out of the capped list entirely.
+    hints = []
+    for pair in zip_longest(per_source_hints["SPREADSHEET"], per_source_hints["DB"]):
+        hints.extend(h for h in pair if h)
+
+    return hints[:10]
 
 
 def _build_router_messages(user_query: str, chat_history, router_config: dict,
@@ -628,6 +656,10 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
     known_spreadsheet_tables_str = ", ".join(known_spreadsheet_tables) if known_spreadsheet_tables else "(no spreadsheet tables uploaded)"
 
     static_data_hints = _find_static_data_hints(user_query, router_config)
+    hints_span_db_and_spreadsheet = (
+        any(h.startswith("- DB ") for h in static_data_hints)
+        and any(h.startswith("- SPREADSHEET ") for h in static_data_hints)
+    )
     static_data_hints_block = (
         "\n\nSTATIC DATA ALREADY IN YOUR CONNECTED SOURCES (matches words in the question):\n"
         + "\n".join(static_data_hints)
@@ -637,6 +669,17 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
         "topic. Only use call_external_api when the question needs a live/current/real-time value that "
         "only that API actually returns (e.g. today's price), not a fixed classification already sitting "
         "in a connected table."
+        + (
+            "\nBoth a DB table and a SPREADSHEET table matched this question above - don't silently pick "
+            "one just because its table name sounds closer to the question's wording (e.g. a spreadsheet "
+            "literally called 'material_lookup' isn't automatically the right source for a question about "
+            "material net worth if a DB table's own columns, like a net_value or amount column, are what "
+            "actually compute the thing being asked). Call query_database too whenever the question needs "
+            "a real numeric measure (a total, sum, worth, value, or count) and a listed DB table has a "
+            "column for it - a structured table's own numeric column is the reliable source for that, not "
+            "a same-topic table in another source that only happens to name the entity."
+            if hints_span_db_and_spreadsheet else ""
+        )
         if static_data_hints else ""
     )
 
