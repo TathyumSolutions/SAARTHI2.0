@@ -143,16 +143,26 @@
             const sourcesText = (item.sources || []).join(', ');
             const createdLabel = item.created_at ? new Date(item.created_at).toLocaleString() : '';
             const matchedHtml = item.execution_type === 'reused' && item.matched_query_code
-                ? `<div class="qy-matched">↺ Reused from a previously accepted matching query${item.match_score != null ? ` (similarity ${(item.match_score * 100).toFixed(0)}%)` : ''}</div>`
+                ? `<div class="qy-matched">↺ Reused from <strong>${escapeHtml(item.matched_query_code)}</strong>, a previously accepted matching query${item.match_score != null ? ` (similarity ${(item.match_score * 100).toFixed(0)}%)` : ''}</div>`
                 : '';
             const answerHtml = item.answer
                 ? `<div class="qy-field"><strong>Answer:</strong> ${escapeHtml(item.answer)}</div>`
                 : '';
-            const remarksHtml = item.remarks
+
+            // The related query (main_query itself, or - when reused - the
+            // query it matched against) and any feedback given on this
+            // query are collapsed together under one "Main Query" toggle,
+            // so the card's default view stays to just the question and
+            // its badges instead of every supporting detail at once.
+            const relatedQueryHtml = item.main_query
+                ? `<pre class="ds-meta-pre">${escapeHtml(item.main_query)}</pre>`
+                : '';
+            const feedbackDetailHtml = item.remarks
                 ? `<div class="qy-remarks">Self-learning remark: "${escapeHtml(item.remarks)}"</div>`
                 : '';
-            const mainQueryHtml = item.main_query
-                ? `<details class="qy-main-query"><summary>View main query</summary><pre class="ds-meta-pre">${escapeHtml(item.main_query)}</pre></details>`
+            const mainQueryDetails = [relatedQueryHtml, matchedHtml, feedbackDetailHtml].filter(Boolean).join('');
+            const mainQueryHtml = mainQueryDetails
+                ? `<details class="qy-main-query"><summary>Main Query</summary>${mainQueryDetails}</details>`
                 : '';
 
             return `
@@ -170,8 +180,6 @@
                     ${sourcesText ? `<div class="qy-field"><strong>Sources:</strong> ${escapeHtml(sourcesText)}</div>` : ''}
                     ${answerHtml}
                     ${mainQueryHtml}
-                    ${matchedHtml}
-                    ${remarksHtml}
                 </div>
             `;
         }).join('');
