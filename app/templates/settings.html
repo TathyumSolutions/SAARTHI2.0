@@ -19,14 +19,30 @@
     .toggle input:checked + .toggle-slider:before { transform: translateX(18px); }
     .btn { padding: 8px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; }
     .btn-primary { background: var(--primary-blue); color: white; }
+    .btn-secondary { background: var(--dark-bg); color: var(--text-primary); border: 1px solid var(--border-color); }
     .save-bar { position: sticky; bottom: 0; background: var(--sidebar-bg); padding: 16px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
     .save-status { font-size: 13px; }
+    #queryInstructions { width: 100%; min-height: 110px; padding: 10px; margin-top: 10px; box-sizing: border-box; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical; }
+    .instructions-save-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; }
+    .instructions-save-status { font-size: 12px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="settings-container">
     <h2 style="margin-bottom: 16px;">RAG Settings</h2>
+
+    <div class="settings-section">
+        <h3>Query Instructions</h3>
+        <div class="setting-desc" style="margin-bottom: 4px;">
+            Standing rules applied to every question you ask Saarthi &mdash; not just this session. For example: <em>&ldquo;For &lsquo;top N&rsquo; questions, rank by total sales amount unless I say otherwise.&rdquo;</em>
+        </div>
+        <textarea id="queryInstructions" placeholder="e.g. For &quot;top N&quot; questions, rank by total sales amount unless told otherwise. Always show currency in USD."></textarea>
+        <div class="instructions-save-row">
+            <span class="instructions-save-status" id="instructionsSaveStatus"></span>
+            <button class="btn btn-primary" type="button" onclick="saveQueryInstructions()">Save Instructions</button>
+        </div>
+    </div>
 
     <div class="settings-section">
         <h3>Retrieval</h3>
@@ -161,6 +177,31 @@
             if (el.type === 'checkbox') el.checked = !!val;
             else el.value = val;
         });
+
+        const instRes = await authFetch('/api/settings/query-instructions');
+        if (instRes.ok) {
+            const { instructions } = await instRes.json();
+            document.getElementById('queryInstructions').value = instructions || '';
+        }
+    }
+
+    async function saveQueryInstructions() {
+        const statusEl = document.getElementById('instructionsSaveStatus');
+        const instructions = document.getElementById('queryInstructions').value;
+        try {
+            const res = await authFetch('/api/settings/query-instructions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instructions })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            statusEl.textContent = '✓ Saved';
+            statusEl.style.color = 'var(--accent-green)';
+        } catch (e) {
+            statusEl.textContent = '✗ Failed to save: ' + e.message;
+            statusEl.style.color = '#F48771';
+        }
+        setTimeout(() => { statusEl.textContent = ''; }, 2500);
     }
 
     async function saveSettings() {

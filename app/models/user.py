@@ -42,6 +42,13 @@ class User(db.Model):
     verification_token = db.Column(db.String(255), nullable=True)
     verification_token_expires = db.Column(db.DateTime, nullable=True)
 
+    # Standing rules this user wants applied to every query they ask (e.g.
+    # "for top N questions, rank by total sales amount unless told
+    # otherwise") - loaded into the router/answer prompt on every request,
+    # see get_smart_response()'s system_instructions handling in
+    # router_service.py. Free text, no fixed schema.
+    query_instructions = db.Column(db.Text, nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login = db.Column(db.DateTime, nullable=True)
@@ -54,6 +61,17 @@ class User(db.Model):
 
     def is_admin_of_company(self, company_code):
         return self.role == ROLE_ADMIN and self.company_code == company_code
+
+    def effective_query_instructions(self, per_message: str = "") -> str:
+        """Combines this user's standing Settings-page instructions with
+        any ad hoc instructions sent for a single message (e.g. the
+        "Instructions.md" chat modal). The persisted default always
+        applies to every query; per-message text, when present, is
+        layered on top as an addition rather than a replacement, so the
+        two mechanisms compose instead of one silently overriding the
+        other."""
+        parts = [p.strip() for p in (self.query_instructions, per_message) if p and p.strip()]
+        return "\n\n".join(parts)
 
     def to_dict(self):
         return {

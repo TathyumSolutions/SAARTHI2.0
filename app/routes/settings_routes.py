@@ -1,7 +1,10 @@
 from flask import Blueprint, jsonify, request
 import yaml
 import os
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity
+
+from app import db
+from app.models.user import User
 
 bp = Blueprint('settings', __name__)
 
@@ -44,3 +47,33 @@ def update_rag_config():
         yaml.safe_dump(config, f, sort_keys=False)
 
     return jsonify({"status": "success", "config": config})
+
+
+@bp.route('/api/settings/query-instructions', methods=['GET'])
+@jwt_required()
+def get_query_instructions():
+    """Standing instructions this user wants applied to every query -
+    e.g. "for top N questions, rank by total sales amount unless told
+    otherwise". Stored per-user (User.query_instructions), not in the
+    shared rag_config.yaml, since it's personal to whoever is asking."""
+    user = User.query.get(int(get_jwt_identity()))
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({"instructions": user.query_instructions or ""})
+
+
+@bp.route('/api/settings/query-instructions', methods=['POST'])
+@jwt_required()
+def update_query_instructions():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json() or {}
+    instructions = data.get('instructions', '')
+    if not isinstance(instructions, str):
+        return jsonify({"error": "'instructions' must be a string"}), 400
+
+    user.query_instructions = instructions.strip() or None
+    db.session.commit()
+    return jsonify({"status": "success", "instructions": user.query_instructions or ""})

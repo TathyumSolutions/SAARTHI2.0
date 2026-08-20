@@ -341,6 +341,8 @@ def send_message():
         current_user = _resolve_feedback_user()
         user_id = current_user.id if current_user else 1
         company_code = current_user.company_code if current_user else None
+        if current_user:
+            system_instructions = current_user.effective_query_instructions(system_instructions)
 
         ai_response = router_service.get_smart_response(
             user_query,
