@@ -1637,6 +1637,9 @@
 
                     let extraOutput = ``;
 
+                    const isNaValue = (value) => typeof value === 'string' && /^n\/a\b/i.test(value.trim());
+                    const visibleRows = (ui.table || []).filter(row => !Object.values(row).every(isNaValue));
+
                     if (ui.chart && ui.chart.recommended && ui.chart[ui.chart.recommended]) {
                         const chartId = 'chart-' + Date.now();
                         extraOutput += `
@@ -1651,27 +1654,29 @@
                             }
                         }, 350);
                     }
-                    else if (ui.table && ui.table.length > 1) {
-                        // A single-row result is rendered as the KPI card
+                    else if (visibleRows.length > 0) {
+                        // A single remaining row is rendered as the KPI card
                         // below instead - showing both would put the same
                         // one fact in a table AND a KPI box, which is a
                         // redundant table for something that reads more
                         // clearly as a single highlighted value.
-                        const headers = Object.keys(ui.table[0]);
-                        const headerHtml = headers.map(key => `<th style="padding:10px; text-align:left; background:linear-gradient(135deg, #7c3aed, #2563eb); color:#fff; font-weight:600;">${escapeAttr(key)}</th>`).join('');
-                        const rowsHtml = ui.table.map((row, rowIndex) => `<tr style="background:${rowIndex % 2 === 0 ? 'rgba(124, 58, 237, 0.05)' : 'transparent'};">${headers.map(h => `<td style="padding:10px; border-bottom:1px solid #eee; color:#333;">${escapeAttr(row[h])}</td>`).join('')}</tr>`).join('');
+                        if (visibleRows.length > 1) {
+                            const headers = Object.keys(visibleRows[0]);
+                            const headerHtml = headers.map(key => `<th style="padding:10px; text-align:left; background:linear-gradient(135deg, #7c3aed, #2563eb); color:#fff; font-weight:600;">${escapeAttr(key)}</th>`).join('');
+                            const rowsHtml = visibleRows.map((row, rowIndex) => `<tr style="background:${rowIndex % 2 === 0 ? 'rgba(124, 58, 237, 0.08)' : 'transparent'};">${headers.map(h => `<td style="padding:10px; border-bottom:1px solid rgba(255,255,255,0.1); color:#E2E8F0;">${escapeAttr(row[h])}</td>`).join('')}</tr>`).join('');
 
-                        extraOutput += `
-                            <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; box-shadow:0 4px 15px rgba(0,0,0,0.05); overflow-x:auto;">
-                                <table style="width:100%; border-collapse:collapse; font-size:13px; border-radius:8px; overflow:hidden;">
-                                    <thead><tr>${headerHtml}</tr></thead>
-                                    <tbody>${rowsHtml}</tbody>
-                                </table>
-                            </div>`;
+                            extraOutput += `
+                                <div style="padding:15px; border-radius:14px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.12); box-shadow:0 4px 15px rgba(0,0,0,0.15); overflow-x:auto;">
+                                    <table style="width:100%; border-collapse:collapse; font-size:13px; border-radius:8px; overflow:hidden;">
+                                        <thead><tr>${headerHtml}</tr></thead>
+                                        <tbody>${rowsHtml}</tbody>
+                                    </table>
+                                </div>`;
+                        }
                     }
 
-                    if (ui.format === "kpi" || (ui.table && ui.table.length === 1)) {
-                        const primaryRecord = ui.table[0];
+                    if (ui.format === "kpi" || visibleRows.length === 1) {
+                        const primaryRecord = visibleRows[0];
                         if (primaryRecord) {
                             const keys = Object.keys(primaryRecord);
                             const kpiLabel = keys[1] || keys[0];
