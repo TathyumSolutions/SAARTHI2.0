@@ -149,10 +149,10 @@
                 ? `<div class="qy-field"><strong>Answer:</strong> ${escapeHtml(item.answer)}</div>`
                 : '';
             const remarksHtml = item.remarks
-                ? `<div class="qy-remarks">Self-learning remark: "${escapeHtml(item.remarks)}"</div>`
+                ? `<details class="qy-main-query"><summary>Feedback</summary><div class="qy-remarks">Self-learning remark: "${escapeHtml(item.remarks)}"</div></details>`
                 : '';
             const mainQueryHtml = item.main_query
-                ? `<details class="qy-main-query"><summary>View main query</summary><pre class="ds-meta-pre">${escapeHtml(item.main_query)}</pre></details>`
+                ? `<details class="qy-main-query"><summary>Query</summary><pre class="ds-meta-pre">${escapeHtml(item.main_query)}</pre></details>`
                 : '';
 
             return `
