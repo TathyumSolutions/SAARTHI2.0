@@ -3,8 +3,25 @@
 
 {% block extra_styles %}
 <style>
-    .settings-container { max-width: 720px; padding: 32px; }
-    .settings-section { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .settings-container { max-width: 860px; padding: 32px; }
+
+    /* Main (top-level) settings sections - collapsible */
+    .settings-main-section { margin-bottom: 16px; }
+    .settings-main-header {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        cursor: pointer; padding: 14px 20px; background: var(--panel-bg);
+        border: 1px solid var(--border-color); border-radius: 8px;
+    }
+    .settings-main-header h2 { font-size: 16px; margin: 0; }
+    .settings-main-header .settings-main-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; font-weight: normal; }
+    .settings-main-header .expand-icon { font-size: 12px; color: var(--text-secondary); transition: transform 0.2s; flex-shrink: 0; }
+    .settings-main-header.collapsed .expand-icon { transform: rotate(-90deg); }
+    .settings-main-body { padding-top: 12px; }
+    .settings-main-body.collapsed { display: none; }
+
+    /* Sub-sections nested inside a main section */
+    .settings-section { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; margin-bottom: 16px; margin-left: 14px; }
+    .settings-main-body > .settings-section:last-child { margin-bottom: 0; }
     .settings-section h3 { font-size: 15px; margin-bottom: 12px; color: var(--accent-green); }
     .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
     .setting-row:last-child { border-bottom: none; }
@@ -20,127 +37,236 @@
     .btn { padding: 8px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; }
     .btn-primary { background: var(--primary-blue); color: white; }
     .btn-secondary { background: var(--dark-bg); color: var(--text-primary); border: 1px solid var(--border-color); }
+    .btn-danger { background: var(--dark-bg); color: #F48771; border: 1px solid var(--border-color); }
     .save-bar { position: sticky; bottom: 0; background: var(--sidebar-bg); padding: 16px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
     .save-status { font-size: 13px; }
     #queryInstructions { width: 100%; min-height: 110px; padding: 10px; margin-top: 10px; box-sizing: border-box; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical; }
     .instructions-save-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; }
     .instructions-save-status { font-size: 12px; }
+
+    /* Self-Learning > Feedback & Queries */
+    .ds-search { flex: 1; min-width: 220px; padding: 8px 10px; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); }
+    .ds-filter-btn { background: var(--dark-bg); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+    .ds-filter-btn.active { background: var(--primary-blue); color: #fff; border-color: var(--primary-blue); }
+    .ds-empty { color: var(--text-secondary); font-size: 13px; padding: 30px 0; text-align: center; }
+    .ds-loading { color: var(--text-secondary); font-size: 13px; padding: 20px 0; }
+    .sl-controls { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+    .sl-filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .qy-card { background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+    .qy-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+    .qy-question { font-size: 14px; font-weight: 600; color: var(--text-primary); flex: 1; min-width: 200px; }
+    .qy-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .qy-badge { font-size: 10px; padding: 3px 9px; border-radius: 10px; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+    .qy-badge-source { background: rgba(0, 120, 212, 0.18); color: #5AA9F0; }
+    .qy-badge-accepted { background: rgba(78, 201, 176, 0.18); color: var(--accent-green); }
+    .qy-badge-rejected { background: rgba(244, 135, 113, 0.18); color: #F48771; }
+    .qy-badge-unrated { background: rgba(255,255,255,0.08); color: var(--text-secondary); }
+    .qy-field { font-size: 12px; color: var(--text-secondary); }
+    .qy-field strong { color: var(--text-primary); font-weight: 600; }
+    .qy-remarks { font-size: 12px; color: var(--text-secondary); border-left: 2px solid var(--border-color); padding-left: 8px; margin-top: 2px; }
+    .sl-actions { display: flex; gap: 8px; }
+    .sl-edit-panel { border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; background: var(--panel-bg); display: none; }
+    .sl-edit-panel.open { display: block; }
+    .sl-edit-row { display: flex; gap: 16px; margin-bottom: 8px; font-size: 13px; }
+    .sl-edit-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .sl-remarks-input { width: 100%; min-height: 60px; padding: 8px; box-sizing: border-box; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-family: inherit; font-size: 12px; resize: vertical; }
+    .sl-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+    .sl-save-msg { font-size: 12px; margin-left: 6px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="settings-container">
-    <h2 style="margin-bottom: 16px;">RAG Settings</h2>
+    <h2 style="margin-bottom: 16px;">Settings</h2>
 
-    <div class="settings-section">
-        <h3>Query Instructions</h3>
-        <div class="setting-desc" style="margin-bottom: 4px;">
-            Standing rules applied to every question you ask Saarthi &mdash; not just this session. For example: <em>&ldquo;For &lsquo;top N&rsquo; questions, rank by total sales amount unless I say otherwise.&rdquo;</em>
-        </div>
-        <textarea id="queryInstructions" placeholder="e.g. For &quot;top N&quot; questions, rank by total sales amount unless told otherwise. Always show currency in USD."></textarea>
-        <div class="instructions-save-row">
-            <span class="instructions-save-status" id="instructionsSaveStatus"></span>
-            <button class="btn btn-primary" type="button" onclick="saveQueryInstructions()">Save Instructions</button>
-        </div>
-    </div>
-
-    <div class="settings-section">
-        <h3>Retrieval</h3>
-        <div class="setting-row">
-            <div><div class="setting-label">Chunks to retrieve (top_k)</div><div class="setting-desc">How many chunks to fetch per search</div></div>
-            <div class="setting-input"><input type="number" data-path="retrieval.top_k" min="1" max="20"></div>
-        </div>
-        <div class="setting-row">
-            <div><div class="setting-label">HyDE</div><div class="setting-desc">Search using a hypothetical answer instead of the raw question</div></div>
-            <label class="toggle"><input type="checkbox" data-path="retrieval.hyde.enabled"><span class="toggle-slider"></span></label>
-        </div>
-        <div class="setting-row">
-            <div><div class="setting-label">Multi-Query Retrieval</div><div class="setting-desc">Search using several reworded versions of the question</div></div>
-            <label class="toggle"><input type="checkbox" data-path="retrieval.multi_query.enabled"><span class="toggle-slider"></span></label>
-        </div>
-        <div class="setting-row">
-            <div><div class="setting-label">Number of query variations</div><div class="setting-desc">Only used if Multi-Query is on</div></div>
-            <div class="setting-input"><input type="number" data-path="retrieval.multi_query.num_variations" min="1" max="6"></div>
-        </div>
-    </div>
-
-    <div class="settings-section">
-        <h3>Document Processing</h3>
-        <div class="setting-row">
-            <div><div class="setting-label">Chunk size</div><div class="setting-desc">Characters per chunk</div></div>
-            <div class="setting-input"><input type="number" data-path="chunking.chunk_size" min="100" max="4000"></div>
-        </div>
-        <div class="setting-row">
-            <div><div class="setting-label">Chunk overlap</div><div class="setting-desc">Characters shared between adjacent chunks</div></div>
-            <div class="setting-input"><input type="number" data-path="chunking.chunk_overlap" min="0" max="1000"></div>
-        </div>
-        <div class="setting-row">
-            <div><div class="setting-label">Table extraction</div><div class="setting-desc">Pull tables out as clean, structured chunks</div></div>
-            <label class="toggle"><input type="checkbox" data-path="chunking.table.enabled"><span class="toggle-slider"></span></label>
-        </div>
-        <div class="setting-row">
-            <div><div class="setting-label">Image extraction (PDF)</div><div class="setting-desc">Extract and caption images found in PDFs</div></div>
-            <label class="toggle"><input type="checkbox" data-path="ingestion.images.extract_from_pdf"><span class="toggle-slider"></span></label>
-        </div>
-    </div>
-
-    <div class="settings-section">
-        <h3>Generation</h3>
-        <div class="setting-row">
-            <div><div class="setting-label">Temperature</div><div class="setting-desc">0 = focused/deterministic, higher = more varied</div></div>
-            <div class="setting-input"><input type="number" data-path="generation.temperature" min="0" max="2" step="0.1"></div>
-        </div>
-    </div>
-
-    <div class="settings-section">
-        <h3>Data Warehouse</h3>
-        <div class="setting-row" style="align-items: flex-start;">
+    <!-- 1. Query Instructions -->
+    <div class="settings-main-section">
+        <div class="settings-main-header" onclick="toggleMainSection(this)">
             <div>
-                <div class="setting-label">Build Warehouse</div>
-                <div class="setting-desc">Generate schema and push complete or incremental data based on Metamind's discovered table metadata</div>
+                <h2>Query Instructions</h2>
             </div>
-            <div class="setting-input">
-                <a href="/build_warehouse" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Open</a>
+        </div>
+        <div class="settings-main-body">
+            <div class="settings-section" style="margin-left: 0;">
+                <div class="setting-desc" style="margin-bottom: 4px;">
+                    Standing rules applied to every question you ask Saarthi &mdash; not just this session. For example: <em>&ldquo;For &lsquo;top N&rsquo; questions, rank by total sales amount unless I say otherwise.&rdquo;</em>
+                </div>
+                <textarea id="queryInstructions" placeholder="e.g. For &quot;top N&quot; questions, rank by total sales amount unless told otherwise. Always show currency in USD."></textarea>
+                <div class="instructions-save-row">
+                    <span class="instructions-save-status" id="instructionsSaveStatus"></span>
+                    <button class="btn btn-primary" type="button" onclick="saveQueryInstructions()">Save Instructions</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="settings-section">
-        <h3>Self-Learning Mode</h3>
-        <div class="setting-row">
+    <!-- 2. RAG Settings (Retrieval, Document Processing, Generation) -->
+    <div class="settings-main-section">
+        <div class="settings-main-header" onclick="toggleMainSection(this)">
             <div>
-                <div class="setting-label">Self-Learning Mode</div>
-                <div class="setting-desc">Show like/dislike on answers and use saved feedback to improve future answers for your company</div>
+                <h2>RAG Settings</h2>
+                <div class="settings-main-desc">How Saarthi retrieves, processes, and generates answers from your data</div>
             </div>
-            <label class="toggle">
-                <input type="checkbox" data-path="self_learning.enabled">
-                <span class="toggle-slider"></span>
-            </label>
+            <span class="expand-icon">▼</span>
+        </div>
+        <div class="settings-main-body">
+            <div class="settings-section">
+                <h3>Retrieval</h3>
+                <div class="setting-row">
+                    <div><div class="setting-label">Chunks to retrieve (top_k)</div><div class="setting-desc">How many chunks to fetch per search</div></div>
+                    <div class="setting-input"><input type="number" data-path="retrieval.top_k" min="1" max="20"></div>
+                </div>
+                <div class="setting-row">
+                    <div><div class="setting-label">HyDE</div><div class="setting-desc">Search using a hypothetical answer instead of the raw question</div></div>
+                    <label class="toggle"><input type="checkbox" data-path="retrieval.hyde.enabled"><span class="toggle-slider"></span></label>
+                </div>
+                <div class="setting-row">
+                    <div><div class="setting-label">Multi-Query Retrieval</div><div class="setting-desc">Search using several reworded versions of the question</div></div>
+                    <label class="toggle"><input type="checkbox" data-path="retrieval.multi_query.enabled"><span class="toggle-slider"></span></label>
+                </div>
+                <div class="setting-row">
+                    <div><div class="setting-label">Number of query variations</div><div class="setting-desc">Only used if Multi-Query is on</div></div>
+                    <div class="setting-input"><input type="number" data-path="retrieval.multi_query.num_variations" min="1" max="6"></div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Document Processing</h3>
+                <div class="setting-row">
+                    <div><div class="setting-label">Chunk size</div><div class="setting-desc">Characters per chunk</div></div>
+                    <div class="setting-input"><input type="number" data-path="chunking.chunk_size" min="100" max="4000"></div>
+                </div>
+                <div class="setting-row">
+                    <div><div class="setting-label">Chunk overlap</div><div class="setting-desc">Characters shared between adjacent chunks</div></div>
+                    <div class="setting-input"><input type="number" data-path="chunking.chunk_overlap" min="0" max="1000"></div>
+                </div>
+                <div class="setting-row">
+                    <div><div class="setting-label">Table extraction</div><div class="setting-desc">Pull tables out as clean, structured chunks</div></div>
+                    <label class="toggle"><input type="checkbox" data-path="chunking.table.enabled"><span class="toggle-slider"></span></label>
+                </div>
+                <div class="setting-row">
+                    <div><div class="setting-label">Image extraction (PDF)</div><div class="setting-desc">Extract and caption images found in PDFs</div></div>
+                    <label class="toggle"><input type="checkbox" data-path="ingestion.images.extract_from_pdf"><span class="toggle-slider"></span></label>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Generation</h3>
+                <div class="setting-row">
+                    <div><div class="setting-label">Temperature</div><div class="setting-desc">0 = focused/deterministic, higher = more varied</div></div>
+                    <div class="setting-input"><input type="number" data-path="generation.temperature" min="0" max="2" step="0.1"></div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="settings-section">
-        <h3>Model Selection</h3>
-        <div class="setting-row" style="align-items: flex-start;">
+    <!-- 3. Data Warehouse -->
+    <div class="settings-main-section">
+        <div class="settings-main-header" onclick="toggleMainSection(this)">
             <div>
-                <div class="setting-label">Model Selection</div>
-                <div class="setting-desc">Choose which AI model runs each step of the pipeline</div>
+                <h2>Data Warehouse</h2>
             </div>
-            <div class="setting-input">
-                <a href="/model_selection" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Open</a>
+        </div>
+        <div class="settings-main-body">
+            <div class="settings-section" style="margin-left: 0;">
+                <div class="setting-row" style="align-items: flex-start;">
+                    <div>
+                        <div class="setting-label">Build Warehouse</div>
+                        <div class="setting-desc">Generate schema and push complete or incremental data based on Metamind's discovered table metadata</div>
+                    </div>
+                    <div class="setting-input">
+                        <a href="/build_warehouse" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Open</a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="settings-section">
-        <h3>BI Semantics</h3>
-        <div class="setting-row" style="align-items: flex-start;">
+    <!-- 4. Self-Learning (Settings, Feedback & Queries) -->
+    <div class="settings-main-section">
+        <div class="settings-main-header" onclick="toggleMainSection(this)">
             <div>
-                <div class="setting-label">Business Measures</div>
-                <div class="setting-desc">Tune which measure/aggregation each table defaults to (e.g. sales orders → SUM(net_value)) when a question doesn't say what to measure</div>
+                <h2>Self-Learning</h2>
+                <div class="settings-main-desc">Like/dislike on answers, and the feedback used to improve future answers</div>
             </div>
-            <div class="setting-input">
-                <a href="/bi_semantics" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Open</a>
+            <span class="expand-icon">▼</span>
+        </div>
+        <div class="settings-main-body">
+            <div class="settings-section">
+                <h3>Settings</h3>
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Self-Learning Mode</div>
+                        <div class="setting-desc">Show like/dislike on answers and use saved feedback to improve future answers for your company</div>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" data-path="self_learning.enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Feedback &amp; Queries</h3>
+                <div class="setting-desc" style="margin-bottom: 12px;">
+                    Every logged query, whether it was liked or disliked, and the remark left with that feedback. Add feedback to an unrated query, or edit/delete feedback already given &mdash; changes apply immediately.
+                </div>
+                <div class="sl-controls">
+                    <input id="slSearch" class="ds-search" type="text" placeholder="Search by question..." />
+                    <div class="sl-filter-group" id="slFeedbackFilters">
+                        <button type="button" class="ds-filter-btn active" data-feedback="all">All</button>
+                        <button type="button" class="ds-filter-btn" data-feedback="accepted">Liked</button>
+                        <button type="button" class="ds-filter-btn" data-feedback="rejected">Disliked</button>
+                        <button type="button" class="ds-filter-btn" data-feedback="unrated">Unrated</button>
+                    </div>
+                </div>
+                <div id="slFeedbackList">
+                    <div class="ds-loading">Loading queries...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. Model Selection -->
+    <div class="settings-main-section">
+        <div class="settings-main-header" onclick="toggleMainSection(this)">
+            <div>
+                <h2>Model Selection</h2>
+            </div>
+        </div>
+        <div class="settings-main-body">
+            <div class="settings-section" style="margin-left: 0;">
+                <div class="setting-row" style="align-items: flex-start;">
+                    <div>
+                        <div class="setting-label">Model Selection</div>
+                        <div class="setting-desc">Choose which AI model runs each step of the pipeline</div>
+                    </div>
+                    <div class="setting-input">
+                        <a href="/model_selection" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Open</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. BI Semantics -->
+    <div class="settings-main-section">
+        <div class="settings-main-header" onclick="toggleMainSection(this)">
+            <div>
+                <h2>BI Semantics</h2>
+            </div>
+        </div>
+        <div class="settings-main-body">
+            <div class="settings-section" style="margin-left: 0;">
+                <div class="setting-row" style="align-items: flex-start;">
+                    <div>
+                        <div class="setting-label">Business Measures</div>
+                        <div class="setting-desc">Tune which measure/aggregation each table defaults to (e.g. sales orders → SUM(net_value)) when a question doesn't say what to measure</div>
+                    </div>
+                    <div class="setting-input">
+                        <a href="/bi_semantics" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Open</a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -155,6 +281,17 @@
 
 {% block extra_scripts %}
 <script>
+    // ==========================================
+    // MAIN SECTION EXPAND / COLLAPSE
+    // ==========================================
+    function toggleMainSection(headerEl) {
+        headerEl.classList.toggle('collapsed');
+        const body = headerEl.nextElementSibling;
+        if (body && body.classList.contains('settings-main-body')) {
+            body.classList.toggle('collapsed');
+        }
+    }
+
     function getByPath(obj, path) {
         return path.split('.').reduce((o, k) => (o || {})[k], obj);
     }
@@ -227,6 +364,176 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', loadSettings);
+    // ==========================================
+    // SELF-LEARNING > FEEDBACK & QUERIES
+    // Lists every logged query (from the same table the Query Logs page
+    // reads - app/models/query_log.py) with its self-learning feedback,
+    // and lets it be added/edited/deleted right here. Edits go through
+    // /api/chat/feedback/<query_code> (PUT to upsert, DELETE to clear),
+    // which mirrors the change onto both response_feedback and
+    // query_logs, so this list, the Query Logs page, and the router's
+    // self-learning lookup all stay in sync.
+    // ==========================================
+    const SL_SOURCE_LABELS = { DB: 'Database', API: 'API', FILES: 'Files', SPREADSHEET: 'Spreadsheet', GENERAL: 'General', MULTI: 'Multi-source' };
+
+    function slEscapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function slDebounce(fn, wait) {
+        let timer = null;
+        return function (...args) {
+            clearTimeout(timer);
+            timer = setTimeout(function () { fn.apply(null, args); }, wait);
+        };
+    }
+
+    function slActiveFeedbackFilter() {
+        const active = document.querySelector('#slFeedbackFilters .ds-filter-btn.active');
+        return active ? active.dataset.feedback : 'all';
+    }
+
+    async function loadSelfLearningFeedback() {
+        const list = document.getElementById('slFeedbackList');
+        list.innerHTML = '<div class="ds-loading">Loading queries...</div>';
+
+        const params = new URLSearchParams();
+        const q = document.getElementById('slSearch').value.trim();
+        if (q) params.set('q', q);
+        params.set('feedback', slActiveFeedbackFilter());
+        params.set('limit', '200');
+
+        try {
+            const res = await authFetch(`/api/query-logs/?${params.toString()}`);
+            const data = await res.json();
+            renderSelfLearningFeedback(data.queries || []);
+        } catch (err) {
+            console.error('Failed to load queries:', err);
+            list.innerHTML = '<div class="ds-empty">Could not load queries.</div>';
+        }
+    }
+
+    function renderSelfLearningFeedback(queries) {
+        const list = document.getElementById('slFeedbackList');
+        if (!queries.length) {
+            list.innerHTML = '<div class="ds-empty">No queries match this filter.</div>';
+            return;
+        }
+
+        list.innerHTML = queries.map(function (item) {
+            if (!item.query_code) return '';
+
+            const sourceLabel = SL_SOURCE_LABELS[item.router_decision] || item.router_decision || 'Unknown';
+            let feedbackBadge = '<span class="qy-badge qy-badge-unrated">Unrated</span>';
+            if (item.feedback_type === 'like') feedbackBadge = '<span class="qy-badge qy-badge-accepted">Liked</span>';
+            else if (item.feedback_type === 'dislike') feedbackBadge = '<span class="qy-badge qy-badge-rejected">Disliked</span>';
+
+            const createdLabel = item.created_at ? new Date(item.created_at).toLocaleString() : '';
+            const hasFeedback = !!item.feedback_type;
+            const remarksEsc = slEscapeHtml(item.remarks || '');
+            const code = slEscapeHtml(item.query_code);
+
+            return `
+                <div class="qy-card" data-query-code="${code}">
+                    <div class="qy-card-header">
+                        <div class="qy-question">${slEscapeHtml(item.question)}</div>
+                        <div class="qy-badges">
+                            <span class="qy-badge qy-badge-source">${slEscapeHtml(sourceLabel)}</span>
+                            ${feedbackBadge}
+                        </div>
+                    </div>
+                    ${createdLabel ? `<div class="qy-field">${slEscapeHtml(createdLabel)}</div>` : ''}
+                    ${item.remarks ? `<div class="qy-remarks">Feedback remark: "${remarksEsc}"</div>` : ''}
+
+                    <div class="sl-edit-panel">
+                        <div class="sl-edit-row">
+                            <label><input type="radio" name="sl-fb-${code}" value="like" ${item.feedback_type === 'like' ? 'checked' : ''}> 👍 Like</label>
+                            <label><input type="radio" name="sl-fb-${code}" value="dislike" ${item.feedback_type === 'dislike' ? 'checked' : ''}> 👎 Dislike</label>
+                        </div>
+                        <textarea class="sl-remarks-input" placeholder="Optional remark to guide future answers...">${remarksEsc}</textarea>
+                        <div class="sl-edit-actions">
+                            <span class="sl-save-msg"></span>
+                            <button type="button" class="btn btn-secondary" onclick="slCancelEdit(this)">Cancel</button>
+                            <button type="button" class="btn btn-primary" onclick="slSaveFeedback('${code}', this)">Save</button>
+                        </div>
+                    </div>
+
+                    <div class="sl-actions">
+                        ${hasFeedback ? `
+                            <button type="button" class="btn btn-secondary" onclick="slToggleEdit(this)">Edit</button>
+                            <button type="button" class="btn btn-danger" onclick="slDeleteFeedback('${code}')">Delete</button>
+                        ` : `
+                            <button type="button" class="btn btn-primary" onclick="slToggleEdit(this)">Add Feedback</button>
+                        `}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function slToggleEdit(btn) {
+        const card = btn.closest('.qy-card');
+        const panel = card.querySelector('.sl-edit-panel');
+        panel.classList.toggle('open');
+    }
+
+    function slCancelEdit(btn) {
+        const card = btn.closest('.qy-card');
+        card.querySelector('.sl-edit-panel').classList.remove('open');
+    }
+
+    async function slSaveFeedback(queryCode, btn) {
+        const card = btn.closest('.qy-card');
+        const panel = card.querySelector('.sl-edit-panel');
+        const msgEl = panel.querySelector('.sl-save-msg');
+        const selected = panel.querySelector('input[type="radio"]:checked');
+        if (!selected) {
+            msgEl.textContent = 'Pick Like or Dislike first';
+            msgEl.style.color = '#F48771';
+            return;
+        }
+        const remarks = panel.querySelector('.sl-remarks-input').value;
+
+        try {
+            const res = await authFetch(`/api/chat/feedback/${encodeURIComponent(queryCode)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ feedback_type: selected.value, remarks })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            await loadSelfLearningFeedback();
+        } catch (err) {
+            msgEl.textContent = '✗ Failed to save: ' + err.message;
+            msgEl.style.color = '#F48771';
+        }
+    }
+
+    async function slDeleteFeedback(queryCode) {
+        if (!confirm('Delete the feedback on this query? It will show as Unrated again.')) return;
+        try {
+            const res = await authFetch(`/api/chat/feedback/${encodeURIComponent(queryCode)}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            await loadSelfLearningFeedback();
+        } catch (err) {
+            console.error('Failed to delete feedback:', err);
+            alert('Failed to delete feedback: ' + err.message);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        loadSettings();
+        loadSelfLearningFeedback();
+
+        document.getElementById('slSearch').addEventListener('input', slDebounce(loadSelfLearningFeedback, 300));
+        document.querySelectorAll('#slFeedbackFilters .ds-filter-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('#slFeedbackFilters .ds-filter-btn').forEach(function (b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                loadSelfLearningFeedback();
+            });
+        });
+    });
 </script>
 {% endblock %}
