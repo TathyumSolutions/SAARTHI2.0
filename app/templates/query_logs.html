@@ -30,6 +30,13 @@
     .qy-matched { font-size: 12px; color: var(--accent-purple); }
     .qy-main-query { margin-top: 4px; }
     .qy-main-query summary { cursor: pointer; color: #60A5FA; font-size: 12px; }
+    .qy-related-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .qy-related-item { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; }
+    .qy-related-item-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .qy-related-question { font-size: 12px; color: var(--text-primary); flex: 1; min-width: 160px; }
+    .qy-related-score { font-size: 11px; color: var(--text-secondary); }
+    .qy-related-remark { font-size: 12px; color: var(--text-secondary); border-left: 2px solid var(--border-color); padding-left: 8px; margin-top: 6px; }
+    .qy-reuse-note { font-size: 12px; color: var(--accent-green); margin-top: 6px; }
     .qy-controls { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
     .qy-filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
 </style>
@@ -152,7 +159,38 @@
                 ? `<details class="qy-main-query"><summary>Feedback</summary><div class="qy-remarks">Self-learning remark: "${escapeHtml(item.remarks)}"</div></details>`
                 : '';
             const mainQueryHtml = item.main_query
-                ? `<details class="qy-main-query"><summary>Query</summary><pre class="ds-meta-pre">${escapeHtml(item.main_query)}</pre></details>`
+                ? `<details class="qy-main-query"><summary>Main Query</summary><pre class="ds-meta-pre">${escapeHtml(item.main_query)}</pre></details>`
+                : '';
+            const relatedQueries = item.related_queries || [];
+            const relatedQueriesHtml = relatedQueries.length
+                ? `<details class="qy-main-query"><summary>Related Queries (${relatedQueries.length})</summary>
+                    <div class="qy-related-list">
+                        ${relatedQueries.map(function (rel) {
+                            const isLike = rel.feedback_type === 'like';
+                            const badge = isLike
+                                ? '<span class="qy-badge qy-badge-accepted">Liked</span>'
+                                : '<span class="qy-badge qy-badge-rejected">Disliked</span>';
+                            const scoreText = rel.score != null ? `${(rel.score * 100).toFixed(0)}% match` : '';
+                            const reuseNote = (isLike && item.execution_type === 'reused' && rel.query_code === item.matched_query_code)
+                                ? '<div class="qy-reuse-note">✓ This liked query\'s plan and query were reused directly.</div>'
+                                : '';
+                            const remarkNote = (!isLike && rel.remarks)
+                                ? `<div class="qy-related-remark">Feedback appended to guide this query: "${escapeHtml(rel.remarks)}"</div>`
+                                : '';
+                            return `
+                                <div class="qy-related-item">
+                                    <div class="qy-related-item-header">
+                                        <div class="qy-related-question">${escapeHtml(rel.question || '')}</div>
+                                        ${badge}
+                                        ${scoreText ? `<span class="qy-related-score">${escapeHtml(scoreText)}</span>` : ''}
+                                    </div>
+                                    ${reuseNote}
+                                    ${remarkNote}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                   </details>`
                 : '';
 
             return `
@@ -170,6 +208,7 @@
                     ${sourcesText ? `<div class="qy-field"><strong>Sources:</strong> ${escapeHtml(sourcesText)}</div>` : ''}
                     ${answerHtml}
                     ${mainQueryHtml}
+                    ${relatedQueriesHtml}
                     ${matchedHtml}
                     ${remarksHtml}
                 </div>
