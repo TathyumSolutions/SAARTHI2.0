@@ -104,6 +104,33 @@ schema = {
             },
             "primary_key": ["material_id"]
         },
+        "ekko": {
+            "columns": {
+                "purchase_document": {"type": "character varying(10)", "nullable": False},
+                "vendor_id": {"type": "character varying(10)", "nullable": True},
+                "company_code": {"type": "character varying(4)", "nullable": True},
+                "document_date": {"type": "date", "nullable": True},
+                "currency": {"type": "character varying(3)", "nullable": True}
+            },
+            "primary_key": ["purchase_document"],
+            "foreign_keys": [{"column": "vendor_id", "references": "lfa1.vendor_id"}]
+        },
+        "ekpo": {
+            "columns": {
+                "purchase_document": {"type": "character varying(10)", "nullable": False},
+                "item_number": {"type": "integer", "nullable": False},
+                "material_id": {"type": "character varying(18)", "nullable": True},
+                "plant": {"type": "character varying(4)", "nullable": True},
+                "quantity": {"type": "numeric", "nullable": True},
+                "net_price": {"type": "numeric", "nullable": True},
+                "net_value": {"type": "numeric", "nullable": True}
+            },
+            "primary_key": ["purchase_document", "item_number"],
+            "foreign_keys": [
+                {"column": "purchase_document", "references": "ekko.purchase_document"},
+                {"column": "material_id", "references": "mara.material_id"}
+            ]
+        },
         "vbak": {
             "columns": {
                 "sales_document": {"type": "character varying(10)", "nullable": False},
@@ -228,6 +255,47 @@ def create_tables(cursor):
         print(f"✅ Created table: {table_name}")
 
 # ---------------------------------------------------------------------
+# Purchase order (ekko/ekpo) data - procurement side of the demo dataset,
+# mirroring the sales-side vbak/vbap generation below. Split into its own
+# function so it can be called both on a fresh seed and, independently,
+# against a database that already has master/transactional data but
+# predates ekko/ekpo (see the master_data_present branch in insert_data).
+# ---------------------------------------------------------------------
+def _seed_purchase_orders(cursor, vendor_ids, material_ids, total_purchase_docs=3000):
+    cursor.execute("SELECT COUNT(*) FROM ekko;")
+    if cursor.fetchone()[0] > 0:
+        print("⏭️  Purchase order demo data already present - skipping.")
+        return
+    if not vendor_ids or not material_ids:
+        print("⚠️  No vendors/materials available - skipping purchase order seed.")
+        return
+
+    print("🧾 Generating purchase order data...")
+    ekko, ekpo = [], []
+    for i in range(1, total_purchase_docs + 1):
+        purchase_doc = f"PO{str(i).zfill(6)}"
+        vendor = random.choice(vendor_ids)
+        company_code = random.choice(['1000', '2000', '3000', '4000'])
+        doc_date = fake.date_between(start_date="-2y", end_date="today")
+        currency = random.choice(['USD', 'EUR', 'GBP'])
+        ekko.append((purchase_doc, vendor, company_code, doc_date, currency))
+
+        num_items = random.randint(1, 5)
+        for item_no in range(1, num_items + 1):
+            material = random.choice(material_ids)
+            plant = random.choice(['1000', '2000', '3000'])
+            quantity = round(random.uniform(1, 500), 2)
+            net_price = round(random.uniform(10, 5000), 2)
+            net_value = round(quantity * net_price, 2)
+            ekpo.append((purchase_doc, item_no, material, plant, quantity, net_price, net_value))
+
+    print("💾 Inserting purchase order records...")
+    cursor.executemany('INSERT INTO ekko VALUES (%s,%s,%s,%s,%s);', ekko)
+    cursor.executemany('INSERT INTO ekpo VALUES (%s,%s,%s,%s,%s,%s,%s);', ekpo)
+    print(f"🎉 Inserted {len(ekko)} purchase orders / {len(ekpo)} purchase order items!")
+
+
+# ---------------------------------------------------------------------
 # Insert synthetic data
 # ---------------------------------------------------------------------
 def insert_data():
@@ -239,9 +307,23 @@ def insert_data():
     # crash partway through with a primary-key UniqueViolation (no
     # ON CONFLICT / truncate guard). Skip cleanly instead - this is a
     # one-time seed, not something meant to accumulate duplicate rows.
+    #
+    # Checked independently of the master/other-transactional skip below:
+    # a database seeded before ekko/ekpo (purchase orders) existed in this
+    # schema already has non-empty kna1, which would otherwise skip the
+    # whole function and leave ekko/ekpo permanently empty even after
+    # re-running this script - exactly the "ekpo join returns 0 rows"
+    # symptom this script exists to prevent.
     cursor.execute("SELECT COUNT(*) FROM kna1;")
-    if cursor.fetchone()[0] > 0:
-        print("⏭️  Demo data already present in this database - skipping seed (tables are non-empty).")
+    master_data_present = cursor.fetchone()[0] > 0
+
+    if master_data_present:
+        print("⏭️  Master/transactional demo data already present - skipping that part of the seed.")
+        cursor.execute("SELECT vendor_id FROM lfa1;")
+        vendor_ids = [row[0] for row in cursor.fetchall()]
+        cursor.execute("SELECT material_id FROM mara;")
+        material_ids = [row[0] for row in cursor.fetchall()]
+        _seed_purchase_orders(cursor, vendor_ids, material_ids)
         cursor.close()
         conn.close()
         return
@@ -340,6 +422,8 @@ def insert_data():
     cursor.executemany('INSERT INTO bseg VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);', bseg)
 
     print("🎉 Synthetic SAP data inserted successfully!")
+
+    _seed_purchase_orders(cursor, [v[0] for v in vendors], [m[0] for m in materials])
 
     cursor.close()
     conn.close()
