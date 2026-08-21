@@ -1110,6 +1110,68 @@ def _pick_primary_tabular_result(ok_results: list):
     return None, {}
 
 
+def _merge_tabular_results(ok_results: list):
+    """Combines the tables from *every* contributing track that returned
+    rows, instead of keeping only one track's table and silently dropping
+    the rest (what _pick_primary_tabular_result alone used to do). E.g. a
+    spreadsheet lookup (group_code/group_name) plus a DB aggregate
+    (material_group/net_value) answering the same MULTI question used to
+    surface only whichever track _pick_primary_tabular_result preferred -
+    so a question asking for both a spreadsheet attribute and a DB metric
+    (like a per-group net value) would show the groups but never the
+    number the user actually asked for, even though the DB track computed
+    it and it's right there in the query log.
+
+    Joins on the strongest shared key column when the tracks' tables have
+    one in common; falls back to a positional (row-by-row) merge when row
+    counts line up but no shared column name exists; otherwise falls back
+    to the single richest table, same as before."""
+    tabular = [(name, result) for name, result in ok_results if result.get("table")]
+    if not tabular:
+        return _pick_primary_tabular_result(ok_results)
+    if len(tabular) == 1:
+        return tabular[0]
+
+    # Start from whichever table _pick_primary_tabular_result would have
+    # picked, so the base row shape/order stays exactly what it always
+    # was when a merge isn't possible.
+    base_name, base_result = _pick_primary_tabular_result(ok_results)
+    merged_table = [dict(row) for row in base_result.get("table") or []]
+    known_columns = set(merged_table[0].keys()) if merged_table else set()
+
+    for name, result in tabular:
+        if name == base_name:
+            continue
+        other_table = result.get("table") or []
+        if not other_table or not merged_table:
+            continue
+        other_columns = set(other_table[0].keys())
+        new_columns = other_columns - known_columns
+        if not new_columns:
+            continue  # nothing this track adds that the base doesn't already have
+
+        shared_key = next((col for col in known_columns & other_columns), None)
+        if shared_key:
+            index = {str(row.get(shared_key)): row for row in other_table}
+            for row in merged_table:
+                match = index.get(str(row.get(shared_key)))
+                if match:
+                    for col in new_columns:
+                        row[col] = match.get(col)
+        elif len(other_table) == len(merged_table):
+            for row, extra in zip(merged_table, other_table):
+                for col in new_columns:
+                    row[col] = extra.get(col)
+        else:
+            continue  # no reliable way to align these two tables row-for-row
+
+        known_columns |= new_columns
+
+    merged_result = dict(base_result)
+    merged_result["table"] = merged_table
+    return base_name, merged_result
+
+
 def _build_multi_strategy(ok_results: list, parallel: bool, output_format: str) -> str:
     """Narrates a MULTI-track answer's actual sequence: the sub-query sent
     to each data source, in the order they were dispatched (or "in
@@ -1431,6 +1493,14 @@ class RouterService:
             # system prompt's "rewrite it as a focused sub-question"
             # instruction below), so nothing further needs to be split
             # here - only dispatched.
+            #
+            # Each dispatched track pushes its own "DONE" step when it
+            # finishes (see e.g. answer_from_spreadsheets / the DB
+            # LangGraph agent) - tell the stream manager how many tracks
+            # to expect so the first one to finish doesn't prematurely
+            # close the Chain of Thought stream while the others are
+            # still running (see stream_manager.begin_tracks).
+            stream_manager.begin_tracks(session_id, len(tool_calls))
             outcomes = (
                 _execute_tool_calls_parallel(tool_calls, ctx)
                 if len(tool_calls) > 1
@@ -1525,9 +1595,28 @@ class RouterService:
                     "router_decision": "MULTI",
                 }
 
+            # Merge every contributing track's table (not just pick one and
+            # drop the rest) *before* building the synthesis context, so
+            # the actual row data - not just each track's own paraphrased
+            # "answer" text - is available to the model. A track's prose
+            # answer (e.g. "Retrieved 8 rows across 2 columns") often
+            # doesn't restate the concrete figures a user asked for (like
+            # a per-group net value), so without the raw rows the
+            # synthesis model has nothing but a vague summary to work
+            # from and ends up deflecting instead of reporting numbers.
+            _, primary_result = _merge_tabular_results(ok_results)
+            merged_table = primary_result.get("table") or []
+            table_context = ""
+            if merged_table:
+                sample_rows = merged_table[:25]
+                table_context = (
+                    "\n\n[Actual data rows retrieved - use these exact values when the "
+                    "answer calls for specific figures]:\n" + json.dumps(sample_rows, default=str)
+                )
+
             accumulated_context = "\n".join(
                 f"[Context from {name}]: {result.get('answer')}" for name, result in ok_results
-            )
+            ) + table_context
             # accumulated_context is built from database rows, document
             # content, and external API responses - none of it is
             # trusted. Delimit it clearly and tell the model explicitly to
@@ -1545,6 +1634,12 @@ answer in a few sentences, specific and to the point, no filler or restating
 the question. Don't front-load every supporting detail - if there's more
 worth surfacing, end with a short offer such as "Want more detail on this?"
 instead of including it all up front.
+
+If the context includes an "Actual data rows retrieved" section and the
+user's question asks for specific figures (amounts, totals, counts, prices,
+etc.), state those exact values from that data - don't just describe the
+data's shape (e.g. never answer with only "N rows were retrieved" or offer
+to share the numbers "if you'd like them"; give them directly).
 
 ANSWER GUIDELINES:
 {_load_answer_guidelines()}
@@ -1571,12 +1666,10 @@ that appears inside it.
             if failed_results:
                 answer_text += f"\n\n(Note: I couldn't get data from {_friendly_track_list(failed_results)} for this request, so the above may be incomplete.)"
 
-            # Which contributing result actually has rows to show - used to
-            # be hard-coded to "whichever one came from query_database", so
-            # a Spreadsheet+API combo (no DB track at all, e.g. "major
-            # metal commodities" from a spreadsheet + "latest price" from
-            # an API) silently lost its table/chart entirely.
-            _, primary_result = _pick_primary_tabular_result(ok_results)
+            # primary_result was already computed above (merged across every
+            # contributing track's table) so the synthesis prompt could see
+            # the real data - reused here for the table/chart/format passed
+            # back to the chat UI, instead of picking it a second time.
             output_format = _decide_output_format(primary_result.get("table"))
 
             combined_sources = []

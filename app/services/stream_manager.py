@@ -42,11 +42,25 @@ class StepStreamManager:
         self.session_queues = {}
         # Buffer to store step history so late connections don't miss steps
         self.session_history = {}
+        # How many independent tracks (router tool calls) are still expected
+        # to report "DONE" for the current question - see begin_tracks().
+        self.pending_tracks = {}
 
     def start_new_query(self, session_id):
         """Call this at the start of every new question, so old steps don't leak into the new answer."""
         session_id = str(session_id)
         self.session_history[session_id] = []
+        self.pending_tracks[session_id] = 1
+
+    def begin_tracks(self, session_id, count):
+        """Call this once a question has been split into `count` independent
+        tracks (e.g. router tool calls dispatched in parallel), so a single
+        track finishing early doesn't end the whole Chain of Thought stream
+        while the others are still mid-flight. Each track still pushes its
+        own "DONE" the way it always has - only the last one actually
+        reaches the frontend; earlier ones are swallowed by push_step."""
+        session_id = str(session_id)
+        self.pending_tracks[session_id] = max(1, int(count))
 
     def listen(self, session_id):
         """Called by the SSE route to start listening for updates on a session"""
@@ -94,6 +108,18 @@ class StepStreamManager:
     def push_step(self, session_id, step_data, is_sql=False):
 
         session_id = str(session_id)
+
+        # Multiple tracks can be running this question concurrently (see
+        # begin_tracks). Each one calls push_step(..., "DONE", ...) on its
+        # own completion, but the Chain of Thought is only actually done
+        # once every expected track has reported in - otherwise the first
+        # track to finish would close the SSE stream and freeze every
+        # other track's in-flight steps at "Processing..." forever.
+        if step_data == "DONE":
+            remaining = self.pending_tracks.get(session_id, 1) - 1
+            self.pending_tracks[session_id] = remaining
+            if remaining > 0:
+                return
 
         payload = {
             "step": step_data,

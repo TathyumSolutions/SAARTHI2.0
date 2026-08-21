@@ -1260,12 +1260,21 @@
         return { title: safeTitle, description: safeDescription, icon };
     }
 
-    async function renderStepWithTyping(thoughtChainContainer, title, description, icon, liveStepIndex, isInProgress) {
+    async function renderStepWithTyping(thoughtChainContainer, title, description, icon, liveStepIndex, isInProgress, rawTitle) {
         const statusText = isInProgress ? "⏳ Processing..." : "✓ Completed";
         const statusColor = isInProgress ? "#60A5FA" : "#10B981";
+        // Steps from concurrent tracks (e.g. a DB query and a spreadsheet
+        // lookup running in parallel) can interleave their "start" events
+        // in the DOM, so a later "complete" event can't just assume it
+        // belongs to the most-recently-rendered card. Tag the card with
+        // its raw backend title and a pending flag so the matching
+        // "complete" event (which carries the same raw title) can find
+        // *this* card specifically instead of whichever one happens to be
+        // last - see the "complete" handler in initializeLiveStepStream.
+        const rawTitleAttr = (rawTitle || "").replace(/"/g, '&quot;');
 
         const stepHtml = `
-            <div id="live-step-${liveStepIndex}" class="thought-step" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
+            <div id="live-step-${liveStepIndex}" class="thought-step" data-raw-title="${rawTitleAttr}" data-pending="${isInProgress ? "true" : "false"}" style="opacity: 0; transform: translateY(10px); transition: all 0.4s ease; margin-bottom: 15px;">
                 <div class="thought-title" style="font-weight: 600; color: #E2E8F0; font-size: 14px; display: flex; align-items: baseline; gap: 6px;">
                     <span class="thought-icon" aria-hidden="true">${icon || "⚙️"}</span>
                     <span class="thought-title-text"></span>
@@ -1410,13 +1419,27 @@
                         humanized.description,
                         humanized.icon,
                         liveStepIndex,
-                        true
+                        true,
+                        title
                     );
                     liveStepIndex++;
                 }
                 else if (eventType === "complete") {
-                    const currentStep = document.querySelector(`#live-step-${liveStepIndex - 1}`);
+                    // Concurrent tracks (e.g. DB + spreadsheet running in
+                    // parallel) can interleave their start/complete events,
+                    // so this "complete" doesn't necessarily belong to the
+                    // most-recently-rendered card. Find the oldest card
+                    // still pending with this exact raw title instead -
+                    // "start" and "complete" for the same step always carry
+                    // the same title (see langgraph_agent.py /
+                    // spreadsheet_query_service.py push_step callers).
+                    const escapedTitle = String(title || "").replace(/"/g, '\\"');
+                    const pendingMatch = thoughtChainContainer.querySelector(
+                        `.thought-step[data-pending="true"][data-raw-title="${escapedTitle}"]`
+                    );
+                    const currentStep = pendingMatch || document.querySelector(`#live-step-${liveStepIndex - 1}`);
                     if (!currentStep) return;
+                    currentStep.setAttribute('data-pending', 'false');
 
                     const descEl = currentStep.querySelector('.thought-description');
                     const statusEl = currentStep.querySelector('.status-indicator');
@@ -1447,6 +1470,27 @@
         if (panelTitle) {
             panelTitle.innerText = "Chain of Thought";
         }
+
+        const thoughtChainContainer = document.querySelector('.thought-chain');
+
+        // Safety net: the whole Chain of Thought is done now (DONE only
+        // fires once every parallel track has reported in - see
+        // stream_manager.begin_tracks), so any card still marked pending
+        // at this point is one whose own "complete" event never arrived
+        // (e.g. it errored out before pushing one). Mark every such card
+        // completed instead of only the most recent one, so a card never
+        // sits at "Processing..." forever after the answer has finished.
+        const pendingSteps = thoughtChainContainer
+            ? thoughtChainContainer.querySelectorAll('.thought-step[data-pending="true"]')
+            : [];
+        pendingSteps.forEach((step) => {
+            step.setAttribute('data-pending', 'false');
+            const statusEl = step.querySelector('.status-indicator');
+            if (statusEl) {
+                statusEl.innerHTML = "✓ Completed";
+                statusEl.style.color = "#10B981";
+            }
+        });
 
         const statusIndicators = document.querySelectorAll('.status-indicator');
         if (statusIndicators.length > 0) {
