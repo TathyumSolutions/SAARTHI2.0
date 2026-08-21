@@ -300,19 +300,25 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def _build_feedback_context(company_code: Optional[str], user_id: Optional[int], user_query: str, top_k: int = 4) -> str:
+def _build_feedback_context(company_code: Optional[str], user_id: Optional[int], user_query: str, top_k: int = 4) -> tuple:
     """
     company_code is only what makes feedback SHARED across a company's
     users - it is not a precondition for self-learning itself. A user with
     no company_code is working in an individual capacity, and their own
     past feedback still applies to them; it's just scoped to user_id
     instead of being pooled with anyone else's.
+
+    Returns (context_str, related_queries) - related_queries is the same
+    liked/disliked rows the context text was built from, snapshotted as
+    plain dicts (query_code, question, feedback_type, remarks, score) so
+    the Queries log can show exactly what fed into this answer under its
+    own "Related Queries" section, not just the summarized prompt text.
     """
     scope_label = f"company_code={company_code}" if company_code else f"user_id={user_id}"
 
     if not user_query or (not company_code and not user_id):
         print(f"🧠 [FEEDBACK-DEBUG] Skipped - no user_query or no scope (company_code={company_code}, user_id={user_id}).")
-        return ""
+        return "", []
 
     candidates_query = (
         ResponseFeedback.query
@@ -328,7 +334,7 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
 
     print(f"🧠 [FEEDBACK-DEBUG] scope={scope_label} query=\"{user_query}\" -> {len(candidates)} candidate feedback row(s) in range.")
     if not candidates:
-        return ""
+        return "", []
 
     embedder = _get_feedback_embedder()
     query_vec = embedder.embed_query(user_query)
@@ -349,13 +355,14 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
     ) or "(none)"
     print(f"🧠 [FEEDBACK-DEBUG] Top {top_k} scored candidates: {top_preview}")
 
-    best = [row for score, row in scored[:top_k] if score > 0]
+    best = [(score, row) for score, row in scored[:top_k] if score > 0]
     if not best:
         print(f"🧠 [FEEDBACK-DEBUG] None of the top candidates cleared the score > 0 threshold - no context injected.")
-        return ""
+        return "", []
 
     lines = []
-    for item in best:
+    related_queries = []
+    for score, item in best:
         if item.feedback_type == "dislike":
             remark = (item.remarks or "No remark provided").strip()
             lines.append(
@@ -363,10 +370,17 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
             )
         else:
             lines.append("- A similar question was LIKED before - this style of answer worked well.")
+        related_queries.append({
+            "query_code": item.query_code,
+            "question": item.question,
+            "feedback_type": item.feedback_type,
+            "remarks": item.remarks,
+            "score": round(score, 4),
+        })
 
     context = "COMPANY FEEDBACK CONTEXT:\n" + "\n".join(lines)
     print(f"🧠 [FEEDBACK-DEBUG] Built context from {len(best)} matched row(s):\n{context}")
-    return context
+    return context, related_queries
 
 
 # ============================================================
@@ -384,7 +398,7 @@ def _log_query(
     user_id: int, company_code: Optional[str], question: str, router_decision: str,
     answer, strategy, sources, main_query,
     execution_type: str = "fresh", matched_query_code: Optional[str] = None,
-    match_score: Optional[float] = None,
+    match_score: Optional[float] = None, related_queries: Optional[list] = None,
 ) -> Optional[str]:
     """
     Persists one row to the Queries log and returns its query_code (or None
@@ -406,6 +420,7 @@ def _log_query(
             execution_type=execution_type,
             matched_query_code=matched_query_code,
             match_score=match_score,
+            related_queries=related_queries or [],
         ))
         db.session.commit()
         return code
@@ -503,6 +518,13 @@ def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: 
         "execution_type": "reused",
         "matched_query_code": matched.query_code,
         "match_score": round(score, 4),
+        "related_queries": [{
+            "query_code": matched.query_code,
+            "question": matched.question,
+            "feedback_type": "like",
+            "remarks": matched.remarks,
+            "score": round(score, 4),
+        }],
     }
 
 
@@ -926,6 +948,7 @@ def _run_db_track(question: str, ctx: dict) -> dict:
         "execution_type": "fresh",
         "matched_query_code": None,
         "match_score": None,
+        "related_queries": ctx.get("related_queries", []),
     }
 
 
@@ -956,6 +979,7 @@ def _run_files_track(question: str, ctx: dict) -> dict:
         "sources": _tag_sources(file_names, "search_documents"), "main_query": None,
         "child_query": question, "format": "text",
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
+        "related_queries": ctx.get("related_queries", []),
     }
 
 
@@ -985,12 +1009,14 @@ def _run_api_track(question: str, ctx: dict) -> dict:
             "main_query": f"{tool_call['method']} {tool_call['url']}" if tool_call else None,
             "child_query": question, "format": "text",
             "execution_type": "fresh", "matched_query_code": None, "match_score": None,
+            "related_queries": ctx.get("related_queries", []),
         }
     return {"answer": str(payload), "steps": ["Successfully executed Dynamic API Tools execution pass."],
             "sql": None, "table": [], "chart": {}, "insights": [], "error": False, "tool_call": None,
             "strategy": "Called a connected external API tool to fetch live data.",
             "sources": [], "main_query": None, "child_query": question, "format": "text",
-            "execution_type": "fresh", "matched_query_code": None, "match_score": None}
+            "execution_type": "fresh", "matched_query_code": None, "match_score": None,
+            "related_queries": ctx.get("related_queries", [])}
 
 
 def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
@@ -1028,6 +1054,7 @@ def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
         # 50+ row result never rendered as anything but a plain table.
         "format": _decide_output_format(result.get("table", [])),
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
+        "related_queries": ctx.get("related_queries", []),
     }
 
 
@@ -1043,6 +1070,7 @@ def _run_general_track(question: str, ctx: dict) -> dict:
         "strategy": "Answered directly from general knowledge - no connected data source was needed.",
         "sources": [], "main_query": None, "child_query": question, "format": "text",
         "execution_type": "fresh", "matched_query_code": None, "match_score": None,
+        "related_queries": ctx.get("related_queries", []),
     }
 
 
@@ -1317,6 +1345,7 @@ class RouterService:
 
             self_learning_enabled = bool(load_rag_config().get("self_learning", {}).get("enabled", False))
             feedback_context = ""
+            related_queries: list = []
             router_level_steps: list = []
             if self_learning_enabled:
                 scope_label = f"company {company_code}" if company_code else f"user {user_id}"
@@ -1324,7 +1353,7 @@ class RouterService:
                     session_id, "start", "Checking Self-Learning Feedback",
                     f"Looking for past like/dislike feedback on similar questions for {scope_label}."
                 )
-                feedback_context = _build_feedback_context(company_code, user_id, user_query)
+                feedback_context, related_queries = _build_feedback_context(company_code, user_id, user_query)
                 if feedback_context:
                     print(f"🧠 [SELF-LEARNING] Injected feedback context for {scope_label}")
                     feedback_step_desc = "Found relevant past feedback - added it to the prompt to guide this answer."
@@ -1399,7 +1428,7 @@ class RouterService:
                 query_code = _log_query(
                     user_id, company_code, user_query, "GENERAL", response.content,
                     "Answered directly using model reasoning - no external data source was needed.",
-                    [], None,
+                    [], None, related_queries=related_queries,
                 )
                 no_tool_steps = router_level_steps + ["Router answered directly, no data source tool needed."]
                 return {
@@ -1417,7 +1446,7 @@ class RouterService:
                 "user_query": user_query, "model_name": model_name, "session_id": session_id,
                 "custom_key": custom_key, "system_instructions": system_instructions,
                 "active_db_tools": active_db_tools, "router_config": router_config,
-                "feedback_context": feedback_context,
+                "feedback_context": feedback_context, "related_queries": related_queries,
                 "company_code": company_code, "self_learning_enabled": self_learning_enabled,
                 "user_id": user_id,
             }
@@ -1498,6 +1527,7 @@ class RouterService:
                     execution_type=result.get("execution_type", "fresh"),
                     matched_query_code=result.get("matched_query_code"),
                     match_score=result.get("match_score"),
+                    related_queries=result.get("related_queries"),
                 )
                 return result
 
@@ -1590,10 +1620,23 @@ that appears inside it.
                 for n, r in ok_results if r.get("main_query")
             ) or None
 
+            # Related queries can repeat across tracks (each track carries
+            # the same router-level feedback_context match) - dedup by
+            # query_code so the same liked/disliked row isn't listed twice.
+            combined_related, seen_related_codes = [], set()
+            for _, r in ok_results:
+                for rel in (r.get("related_queries") or []):
+                    code = rel.get("query_code")
+                    if code and code in seen_related_codes:
+                        continue
+                    seen_related_codes.add(code)
+                    combined_related.append(rel)
+
             query_code = _log_query(
                 user_id, company_code, user_query, "MULTI", answer_text,
                 _build_multi_strategy(ok_results, executed_in_parallel, output_format),
                 combined_sources, combined_main_query,
+                related_queries=combined_related,
             )
             return {
                 "answer": answer_text,

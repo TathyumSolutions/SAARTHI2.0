@@ -43,6 +43,15 @@ class QueryLog(db.Model):
     feedback_type = db.Column(db.String(10), nullable=True, index=True)  # like or dislike
     remarks = db.Column(db.Text, nullable=True)
 
+    # Prior liked/disliked queries on similar questions that this run's
+    # self-learning lookup found and acted on - a liked one reused its
+    # main_query directly (execution_type='reused'), a disliked one had its
+    # remark appended as guidance for a fresh generation. Each entry:
+    # {query_code, question, feedback_type, remarks, score}. Snapshotted at
+    # answer time so the Queries section can show what informed this
+    # answer even if that related query is edited/deleted later.
+    related_queries = db.Column(db.JSON, nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
     def to_dict(self):
@@ -61,5 +70,6 @@ class QueryLog(db.Model):
             'match_score': self.match_score,
             'feedback_type': self.feedback_type,
             'remarks': self.remarks,
+            'related_queries': self.related_queries or [],
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
