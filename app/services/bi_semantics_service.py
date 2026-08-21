@@ -26,6 +26,7 @@ DEFAULT_BI_SEMANTICS: Dict[str, Dict[str, str]] = {
     "likp": {"measure_column": "quantity", "aggregation": "SUM", "entity_label": "Deliveries"},
     "lips": {"measure_column": "quantity", "aggregation": "SUM", "entity_label": "Delivery Items"},
     "mseg": {"measure_column": "quantity", "aggregation": "SUM", "entity_label": "Material Movements"},
+    "ekpo": {"measure_column": "net_value", "aggregation": "SUM", "entity_label": "Purchase Order Items"},
     "mara": {"measure_column": "stock_value", "aggregation": "SUM", "entity_label": "Materials"},
     "mard": {"measure_column": "stock_quantity", "aggregation": "SUM", "entity_label": "Storage Location Stock"},
     "mbew": {"measure_column": "stock_value", "aggregation": "SUM", "entity_label": "Material Valuation"},
