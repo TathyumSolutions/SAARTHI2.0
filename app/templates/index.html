@@ -563,22 +563,7 @@
 </style>
 {% endblock %}
 
-{% block user_menu_extra %}
-<button type="button" class="user-dropdown-item" onclick="document.getElementById('inst-box').showModal()">
-    📝 Instructions.md
-</button>
-{% endblock %}
-
 {% block content %}
-<dialog id="inst-box" style="padding: 20px; border-radius: 8px; border: 1px solid transparent; width: 400px; background: #292a33; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-    <h3 style="margin-top:0; font-family: sans-serif; color: white;">System Instructions</h3>
-    <textarea id="instructions-text" style="width:100%; height:150px; margin-bottom:12px; padding: 8px; box-sizing: border-box; background: #07091e; border: 1px solid #1F2348; border-radius: 4px; font-family: inherit; color: white;" placeholder="Type system rules here..."></textarea>
-    <div style="text-align: right;">
-        <button onclick="document.getElementById('inst-box').close()" style="padding: 6px 12px; margin-right: 8px; cursor:pointer; background: none; border: 1px solid #1F2348; color: #8D90B5; border-radius: 4px;">Cancel</button>
-        <button id="submit-btn" onclick="saveInstructions()" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor:pointer; font-weight: 500;">Submit</button>
-    </div>
-</dialog>
-
 <dialog id="dislike-remarks-box" style="padding: 20px; border-radius: 8px; border: 1px solid transparent; width: 400px; background: #292a33; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
     <h3 style="margin-top:0; font-family: sans-serif; color: white;">What went wrong?</h3>
     <textarea id="dislike-remarks-text" style="width:100%; height:120px; margin-bottom:12px; padding: 8px; box-sizing: border-box; background: #07091e; border: 1px solid #1F2348; border-radius: 4px; font-family: inherit; color: white;" placeholder="Optional remarks..."></textarea>
@@ -1094,29 +1079,6 @@
             .catch(error => {
                 console.error("❌ Failed to parse data stream or populate dropdown elements:", error);
             });
-    }
-
-    // ==========================================
-    // SYSTEM INSTRUCTIONS MODAL
-    // ==========================================
-    let currentSystemInstructions = "";
-    function saveInstructions() {
-        const textareaEl = document.getElementById("instructions-text");
-        const submitBtn = document.getElementById("submit-btn");
-        const dialogBox = document.getElementById("inst-box");
-        currentSystemInstructions = textareaEl.value.trim();
-        console.log("Captured Data Payload saved globally:", currentSystemInstructions);
-
-        submitBtn.innerText = "Submitted! ✓";
-        submitBtn.style.background = "#059669";
-        submitBtn.disabled = true;
-
-        setTimeout(() => {
-            dialogBox.close();
-            submitBtn.innerText = "Submit";
-            submitBtn.style.background = "#10b981";
-            submitBtn.disabled = false;
-        }, 800);
     }
 
     // ==========================================
@@ -1660,8 +1622,7 @@
                     body: JSON.stringify({
                         message: message,
                         session_id: 1,
-                        mode: 'chat',
-                        system_instructions: currentSystemInstructions
+                        mode: 'chat'
                     })
                 });
 
