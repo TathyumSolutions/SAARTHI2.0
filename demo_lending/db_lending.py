@@ -8,7 +8,7 @@ Generates a realistic, synthetic NBFC / lending-company database
 customer data, for use as a demo/test data source inside Saarthi.
 
 This is a self-contained companion project (data + a stub validation API +
-Excel reference tables + NBFC guideline docs live under lending_demo/) - it
+Excel reference tables + NBFC guideline docs live under demo_lending/) - it
 does not touch the main Saarthi Flask app's models or logical databases; it
 provisions its own Postgres database and can be registered as one more
 "database connection" data source inside Saarthi once loaded.

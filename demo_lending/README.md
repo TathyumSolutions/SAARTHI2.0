@@ -8,7 +8,7 @@ numbers, and financial figures are randomly generated in the right *format*
 and are not real people or real regulatory text.
 
 ```
-lending_demo/
+demo_lending/
 ├── db_lending.py                 # schema + Faker-based data generator -> Postgres
 ├── generate_excel_reference.py   # 4 "external" Excel reference workbooks
 ├── generate_guideline_docs.py    # 5 NBFC policy documents (.docx)
@@ -69,7 +69,7 @@ Saarthi's own `saarthi_core_db` / `saarthi_resources_db` / `saarthi_workspace_db
 ### Usage
 
 ```bash
-cd lending_demo
+cd demo_lending
 pip install -r ../requirements.txt   # Faker, psycopg2-binary, pandas, openpyxl, python-docx already listed there
 
 # against a local/dev Postgres server (only server+creds matter; the
@@ -172,7 +172,7 @@ Register it in Saarthi as an API connector (`app/templates/api_connectors/rest_a
 ## Regenerating everything from scratch
 
 ```bash
-cd lending_demo
+cd demo_lending
 python db_lending.py --scale full
 python generate_excel_reference.py
 python generate_guideline_docs.py

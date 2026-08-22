@@ -10,7 +10,7 @@ able to cross-check core DB figures against via its spreadsheet connector
 
 Reads product/branch/agent context straight out of the already-loaded
 lending_demo_db so the workbooks are consistent with whatever --scale was
-used for db_lending.py, then writes 4 workbooks under lending_demo/output/excel/:
+used for db_lending.py, then writes 4 workbooks under demo_lending/output/excel/:
 
   01_rbi_benchmark_rates.xlsx   - RBI policy & benchmark lending rates used
                                   to sanity-check the book's product pricing
