@@ -30,7 +30,7 @@ class RouterService:
             print(f"⚠️ [SCHEMA SYNC CRITICAL]: Failed to check structural drifts: {e}")
     
 
-    def get_smart_response(self, user_query, model_name="gpt-4o-mini", session_id=1, custom_key='',system_instructions=''):
+    def get_smart_response(self, user_query, model_name="ollama://llama3", session_id=1, custom_key='',system_instructions=''):
         """
         Enhanced Orchestration Router utilizing Strict Structured Output and 
         Dynamic Postgres Tool Description Injection.

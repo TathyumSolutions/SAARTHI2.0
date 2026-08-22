@@ -675,7 +675,7 @@ class RouterService:
     def get_smart_response(
         self,
         user_query: str,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "ollama://llama3",
         session_id=1,
         custom_key: str = "",
         model_base_url: str = "",
