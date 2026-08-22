@@ -308,7 +308,7 @@ import os
 import pandas as pd
 import psycopg2
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import json
 import requests
 import traceback
@@ -392,49 +392,16 @@ Return ONLY valid JSON.
                 actual_model = model_to_use.replace("api://", "").lower()
                 print(f"🌐 [DataInsightGenerator] Dynamic Routing insights to Custom Cloud API model: {actual_model}")
 
-                if "claude" in actual_model:
-                    from langchain_anthropic import ChatAnthropic
-                    dynamic_llm = ChatAnthropic(
-                        model=actual_model,
-                        temperature=0.3,
-                        anthropic_api_key=self.custom_key if self.custom_key else os.getenv("ANTHROPIC_API_KEY")
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    result = ai_response.content.strip()
-
-                elif "gemini" in actual_model:
-                    from langchain_google_genai import ChatGoogleGenerativeAI
-                    dynamic_llm = ChatGoogleGenerativeAI(
-                        model=actual_model,
-                        temperature=0.3,
-                        google_api_key=self.custom_key if self.custom_key else os.getenv("GOOGLE_API_KEY")
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    result = ai_response.content.strip()
-
-                elif "deepseek" in actual_model:
-                    dynamic_llm = ChatOpenAI(
-                        model=actual_model,
-                        temperature=0.3,
-                        openai_api_key=self.custom_key if self.custom_key else os.getenv("DEEPSEEK_API_KEY"),
-                        openai_api_base="https://api.deepseek.com/v1"
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    result = ai_response.content.strip()
-
-                elif "gpt" in actual_model or "openai" in actual_model:
-                    dynamic_llm = ChatOpenAI(
-                        model=actual_model,
-                        temperature=0.3,
-                        openai_api_key=self.custom_key if self.custom_key else self.openai_key
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    result = ai_response.content.strip()
-                else:
-                    raise ValueError(
-                        f"Custom cloud provider mapping failed: Identifier '{actual_model}' "
-                        f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
-                    )
+                from app.services.llm_providers import resolve_dynamic_llm
+                dynamic_llm = resolve_dynamic_llm(
+                    actual_model,
+                    self.custom_key,
+                    temperature=0.3,
+                    openai_fallback_key=self.openai_key,
+                    strict=True,
+                )
+                ai_response = dynamic_llm.invoke(prompt)
+                result = ai_response.content.strip()
 
             elif str(model_to_use).startswith("ollama://"):
                 actual_model = model_to_use.replace("ollama://", "")
@@ -478,7 +445,12 @@ class QueryFormatterAgent:
         self.state = {}
         self.insight_generator = DataInsightGeneratorAgent(llm_url=llm_url, model=model)
 
-    def execute_query(self, sql_query: str, user_query: str = "",target_model: str = None,system_instructions: str = "") -> dict:
+    def execute_query(self, sql_query: str, user_query: str = "",target_model: str = None,system_instructions: str = "", db_config: dict = None) -> dict:
+        # db_config, if given, overrides self.db_config's env-var/hardcoded
+        # defaults (the app's own database) with the specific external
+        # connection this request's schema actually came from - see
+        # resolve_query_execution_config() in automated_metamind.py.
+        db_config = db_config or self.db_config
 
         if sql_query:
             sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
@@ -534,14 +506,21 @@ class QueryFormatterAgent:
 
         try:
             db_url = (
-                f"postgresql+psycopg2://{self.db_config['user']}:{self.db_config['password']}@"
-                f"{self.db_config['host']}:{self.db_config['port']}/{self.db_config['dbname']}"
+                f"postgresql+psycopg2://{db_config['user']}:{db_config['password']}@"
+                f"{db_config['host']}:{db_config['port']}/{db_config['dbname']}"
             )
             # 30s statement_timeout at the Postgres session level - a
             # runaway query gets killed by the database itself rather than
             # tying up the request indefinitely.
             engine = create_engine(db_url, connect_args={"options": "-c statement_timeout=30000"})
-            df = pd.read_sql_query(sql_query, engine)
+            # Wrapped in text() rather than passed as a raw string - pandas
+            # routes a raw SQL string through SQLAlchemy's exec_driver_sql()
+            # path, which under this pandas/SQLAlchemy combo can hand
+            # psycopg2's cursor.execute() an immutabledict instead of a
+            # sequence for its (empty) parameters, raising "immutabledict is
+            # not a sequence" - text() routes through the normal statement
+            # execution path instead, which doesn't hit this.
+            df = pd.read_sql_query(text(sql_query), engine)
             engine.dispose()
 
         except Exception as e:
@@ -679,7 +658,7 @@ class QueryFormatterAgent:
         self.insight_generator.custom_key = custom_key
         system_instructions = state.get("system_instructions", "")
 
-        result = self.execute_query(generated_sql, user_query,target_model=chosen_model,system_instructions=system_instructions)
+        result = self.execute_query(generated_sql, user_query,target_model=chosen_model,system_instructions=system_instructions, db_config=state.get("db_config"))
 
         # print("\n[DEBUG] OUTBOUND result to router:", json.dumps(result, indent=4))
 

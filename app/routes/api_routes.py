@@ -4,7 +4,7 @@ import requests
 from app import db, limiter
 from app.models.api_connector import ApiConnector
 from app.utils.crypto import encrypt, decrypt
-from app.utils.network_guard import is_safe_url
+from app.utils.network_guard import is_safe_url, build_full_api_url
 from app.utils.auth_helpers import get_current_user
 from app.services.audit_service import log_event
 
@@ -32,15 +32,32 @@ def test_connection():
     base_url = data.get('baseUrl', '')
     endpoint = data.get('endpoint', '')
     method = data.get('method', 'GET')
+    auth_type = data.get('authType', 'No Auth')
+    api_token = data.get('apiToken') or ''
 
-    full_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+    full_url = build_full_api_url(base_url, endpoint)
 
     safe, reason = is_safe_url(full_url)
     if not safe:
         return jsonify({"status": "error", "message": reason}), 400
 
+    # Mirrors the header/param logic actually used at query time
+    # (app.services.api_services._auth_headers_and_params) - the token
+    # here is whatever's currently typed into the form (plaintext), not
+    # the encrypted value read back from storage, so no decrypt() needed.
+    # "API Key" is sent both as a header and a query param since plenty
+    # of real APIs (e.g. api.metals.dev) only accept the latter.
+    headers = {}
+    params = {}
+    auth_type_normalized = (auth_type or '').strip().casefold()
+    if api_token and auth_type_normalized == 'bearer token':
+        headers['Authorization'] = f'Bearer {api_token}'
+    elif api_token and auth_type_normalized == 'api key':
+        headers['X-API-Key'] = api_token
+        params['api_key'] = api_token
+
     try:
-        response = requests.request(method=method, url=full_url, timeout=5)
+        response = requests.request(method=method, url=full_url, headers=headers, params=params, timeout=5)
         return jsonify({
             "status": "success",
             "code": response.status_code,
@@ -77,7 +94,7 @@ def save_tool():
     if not integration_name or not base_url or not endpoint:
         return jsonify({"status": "error", "message": "Missing required fields"}), 400
 
-    full_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+    full_url = build_full_api_url(base_url, endpoint)
     safe, reason = is_safe_url(full_url)
     if not safe:
         return jsonify({"status": "error", "message": reason}), 400
@@ -111,7 +128,7 @@ def save_tool():
                    resource_type='api', resource_id=tool.id, details={'integration_name': integration_name})
 
         from app.services.automated_metamind import generate_router_config
-        generate_router_config(user_id=current_user.id, force=True)
+        generate_router_config(user_id=current_user.id)
 
         return jsonify({
             "status": "success",
@@ -142,11 +159,6 @@ def delete_tool(integration_name):
         if tool.created_by_user_id != current_user.id and current_user.role != 'admin':
             return jsonify({"status": "error", "message": "Only the creator or a company admin can delete this tool"}), 403
 
-        from app.models.resource_mapping import ResourceMapping
-        affected_user_ids = {current_user.id, tool.created_by_user_id} | {
-            m.user_id for m in ResourceMapping.query.filter_by(resource_type='api', resource_id=tool.id).all()
-        }
-
         tool_id = tool.id
         db.session.delete(tool)
         db.session.commit()
@@ -154,9 +166,9 @@ def delete_tool(integration_name):
         log_event('api_connector_deleted', company_code=current_user.company_code, user_id=current_user.id,
                    resource_type='api', resource_id=tool_id, details={'integration_name': integration_name})
 
-        from app.services.automated_metamind import generate_router_config
-        for uid in affected_user_ids:
-            generate_router_config(user_id=uid, force=True)
+        # No router config to refresh - it's computed live on every chat
+        # query, so a deleted tool simply stops appearing on the very next
+        # query with nothing to proactively clear.
 
         return jsonify({
             "status": "success",
@@ -242,7 +254,7 @@ def process_tool(integration_name):
         from app.services.automated_metamind import generate_router_config
         try:
             for uid in affected_user_ids:
-                generate_router_config(user_id=uid, force=True)
+                generate_router_config(user_id=uid)
             return jsonify({"status": "success", "message": "Tool is now active and ready to use."})
         except Exception as e:
             print(f"❌ Error regenerating router config for '{integration_name}': {e}")

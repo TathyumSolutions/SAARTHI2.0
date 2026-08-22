@@ -70,6 +70,7 @@ import requests
 import json
 import os
 from langchain_openai import ChatOpenAI
+from app.services.bi_semantics_service import build_measure_guidance
 
 
 class SQLGeneratorAgent:
@@ -128,13 +129,32 @@ class SQLGeneratorAgent:
         simplified_query: str,
         error_feedback: str = "",
         target_model: str = "llama3",
-        system_instructions: str = ""
+        system_instructions: str = "",
+        bi_semantics_hint: str = "",
+        feedback_context: str = ""
 
     ) -> str:
         """Generate SQL from QuerySense output using LLM (Ollama-safe)"""
 
 
         try:
+            self_learning_block = ""
+            if feedback_context:
+                self_learning_block = f"""
+{feedback_context}
+
+The block above is feedback on how PAST similar questions were answered -
+it is NOT part of the current question. It can describe any kind of
+problem: a missing/wrong WHERE filter, wrong JOIN, wrong aggregation or
+GROUP BY, wrong columns selected, wrong sort/limit, or a data-quality
+issue (placeholder/"not applicable" values like "n/a" that should be
+excluded). If a DISLIKED note is still relevant to this question, adjust
+the SQL to address it - using ONLY tables/columns present in QUERY SENSE
+OUTPUT above, never inventing one. If a LIKED note confirms a past
+approach worked, prefer reusing it when it fits. Ignore anything in the
+feedback that doesn't apply to this specific question.
+"""
+
             prompt = f"""
 You are a strict PostgreSQL query generator.
 
@@ -143,10 +163,12 @@ SIMPLIFIED QUERY: {simplified_query}
 QUERY SENSE OUTPUT:
 {json.dumps(query_sense_output, indent=2)}
 ERROR FEEDBACK: {error_feedback}
+{bi_semantics_hint}
+{self_learning_block}
 
 STRICT RULES:
-1. Use ONLY tables and columns present in Query Sense Output. Nothing else.
-2. NEVER invent columns like some_metric, score, rank, total_amount unless in Query Sense Output.
+1. Use ONLY tables and columns present in Query Sense Output, or a measure column named in BI SEMANTICS GUIDANCE above (if present). Nothing else.
+2. NEVER invent columns like some_metric, score, rank, total_amount unless in Query Sense Output or explicitly named in BI SEMANTICS GUIDANCE.
 3. Use PostgreSQL syntax ONLY.
 4. Output ONLY raw executable PostgreSQL query. No markdown, no backticks, no explanation.
 5.DO NOT append explanations, notes, or reasoning about why clauses were included or skipped.
@@ -228,49 +250,16 @@ Return ONLY the PostgreSQL query, nothing else.
                 actual_model = target_model.replace("api://", "").lower()
                 print(f"🌐 [SQLGeneratorAgent] Dynamic Routing payload to Custom Cloud API model: {actual_model}")
 
-                if "claude" in actual_model:
-                    from langchain_anthropic import ChatAnthropic
-                    dynamic_llm = ChatAnthropic(
-                        model=actual_model,
-                        temperature=0,
-                        anthropic_api_key=self.custom_key if self.custom_key else os.getenv("ANTHROPIC_API_KEY")
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    raw_sql = ai_response.content.strip()
-
-                elif "gemini" in actual_model:
-                    from langchain_google_genai import ChatGoogleGenerativeAI
-                    dynamic_llm = ChatGoogleGenerativeAI(
-                        model=actual_model,
-                        temperature=0,
-                        google_api_key=self.custom_key if self.custom_key else os.getenv("GOOGLE_API_KEY")
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    raw_sql = ai_response.content.strip()
-
-                elif "deepseek" in actual_model:
-                    dynamic_llm = ChatOpenAI(
-                        model=actual_model,
-                        temperature=0,
-                        openai_api_key=self.custom_key if self.custom_key else os.getenv("DEEPSEEK_API_KEY"),
-                        openai_api_base="https://api.deepseek.com/v1"
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    raw_sql = ai_response.content.strip()
-
-                elif "gpt" in actual_model or "openai" in actual_model:
-                    dynamic_llm = ChatOpenAI(
-                        model=actual_model,
-                        temperature=0,
-                        openai_api_key=self.custom_key if self.custom_key else self.openai_key
-                    )
-                    ai_response = dynamic_llm.invoke(prompt)
-                    raw_sql = ai_response.content.strip()
-                else:
-                    raise ValueError(
-                        f"Custom cloud provider mapping failed: Identifier '{actual_model}' "
-                        f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
-                    )
+                from app.services.llm_providers import resolve_dynamic_llm
+                dynamic_llm = resolve_dynamic_llm(
+                    actual_model,
+                    self.custom_key,
+                    temperature=0,
+                    openai_fallback_key=self.openai_key,
+                    strict=True,
+                )
+                ai_response = dynamic_llm.invoke(prompt)
+                raw_sql = ai_response.content.strip()
 
             elif str(target_model).startswith("ollama://"):
                 actual_model = target_model.replace("ollama://", "")
@@ -320,8 +309,26 @@ Return ONLY the PostgreSQL query, nothing else.
             chosen_model = state.get("model_name", self.llm_backend["model"])
             custom_key = state.get("custom_key", "")
             system_instructions = state.get("system_instructions", "")
+            feedback_context = state.get("feedback_context", "")
             self.custom_key = custom_key
 
+            if feedback_context:
+                print(f"🧠 [FEEDBACK-DEBUG] [SQL] Using feedback context for SQL generation:\n{feedback_context}")
+
+            # Consult the BI semantics config (app/services/bi_semantics_service.py)
+            # for the tables this question touches: if QuerySense found no
+            # explicit aggregation, a business entity like "sales orders" should
+            # default to SUM(net_value) rather than a raw row per order that
+            # degenerates into a meaningless one-count-per-row chart downstream.
+            try:
+                bi_semantics_hint = build_measure_guidance(
+                    query_sense_output.get("tables") or [],
+                    query_sense_output,
+                    user_id=state.get("user_id", 1),
+                )
+            except Exception as e:
+                print(f"⚠️ [SQLGeneratorAgent] BI semantics lookup failed: {e}")
+                bi_semantics_hint = ""
 
             sql = self.generate_sql_from_querysense(
                 user_query,
@@ -329,7 +336,9 @@ Return ONLY the PostgreSQL query, nothing else.
                 simplified_query,
                 error_feedback,
                 chosen_model,
-                system_instructions=system_instructions
+                system_instructions=system_instructions,
+                bi_semantics_hint=bi_semantics_hint,
+                feedback_context=feedback_context,
             )
 
             if not sql:
@@ -382,43 +391,16 @@ Return ONLY the PostgreSQL query, nothing else.
                         description = resp.json().get("response", "").strip()
                     elif str(chosen_model).startswith("api://"):
                         actual_model = chosen_model.replace("api://", "").lower()
-                        
-                        if "claude" in actual_model:
-                            from langchain_anthropic import ChatAnthropic
-                            dynamic_llm = ChatAnthropic(
-                                model=actual_model,
-                                temperature=0.3,
-                                anthropic_api_key=self.custom_key if self.custom_key else os.getenv("ANTHROPIC_API_KEY")
-                            )
-                            description = dynamic_llm.invoke(extra_narration_prompt).content.strip()
 
-                        elif "gemini" in actual_model:
-                            from langchain_google_genai import ChatGoogleGenerativeAI
-                            dynamic_llm = ChatGoogleGenerativeAI(
-                                model=actual_model,
-                                temperature=0.3,
-                                google_api_key=self.custom_key if self.custom_key else os.getenv("GOOGLE_API_KEY")
-                            )
-                            description = dynamic_llm.invoke(extra_narration_prompt).content.strip()
-
-                        elif "deepseek" in actual_model:
-                            dynamic_llm = ChatOpenAI(
-                                model=actual_model,
-                                temperature=0.3,
-                                openai_api_key=self.custom_key if self.custom_key else os.getenv("DEEPSEEK_API_KEY"),
-                                openai_api_base="https://api.deepseek.com/v1"
-                            )
-                            description = dynamic_llm.invoke(extra_narration_prompt).content.strip()
-
-                        elif "gpt" in actual_model or "openai" in actual_model:
-                            dynamic_llm = ChatOpenAI(
-                                model=actual_model,
-                                temperature=0.3,
-                                openai_api_key=self.custom_key if self.custom_key else self.openai_key
-                            )
-                            description = dynamic_llm.invoke(extra_narration_prompt).content.strip()
-                        else:
-                            description = "Successfully generated an optimized SQL query."
+                        from app.services.llm_providers import resolve_dynamic_llm
+                        dynamic_llm = resolve_dynamic_llm(
+                            actual_model,
+                            self.custom_key,
+                            temperature=0.3,
+                            openai_fallback_key=self.openai_key,
+                            strict=True,
+                        )
+                        description = dynamic_llm.invoke(extra_narration_prompt).content.strip()
 
                     elif str(chosen_model).startswith("ollama://"):
                         actual_model = chosen_model.replace("ollama://", "")

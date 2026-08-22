@@ -445,6 +445,16 @@ class LLMService:
             # Load the data
             documents = loader.load()
 
+            # Content-aware summary of what this document actually covers -
+            # shown as its MetaMind summary in the Knowledge Base Details
+            # popup, so a user (or the AI router) can tell what's inside
+            # without opening it. Generated once here, from the full loaded
+            # text, rather than on every router config regen (see
+            # automated_metamind.py's introspect_qdrant, which only counts
+            # chunks - it has no access to their text and regenerates too
+            # often to re-summarize on every run).
+            content_summary = self._summarize_document_topics(documents)
+
             # Extract tables and images separately, gated by rag_config.yaml so this
             # is a no-op until those settings are turned on.
             # NOTE: the normal text loader above will still also pull table content
@@ -495,11 +505,39 @@ class LLMService:
             return {
                 "status": "success",
                 "message": "Embeddings are stored in vector database successfully",
-                "chunk_count": len(chunks)
+                "chunk_count": len(chunks),
+                "content_summary": content_summary,
             }
 
         except Exception as e:
             return {"error": f"Processing failed: {str(e)}"}
+
+    def _summarize_document_topics(self, documents):
+        """
+        Short, plain-language summary of what a document actually covers -
+        key topics/sections, not just its filename or file type. Returns
+        None (rather than raising) on empty content or an LLM failure, so a
+        summary hiccup never blocks the embeddings pipeline it's riding
+        alongside.
+        """
+        combined_text = "\n\n".join(d.page_content for d in documents if d.page_content).strip()
+        if not combined_text:
+            return None
+        try:
+            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, openai_api_key=os.getenv("OPENAI_API_KEY"))
+            response = llm.invoke([
+                SystemMessage(content="You write short, plain-language summaries of business documents for a knowledge base index."),
+                HumanMessage(content=(
+                    "Summarize what this document covers in 2-4 sentences, focused on the key "
+                    "topics, sections, or subject matter someone would search for. Skip generic "
+                    "filler like \"This document discusses\" - just the substance.\n\n"
+                    f"Document content:\n{combined_text[:8000]}"
+                )),
+            ])
+            return (response.content or "").strip() or None
+        except Exception as e:
+            print(f"⚠️ [RAG] Could not generate content summary: {e}")
+            return None
 
     
     # def perform_intent_analysis(self, user_query, model_name, custom_key):
@@ -542,13 +580,39 @@ class LLMService:
     #         print(f"Analysis Error: {e}")
     #         return "Analyzing natural language inquiry for document matching modules."    
 
-    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions=''):
+    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions='',user_id=None,feedback_context=''):
         """
-        Retrieves relevant chunks from Qdrant and updates the live steps 
-        using the new structured event payload layout.
+        Retrieves relevant chunks from Qdrant and updates the live steps
+        using the new structured event payload layout. Retrieval is scoped
+        to documents visible to user_id (their own uploads plus anything
+        granted via Resource Mapping) so one user's answers never surface
+        content from a document another user never shared with them.
         """
         rag_chain_of_thought = []
         session_id = str(session_id)
+
+        qdrant_filter = None
+        if user_id is not None:
+            from app.services.automated_metamind import visible_document_codes
+            doc_codes = visible_document_codes(user_id)
+            if not doc_codes:
+                stream_manager.push_step(session_id, "DONE", is_sql=False)
+                return {
+                    "answer": "You don't have any documents uploaded or shared with you yet.",
+                    "sql": None,
+                    "table": [],
+                    "chart": {},
+                    "rag_chain_of_thought": rag_chain_of_thought
+                }
+            from qdrant_client.http import models as qmodels
+            qdrant_filter = qmodels.Filter(
+                must=[
+                    qmodels.FieldCondition(
+                        key="metadata.document_code",
+                        match=qmodels.MatchAny(any=doc_codes),
+                    )
+                ]
+            )
         
         # ========================================================
        
@@ -718,10 +782,10 @@ class LLMService:
                 search_queries = [self._generate_hyde_document(q) for q in search_queries]
 
             if len(search_queries) > 1:
-                doc_lists = [vector_store.similarity_search(q, k=retrieval_cfg["top_k"]) for q in search_queries]
+                doc_lists = [vector_store.similarity_search(q, k=retrieval_cfg["top_k"], filter=qdrant_filter) for q in search_queries]
                 docs = self._merge_and_dedupe_docs(doc_lists)
             else:
-                docs = vector_store.similarity_search(search_queries[0], k=retrieval_cfg["top_k"])
+                docs = vector_store.similarity_search(search_queries[0], k=retrieval_cfg["top_k"], filter=qdrant_filter)
             context_text = "\n\n".join([doc.page_content for doc in docs])
             
             retrieval_msg = f"Found {len(docs)} relevant sections in your documents."
@@ -761,6 +825,15 @@ class LLMService:
             )
             if system_instructions.strip():
                 system_prompt += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
+            if feedback_context:
+                print(f"🧠 [FEEDBACK-DEBUG] [FILES] Using feedback context:\n{feedback_context}")
+                system_prompt += (
+                    f"\n\n{feedback_context}\n\n"
+                    "That is feedback on how PAST similar questions were answered, not part of "
+                    "this question. It can be about anything - missed context, wrong section "
+                    "cited, wrong tone, too much/too little detail. If any of it is still "
+                    "relevant here, apply it; ignore whatever doesn't apply to this question."
+                )
 
             if model_name == "llama3":
                 print("🦙 Routing payload to local Ollama [llama3] container layer...")
@@ -918,12 +991,17 @@ class LLMService:
             # Final execution loop boundary closeout
             stream_manager.push_step(session_id, "DONE", is_sql=False)
 
+            document_codes = sorted({
+                d.metadata.get("document_code") for d in docs if d.metadata.get("document_code")
+            })
+
             return {
                 "answer": final_answer,
-                "sql": None,  
+                "sql": None,
                 "table": [],
                 "chart": {},
-                "rag_chain_of_thought": rag_chain_of_thought
+                "rag_chain_of_thought": rag_chain_of_thought,
+                "document_codes": document_codes,
             }
 
         except Exception as e:
@@ -939,9 +1017,9 @@ class LLMService:
 
 _shared_llm_service = LLMService()
 
-def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions=''):
+def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions='', user_id=None, feedback_context=''):
     """
-    Top-level module function mapping so your orchestrator router can import 
+    Top-level module function mapping so your orchestrator router can import
     it cleanly without needing class-level structural instantiation overhead.
     """
     return _shared_llm_service.answer_from_docs(
@@ -949,8 +1027,10 @@ def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system
         model_name=model_name,
         session_id=session_id,
         custom_key=custom_key,
-        system_instructions=system_instructions
-    )   
+        system_instructions=system_instructions,
+        user_id=user_id,
+        feedback_context=feedback_context,
+    )
        
 
 #     def get_smart_response(self, user_query,model_name, session_id=1,custom_key=''):

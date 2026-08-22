@@ -1,11 +1,9 @@
 """
 LangGraph Orchestrator - Connects all agents through StateGraph with Error Recovery
 """
-import json
 from langgraph.graph import StateGraph, END
 from .agent_state import DataBridgeState
 from .agent_routers import validation_router, error_recovery_router, format_router
-import os
 from app.services.stream_manager import stream_manager
 import time
 from app.services.model_selection_service import get_model_for_step
@@ -24,13 +22,11 @@ from .agents import (
 
 
 # ===== Configuration =====
-current_dir = os.path.dirname(os.path.abspath(__file__))
-SCHEMA_PATH = os.path.join(current_dir, "sap_schema_with_sap_comments.json")
-#SCHEMA_PATH = "sap_schema_with_sap_comments.json"
-with open(SCHEMA_PATH, "r") as f:
-    SCHEMA = json.load(f)
-#SCHEMA = {}
-#SCHEMA_PATH = None
+# Schema is no longer a static global file - each request builds it live
+# from the querying user's own visible connections (see
+# _build_schema_for_user below), matching the per-user/per-connection
+# model used everywhere else.
+EMPTY_SCHEMA = {"tables": {}}
 
 LLM_BACKEND = {
     "type": "ollama",
@@ -45,32 +41,12 @@ LLM_BACKEND = {
 
 
 # ===== Initialize Agents =====
-#query_simplifier = QuerySimplifierAgent(
- #   schema_path=SCHEMA_PATH,
-  #  model_name=LLM_BACKEND["model"],
-  #  url=LLM_BACKEND["url"]
-#)
-
-#query_sense = QuerySenseAgent(
- #   schema=SCHEMA,
- #   ollama_model=LLM_BACKEND["model"],
- #   ollama_url=LLM_BACKEND["url"]
-#)
-
-query_simplifier = QuerySimplifierAgent(
-    schema_path=SCHEMA_PATH, # Now None
-    model_name=LLM_BACKEND["model"],
-    url=LLM_BACKEND["url"]
-)
-
-query_sense = QuerySenseAgent(
-    schema=SCHEMA, # Now {}
-    ollama_model=LLM_BACKEND["model"],
-    ollama_url=LLM_BACKEND["url"]
-)
-
-query_validator = QueryValidatorAgent(schema=SCHEMA)
-
+# query_simplifier, query_sense, and query_validator are schema-dependent -
+# a fresh instance is built per request (see run_data_bridge_agent, which
+# stashes them under state["_agents"]) using the querying user's own
+# introspected schema, instead of a single shared instance baked with one
+# global schema at import time. Everything below is schema-independent and
+# safe to share as a module-level singleton across requests.
 sql_generator = SQLGeneratorAgent(llm_backend=LLM_BACKEND)
 
 query_formatter = QueryFormatterAgent()
@@ -99,6 +75,7 @@ def simplifier_node(state: DataBridgeState) -> DataBridgeState:
     requested_main_model = state.get("requested_model_name") or state.get("model_name")
     user_id = state.get("user_id", 1)
     step_model = get_model_for_step("query_simplifier", requested_main_model=requested_main_model, user_id=user_id)
+    query_simplifier = state["_agents"]["query_simplifier"]
     if step_model:
         state["model_name"] = step_model
         query_simplifier.model_name = step_model
@@ -119,6 +96,7 @@ def query_sense_node(state: DataBridgeState) -> DataBridgeState:
     requested_main_model = state.get("requested_model_name") or state.get("model_name")
     user_id = state.get("user_id", 1)
     step_model = get_model_for_step("query_sense", requested_main_model=requested_main_model, user_id=user_id)
+    query_sense = state["_agents"]["query_sense"]
     if step_model:
         state["model_name"] = step_model
         query_sense.ollama_model = step_model
@@ -141,7 +119,7 @@ def validator_node(state: DataBridgeState) -> DataBridgeState:
     if step_model:
         state["model_name"] = step_model
     print(f"[ModelSelection] query_validator -> {step_model}")
-    return query_validator.execute(state)
+    return state["_agents"]["query_validator"].execute(state)
 
 
 def sql_generator_node(state: DataBridgeState) -> DataBridgeState:
@@ -235,6 +213,46 @@ def error_diagnosis_node(state: DataBridgeState) -> DataBridgeState:
     return error_diagnosis.execute(state)
 
 
+def _compose_final_answer(state: DataBridgeState) -> str:
+    """
+    Build the natural-language answer shown to the user from what this
+    request actually retrieved, instead of a generic template like "I have
+    gathered data from multiple sources, yielding a total of N entries" that
+    ignores what was actually found. Combines the real row/column shape of
+    the result, the chart-worthiness note from DataVisualizerAgent (e.g.
+    "this is a lookup mapping, here's the data as a table"), and 1-2 of the
+    concrete insights already computed by DataInsightGeneratorAgent.
+    """
+    base_message = (state.get("message") or "").strip()
+    fmt = state.get("format")
+
+    if fmt == "error" or not state.get("columns"):
+        return base_message or "I wasn't able to retrieve any data for this request."
+
+    columns = state.get("columns") or []
+    row_count = state.get("row_count", 0)
+
+    parts = []
+    if row_count and columns:
+        row_word = "row" if row_count == 1 else "rows"
+        col_word = "column" if len(columns) == 1 else "columns"
+        parts.append(
+            f"Retrieved {row_count} {row_word} across {len(columns)} {col_word} ({', '.join(columns)})."
+        )
+    elif base_message:
+        parts.append(base_message)
+
+    chart_note = (state.get("chart_configs") or {}).get("note")
+    if chart_note:
+        parts.append(chart_note)
+
+    concrete_insights = [i.strip() for i in (state.get("insights") or []) if isinstance(i, str) and i.strip()]
+    if concrete_insights:
+        parts.append("Key findings: " + " ".join(concrete_insights[:2]))
+
+    return " ".join(parts) if parts else (base_message or "No analysis found.")
+
+
 def response_builder_node(state: DataBridgeState) -> DataBridgeState:
     """Build final response"""
     print(f"\n🤖 [ResponseBuilder] Building final response...")
@@ -247,7 +265,7 @@ def response_builder_node(state: DataBridgeState) -> DataBridgeState:
 
     qs_output = state.get("query_sense_output", {})
     execution_steps = qs_output.get("steps", [])
-    
+
     response = {
         "query": state["user_query"],
         "simplified_query": state.get("simplified_query"),
@@ -256,7 +274,7 @@ def response_builder_node(state: DataBridgeState) -> DataBridgeState:
         "sql": state.get("generated_sql"),
         "format": state.get("format", "unknown"),
         "case": state.get("case"),
-        "message": state.get("message", ""),
+        "message": _compose_final_answer(state),
         "columns": state.get("columns", []),
         "row_count": state.get("row_count", 0),
         "data": state.get("data", []),
@@ -265,10 +283,10 @@ def response_builder_node(state: DataBridgeState) -> DataBridgeState:
         "chart_configs": state.get("chart_configs", {"bar": {}, "line": {}, "pie": {}, "recommended": "bar"}),
         "steps": execution_steps
     }
-    
+
     state["response"] = response
     state["current_step"] = "response_builder"
-    
+
     print(f"✅ [ResponseBuilder] Response built successfully\n")
     return state
 
@@ -284,16 +302,16 @@ def error_handler_node(state: DataBridgeState) -> DataBridgeState:
     response = {
         "query": state["user_query"],
         "format": "error",
-        "message": f"❌ Error at {current_step}: {error_msg}",
+        "message": "I wasn't able to pull this from the connected database. Could you try rephrasing the question, or let us know if this keeps happening?",
         "error": error_msg,
         "current_step": current_step,
         "recovery_attempts": recovery_attempts
     }
-    
+
     state["response"] = response
     state["current_step"] = "error_handler"
-    
-    print(f"✅ [ErrorHandler] Error handled (after {recovery_attempts} recovery attempts)\n")
+
+    print(f"✅ [ErrorHandler] Error handled (after {recovery_attempts} recovery attempts): {error_msg}\n")
     return state
 
 
@@ -382,7 +400,53 @@ def create_data_bridge_graph():
 langgraph_app = create_data_bridge_graph()
 
 
-def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "", user_id: int = 1) -> dict:
+def _build_schema_for_user(user_id: int, router_config: dict = None) -> dict:
+    """
+    This user's own introspected DB schema (populated live by
+    generate_router_config()/introspect_databridge_db() - the same data
+    the "Process" button on a database connection builds), converted into
+    the shape the SQL agents below expect.
+
+    If router_config (the routing menu dict router_service.py
+    already computed for this same chat turn's routing decision) is
+    passed in, reuses it instead of recomputing from scratch - avoids
+    paying for a second full live introspection (DB connections, Qdrant,
+    API tools, spreadsheets) within one turn. Falls back to computing it
+    live via generate_router_config() when called without one - e.g. the
+    CLI/dev entrypoint. Falls back to an empty schema (never raises) if
+    this user has no DB datasource at all - same "degrade gracefully"
+    behavior as the rest of the router.
+    """
+    try:
+        from app.services.automated_metamind import generate_router_config, to_sql_agent_schema
+
+        menu = router_config if router_config is not None else generate_router_config(user_id)
+        if not menu:
+            return dict(EMPTY_SCHEMA)
+        db_tables = menu.get("routing_menu", {}).get("datasources", {}).get("DB", {}).get("tables", {})
+        return to_sql_agent_schema(db_tables)
+    except Exception as e:
+        print(f"⚠️ [SCHEMA] Could not load schema for user {user_id}: {e}")
+        return dict(EMPTY_SCHEMA)
+
+
+def _build_db_config_for_user(user_id: int):
+    """
+    Connection to actually RUN generated SQL against for this user - see
+    resolve_query_execution_config()'s docstring. None means "no
+    PostgreSQL connection registered", in which case QueryFormatterAgent
+    falls back to its own default (the app's own database, for local/dev
+    use) rather than this being treated as an error.
+    """
+    try:
+        from app.services.automated_metamind import resolve_query_execution_config
+        return resolve_query_execution_config(user_id)
+    except Exception as e:
+        print(f"⚠️ [SCHEMA] Could not resolve a query execution connection for user {user_id}: {e}")
+        return None
+
+
+def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "", user_id: int = 1, router_config: dict = None, feedback_context: str = "") -> dict:
     """Run the Data Bridge agent with error recovery"""
     print(f"\n{'='*80}")
     print(f"🚀 Starting LangGraph Data Bridge Agent with Error Recovery")
@@ -390,6 +454,17 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
     print("RUN_DATA_BRIDGE MODEL =", model_name)
     if model_name:
         LLM_BACKEND["model"] = model_name
+
+    # Fresh, request-scoped instances built from this user's own schema -
+    # not shared module-level singletons, so concurrent requests from
+    # different users never see each other's schema.
+    schema = _build_schema_for_user(user_id, router_config)
+    db_config = _build_db_config_for_user(user_id)
+    agents = {
+        "query_simplifier": QuerySimplifierAgent(schema=schema, model_name=LLM_BACKEND["model"], url=LLM_BACKEND["url"]),
+        "query_sense": QuerySenseAgent(schema=schema, ollama_model=LLM_BACKEND["model"], ollama_url=LLM_BACKEND["url"]),
+        "query_validator": QueryValidatorAgent(schema=schema),
+    }
 
     stream_manager.push_step(
         session_id, 
@@ -420,9 +495,13 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
         "user_query": user_query,
         "model_name": model_name,
         "requested_model_name": model_name,
+        "session_id": session_id,
         "user_id": user_id,
         "custom_key": custom_key,
         "system_instructions": system_instructions,
+        "feedback_context": feedback_context,
+        "_agents": agents,
+        "db_config": db_config,
         "steps": [],
         "simplified_query": None,
         "query_sense_output": None,
@@ -452,6 +531,16 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
     }
     
     streamed_steps = set()
+    # Human-readable, execution-ordered record of each completed step -
+    # streamed_steps (a set, so it can't preserve order or hold anything
+    # but its own dedup keys) was previously dumped straight into the
+    # final "steps" list via list(streamed_steps): unordered, and full of
+    # raw internal keys like "sql_generator_11_completed" instead of the
+    # node_title/desc actually computed below. This list mirrors what's
+    # live-streamed to the user via stream_manager.push_step, in the same
+    # "{title} - {description}" shape the frontend already parses for
+    # every other track (spreadsheet/API/files).
+    ordered_steps = []
     # Create a base dictionary to collect the live updates from the stream
     final_state = dict(initial_state)
     has_sql_executed = False
@@ -505,7 +594,15 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
             elif "formatter" in chk_key:
                 node_title = "Query Formatter Agent"
                 rows = final_state.get("row_count", 0)
-                desc = f"Sanitized layout keywords and executed query. Retrieved {rows} rows." if rows else "Sanitizing structural keywords and executing query..."
+                cols = final_state.get("columns") or []
+                executed_sql = final_state.get("generated_sql")
+                if rows and executed_sql:
+                    col_part = f" across {len(cols)} column{'s' if len(cols) != 1 else ''} ({', '.join(cols)})" if cols else ""
+                    desc = f"Ran: {executed_sql} — returned {rows} row{'s' if rows != 1 else ''}{col_part}."
+                elif rows:
+                    desc = f"Executed the generated query. Retrieved {rows} rows."
+                else:
+                    desc = "Sanitizing structural keywords and executing query..."
                 
             elif "insight" in chk_key:
                 node_title = "Data Insight Agent"
@@ -558,7 +655,8 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
                     is_sql=is_current_step_sql
                 )
                 streamed_steps.add(step_key)
-                
+                ordered_steps.append(f"{node_title} - {desc}")
+
                 # Creates a clean pacing transition break on the frontend before the next node starts
                 time.sleep(0.4)
             # Gives the UI time to register the new card framework
@@ -584,7 +682,8 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
             "chart": user_facing_response.get("chart_configs", {}),
             "sql": final_state.get("generated_sql", "-- No SQL Generated --"),
             #"steps": final_state.get("steps", []),
-            "steps": list(streamed_steps)
+            "steps": ordered_steps,
+            "error": user_facing_response.get("format") == "error",
         },
         "cot_logs": final_state  # This is the "Everything" for your CoT section
     }

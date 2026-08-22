@@ -384,6 +384,11 @@
                     <span>Database Connections</span>
                 </div>
 
+                <div class="section-item" id="spreadsheetsIcon" onclick="window.location.href='/spreadsheets'">
+                    <div class="item-icon">📊</div>
+                    <span>Spreadsheet</span>
+                </div>
+
                 <div class="section-item" id="apiIntegrationsIcon" onclick="window.location.href='/api_connectors/rest_apis'">
                     <div class="item-icon">🔌</div>
                     <span>API Integrations</span>
@@ -429,6 +434,23 @@
                 </div>
             </div>
 
+            <!-- Reports (was "Knowledge Base"). Reports and Query Logs are
+                 two independent pages, not tabs on one page, so they're
+                 two flat, always-visible links here instead of an
+                 expand/collapse group. -->
+            <div class="sidebar-section">
+                <div class="section-title">Reports</div>
+
+                <div class="section-item" id="dataSourcesDirectoryIcon" onclick="window.location.href='/data_sources'">
+                    <div class="item-icon">📦</div>
+                    <span>Data Sources</span>
+                </div>
+                <div class="section-item" id="queryLogsIcon" onclick="window.location.href='/query_logs'">
+                    <div class="item-icon">🧾</div>
+                    <span>Query Logs</span>
+                </div>
+            </div>
+
             <!-- Management -->
             <div class="sidebar-section">
                 <div class="section-title">Management</div>
@@ -436,6 +458,11 @@
                 <div class="section-item" onclick="window.location.href='/resource_mapping'">
                     <div class="item-icon">👥</div>
                     <span>Resource Mapping</span>
+                </div>
+
+                <div class="section-item" id="companyMasterMenuItem" style="display: none;" onclick="window.location.href='/platform/companies'">
+                    <div class="item-icon">🏢</div>
+                    <span>Company Master</span>
                 </div>
             </div>
         </div>
@@ -518,6 +545,11 @@
                     const label = (user.name || user.email || '').trim();
                     if (avatar && label) avatar.textContent = label.charAt(0).toUpperCase();
                     if (nameEl) nameEl.textContent = user.name || user.email || '';
+
+                    const companyMasterItem = document.getElementById('companyMasterMenuItem');
+                    if (companyMasterItem && user.is_superadmin) {
+                        companyMasterItem.style.display = '';
+                    }
                 })
                 .catch(function () {});
         }

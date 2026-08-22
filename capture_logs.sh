@@ -8,7 +8,7 @@ mkdir -p "$LOG_DIR"
 CENTRAL_LOG="${LOG_DIR}/centralized_${TIMESTAMP}.log"
 touch "$CENTRAL_LOG"
 
-SERVICES=(web db redis mongodb qdrant ollama)
+SERVICES=(web db redis qdrant ollama)
 
 echo "Starting log capture for run ${TIMESTAMP}"
 echo "Logs will be written to ${LOG_DIR}/"

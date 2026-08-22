@@ -14,13 +14,14 @@ def answer_general_knowledge(
     custom_key: str,
     system_instructions: str,
     master_steps: list,
-    session_id: str = "1"
+    session_id: str = "1",
+    feedback_context: str = "",
 ) -> dict:
     """
     Standalone track runner that queries the LLM's world knowledge base.
     Pushes normal, accurate step states to stream_manager without RAG/Vector terminology.
     """
-    print("ðŸŒ Executing Standalone Track: GENERAL")
+    print("🌐 Executing Standalone Track: GENERAL")
     session_id = str(session_id)
 
     # ===================================================================
@@ -72,6 +73,15 @@ def answer_general_knowledge(
     )
     if system_instructions and system_instructions.strip():
         system_content += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
+    if feedback_context:
+        print(f"🧠 [FEEDBACK-DEBUG] [GENERAL] Using feedback context:\n{feedback_context}")
+        system_content += (
+            f"\n\n{feedback_context}\n\n"
+            "That is feedback on how PAST similar questions were answered, not part of this "
+            "question. It can be about anything - wrong facts, too much/too little detail, "
+            "wrong tone, a wrong assumption, missing a caveat. If any of it is still relevant "
+            "here, apply it to how you answer; ignore whatever doesn't apply to this question."
+        )
 
     push_general_event("complete", "Checking What I Already Know", "I matched your question with the most relevant knowledge.")
 
@@ -101,42 +111,15 @@ def answer_general_knowledge(
             actual_model = model_name.replace("api://", "").lower()
             messages = [SystemMessage(content=system_content), HumanMessage(content=user_query)]
 
-            if "claude" in actual_model:
-                from langchain_anthropic import ChatAnthropic
-                dynamic_llm = ChatAnthropic(
-                    model=actual_model,
-                    temperature=0.3,
-                    anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY")
-                )
-                final_answer = dynamic_llm.invoke(messages).content
-
-            elif "gemini" in actual_model:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                dynamic_llm = ChatGoogleGenerativeAI(
-                    model=actual_model,
-                    temperature=0.3,
-                    google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY")
-                )
-                final_answer = dynamic_llm.invoke(messages).content
-
-            elif "deepseek" in actual_model:
-                dynamic_llm = ChatOpenAI(
-                    model=actual_model,
-                    temperature=0.3,
-                    openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"),
-                    openai_api_base="https://api.deepseek.com/v1"
-                )
-                final_answer = dynamic_llm.invoke(messages).content
-
-            elif "gpt" in actual_model or "openai" in actual_model:
-                dynamic_llm = ChatOpenAI(
-                    model=actual_model,
-                    temperature=0.3,
-                    openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY")
-                )
-                final_answer = dynamic_llm.invoke(messages).content
-            else:
-                raise ValueError(f"Custom cloud provider mapping failed for identifier: '{actual_model}'")
+            from app.services.llm_providers import resolve_dynamic_llm
+            dynamic_llm = resolve_dynamic_llm(
+                actual_model,
+                custom_key,
+                temperature=0.3,
+                openai_fallback_key=os.getenv("OPENAI_API_KEY"),
+                strict=True,
+            )
+            final_answer = dynamic_llm.invoke(messages).content
 
         # 3. Dynamic Local Ollama Runtime Containers
         elif str(model_name).startswith("ollama://") or model_name == "llama3":
@@ -167,7 +150,7 @@ def answer_general_knowledge(
         push_general_event("complete", "Preparing Your Answer", f"Answer generated successfully through {model_name}.")
 
     except Exception as e:
-        print(f"âš ï¸ General Service Track Exception: {e}")
+        print(f"⚠️ General Service Track Exception: {e}")
         push_general_event("complete", "Preparing Your Answer", f"Error encountered during generation: {str(e)}")
         final_answer = "The system encountered an unexpected error generating your answer via world knowledge parameters."
 

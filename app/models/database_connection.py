@@ -24,7 +24,21 @@ class DatabaseConnection(db.Model):
     connection_string = db.Column(db.Text)
 
     config = db.Column(db.JSON, default={})
-    status = db.Column(db.String(20), default='active')  # active, inactive, error
+    status = db.Column(db.String(20), default='active')  # active, inactive, error, processed
+    error_message = db.Column(db.Text, nullable=True)
+
+    # User-editable description, shown alongside (and folded into) the
+    # metamind-generated table descriptions - see automated_metamind.py's
+    # _introspect_visible_databases()/introspect_spreadsheets(). Falls back
+    # to an auto-generated blurb when unset.
+    description = db.Column(db.Text, nullable=True)
+
+    # AI-generated summary of what metamind actually introspected for this
+    # connection (table names/row counts/auto-derived descriptions) - kept
+    # separate from the user's own `description` above. Written by
+    # automated_metamind.py (and, for Excel uploads, the /process route)
+    # every time this connection is (re)introspected.
+    metamind_summary = db.Column(db.Text, nullable=True)
 
     # Tenancy: which company this resource belongs to (NULL = individual
     # user's private resource, never visible to anyone else) and who
@@ -46,6 +60,9 @@ class DatabaseConnection(db.Model):
             'database': self.database,
             'username': self.username,
             'status': self.status,
+            'error_message': self.error_message,
+            'description': self.description,
+            'metamind_summary': self.metamind_summary,
             'company_code': self.company_code,
             'created_by_user_id': self.created_by_user_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,

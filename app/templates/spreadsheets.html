@@ -1,0 +1,695 @@
+{% extends "base.html" %}
+
+{% block title %}Spreadsheet - Saarthi{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .connection-section {
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 32px;
+        margin-bottom: 24px;
+    }
+
+    .connection-form {
+        background: var(--dark-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 24px;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-group.full-width {
+        grid-column: 1 / -1;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+        font-weight: 500;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-primary);
+        font-size: 14px;
+        transition: all 0.2s;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--primary-blue);
+        box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+    }
+
+    .form-input::placeholder {
+        color: #666;
+    }
+
+    .form-hint {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-top: 4px;
+        font-style: italic;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.3s;
+    }
+
+    .btn-primary {
+        background: var(--primary-blue);
+        color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: #006bb3;
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .btn-secondary {
+        background: var(--hover-bg);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+    }
+
+    .btn-danger {
+        background: #d32f2f;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #b71c1c;
+    }
+
+    .connections-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 24px;
+    }
+
+    .connections-table th {
+        text-align: left;
+        padding: 12px;
+        background: var(--hover-bg);
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 600;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .connections-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+
+    .connections-table tr:hover {
+        background: var(--hover-bg);
+    }
+
+    .connection-name {
+        font-weight: 600;
+        color: var(--accent-green);
+    }
+
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .status-connected { background: var(--accent-green); color: var(--dark-bg); }
+    .status-processed { background: var(--accent-green); color: var(--dark-bg); }
+    .status-disconnected { background: #d32f2f; color: white; }
+    .status-error { background: #d32f2f; color: white; }
+
+    .connection-error-message {
+        font-size: 11px;
+        color: #ff6b6b;
+        margin-top: 4px;
+        max-width: 220px;
+    }
+
+    .alert {
+        padding: 16px;
+        border-radius: 6px;
+        margin: 16px 0;
+        display: none;
+        position: relative;
+        z-index: 1000;
+        font-size: 14px;
+        font-weight: 500;
+        border: 2px solid;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .alert.show {
+        display: block !important;
+        animation: slideDown 0.3s ease-out;
+    }
+
+    .form-alert {
+        margin-top: 0;
+        margin-bottom: 20px;
+    }
+
+    @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .alert-success { background: rgba(78, 201, 176, 0.2); border-color: var(--accent-green); color: var(--accent-green); }
+    .alert-error { background: rgba(211, 47, 47, 0.2); border-color: #d32f2f; color: #ff6b6b; }
+    .alert-info { background: rgba(0, 120, 212, 0.2); border-color: var(--primary-blue); color: var(--primary-blue); }
+
+    .loading-spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--border-color);
+        border-top-color: var(--accent-green);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .action-btn-group {
+        display: flex;
+        gap: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1400px;">
+    <h1 style="font-size: 28px; margin-bottom: 8px; color: var(--text-primary);">Spreadsheet</h1>
+    <p style="color: var(--text-secondary); margin-bottom: 24px;">
+        Upload Excel or CSV files as their own queryable data source. Each sheet in a workbook becomes its
+        own entry here, named "&lt;file name&gt;_&lt;sheet name&gt;", and is queried through a pandas-based
+        path separate from the main database connections.
+    </p>
+
+    <!-- Top level alerts -->
+    <div id="alertSuccess" class="alert alert-success">
+        <strong>✅ Success!</strong> <span id="alertSuccessMessage"></span>
+    </div>
+    <div id="alertError" class="alert alert-error">
+        <strong>❌ Error!</strong> <span id="alertErrorMessage"></span>
+    </div>
+    <div id="alertInfo" class="alert alert-info">
+        <strong>ℹ️ Info!</strong> <span id="alertInfoMessage"></span>
+    </div>
+
+    <!-- Upload form -->
+    <div class="connection-section">
+        <h2 style="font-size: 18px; margin-bottom: 16px; color: var(--accent-green);" id="formTitle">Upload Excel or CSV</h2>
+
+        <div class="connection-form" id="connectionForm">
+            <div id="formAlertSuccess" class="alert alert-success form-alert">
+                <strong>✅ Success!</strong> <span id="formAlertSuccessMessage"></span>
+            </div>
+            <div id="formAlertError" class="alert alert-error form-alert">
+                <strong>❌ Error!</strong> <span id="formAlertErrorMessage"></span>
+            </div>
+            <div id="formAlertInfo" class="alert alert-info form-alert">
+                <strong>ℹ️ Info!</strong> <span id="formAlertInfoMessage"></span>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Connection Name *</label>
+                    <input type="text" id="connectionName" class="form-input" autocomplete="off" placeholder="e.g., Metal Code Dataset" required>
+                    <div class="form-hint">Friendly name for this upload - each sheet becomes "&lt;name&gt;_&lt;sheet&gt;"</div>
+                </div>
+                <div class="form-group" id="excelFileFieldContainer">
+                    <label class="form-label" id="excelFileLabel">Excel or CSV File *</label>
+                    <input type="file" id="excelFileInput" class="form-input" accept=".xlsx,.xls,.csv">
+                    <div class="form-hint" id="excelFileHint">Each sheet in an Excel workbook becomes its own table (a CSV becomes one). Column headers become column names.</div>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group full-width">
+                    <label class="form-label">Description</label>
+                    <textarea id="connectionDescription" class="form-input" autocomplete="off" style="min-height: 70px; resize: vertical;" placeholder="What does this data contain, and when should it be used? Shown alongside the AI router's own schema info."></textarea>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" id="saveConnectionBtn" class="btn btn-primary">
+                    <span id="saveBtnText">💾 Save</span>
+                </button>
+                <button type="button" id="cancelBtn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Existing spreadsheet connections -->
+    <div class="connection-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="font-size: 18px; color: var(--accent-green);">Active Spreadsheets</h2>
+            <button id="refreshConnectionsBtn" class="btn btn-secondary">🔄 Refresh</button>
+        </div>
+
+        <table class="connections-table">
+            <thead>
+                <tr>
+                    <th>Connection Name</th>
+                    <th>Source File</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="connectionsTableBody">
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        No spreadsheets uploaded yet
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Preview modal -->
+<div id="previewModalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center;">
+    <div style="background: var(--panel-bg, #1e1e1e); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px; max-width: 90vw; max-height: 85vh; overflow: auto; min-width: 400px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 id="previewModalTitle" style="margin: 0; color: var(--text-primary);">Preview</h3>
+            <button type="button" class="btn btn-secondary" onclick="closePreviewModal()">Close</button>
+        </div>
+        <div id="previewModalBody"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    'use strict';
+    let allConnections = [];
+    let editingConnectionId = null;
+
+    function init() {
+        loadConnections();
+        attachFormButtonListeners();
+    }
+
+    function attachFormButtonListeners() {
+        const cancelBtn = document.getElementById('cancelBtn');
+        const saveBtn = document.getElementById('saveConnectionBtn');
+        const refreshBtn = document.getElementById('refreshConnectionsBtn');
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                resetForm();
+            });
+        }
+        if (saveBtn) {
+            saveBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                saveConnection();
+            });
+        }
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                loadConnections();
+            });
+        }
+    }
+
+    function saveConnection() {
+        const nameInput = document.getElementById('connectionName');
+        const descriptionEl = document.getElementById('connectionDescription');
+        const saveBtn = document.getElementById('saveConnectionBtn');
+        const saveBtnText = document.getElementById('saveBtnText');
+
+        if (!nameInput || !nameInput.value.trim()) {
+            showFormAlert('Please enter a connection name.', 'error');
+            return;
+        }
+
+        if (editingConnectionId) {
+            // Renaming/re-describing an existing spreadsheet, and optionally
+            // replacing its data with a newly chosen single-sheet file.
+            if (saveBtn) saveBtn.disabled = true;
+            if (saveBtnText) saveBtnText.innerHTML = '<span class="loading-spinner"></span> Saving...';
+
+            const editFormData = new FormData();
+            editFormData.append('name', nameInput.value.trim());
+            editFormData.append('description', descriptionEl ? descriptionEl.value.trim() : '');
+            const editFileInput = document.getElementById('excelFileInput');
+            if (editFileInput && editFileInput.files.length) {
+                editFormData.append('file', editFileInput.files[0]);
+            }
+
+            authFetch(`/api/databases/${editingConnectionId}/excel`, { method: 'PUT', body: editFormData })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        showFormAlert(data.error, 'error');
+                    } else {
+                        showFormAlert(data.message || 'Connection updated.', 'success');
+                        resetForm();
+                        loadConnections();
+                    }
+                })
+                .catch(err => showFormAlert('Update failed: ' + err.message, 'error'))
+                .finally(() => {
+                    if (saveBtn) saveBtn.disabled = false;
+                    if (saveBtnText) saveBtnText.innerHTML = '💾 Save';
+                });
+            return;
+        }
+
+        const fileInput = document.getElementById('excelFileInput');
+        if (!fileInput || !fileInput.files.length) {
+            showFormAlert('Please choose an Excel or CSV file.', 'error');
+            return;
+        }
+
+        if (saveBtn) saveBtn.disabled = true;
+        if (saveBtnText) saveBtnText.innerHTML = '<span class="loading-spinner"></span> Uploading...';
+
+        const formData = new FormData();
+        formData.append('name', nameInput.value.trim());
+        formData.append('file', fileInput.files[0]);
+        formData.append('workspace_id', 1);
+        if (descriptionEl && descriptionEl.value.trim()) {
+            formData.append('description', descriptionEl.value.trim());
+        }
+
+        authFetch('/api/databases/excel', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    showFormAlert(data.error, 'error');
+                } else {
+                    showFormAlert(data.message || 'Spreadsheet uploaded.', 'success');
+                    resetForm();
+                    loadConnections();
+                }
+            })
+            .catch(err => showFormAlert('Upload failed: ' + err.message, 'error'))
+            .finally(() => {
+                if (saveBtn) saveBtn.disabled = false;
+                if (saveBtnText) saveBtnText.innerHTML = '💾 Save';
+            });
+    }
+
+    function loadConnections() {
+        authFetch('/api/databases/')
+            .then(response => response.json())
+            .then(data => {
+                const all = data.databases || [];
+                displayConnections(all.filter(c => (c.type || '').toLowerCase() === 'excel'));
+            })
+            .catch(error => {
+                console.error('Failed to load spreadsheets:', error);
+                showAlert(`Failed to load spreadsheets: ${error.message}`, 'error');
+            });
+    }
+
+    function displayConnections(connections) {
+        allConnections = connections;
+        const tbody = document.getElementById('connectionsTableBody');
+        if (!tbody) return;
+
+        if (connections.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        No spreadsheets uploaded yet
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        const STATUS_DISPLAY = {
+            connected: { cls: 'status-connected', text: 'Connected' },
+            processed: { cls: 'status-processed', text: 'Processed' },
+            error: { cls: 'status-error', text: 'Error' },
+            active: { cls: 'status-connected', text: 'Active' },
+        };
+
+        let html = '';
+        connections.forEach(conn => {
+            const display = STATUS_DISPLAY[conn.status] || { cls: 'status-disconnected', text: conn.status || 'Disconnected' };
+            const sourceFile = (conn.config && conn.config.original_filename) || conn.database || 'N/A';
+
+            html += `
+                <tr>
+                    <td><span class="connection-name">${escapeHtml(conn.name)}</span></td>
+                    <td>📊 ${escapeHtml(sourceFile)}</td>
+                    <td>
+                        <span class="status-badge ${display.cls}">${display.text}</span>
+                        ${conn.status === 'error' && conn.error_message ? `<div class="connection-error-message">${escapeHtml(conn.error_message)}</div>` : ''}
+                    </td>
+                    <td>
+                        <div class="action-btn-group">
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id}, this)">Process</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="viewConnection(${conn.id})">View</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="downloadConnection(${conn.id})">Download</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
+                            <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    function editConnection(connectionId) {
+        authFetch(`/api/databases/${connectionId}`)
+            .then(response => response.json())
+            .then(data => {
+                const conn = data.database;
+                if (!conn) {
+                    showAlert('Connection not found', 'error');
+                    return;
+                }
+
+                editingConnectionId = connectionId;
+                document.getElementById('connectionName').value = conn.name || '';
+                const descriptionEl = document.getElementById('connectionDescription');
+                if (descriptionEl) descriptionEl.value = conn.description || '';
+
+                // File is optional while editing - choosing one replaces this
+                // connection's data (single-sheet only), leaving it empty just
+                // renames/re-describes.
+                const fileInput = document.getElementById('excelFileInput');
+                if (fileInput) fileInput.value = '';
+                const excelFileLabel = document.getElementById('excelFileLabel');
+                if (excelFileLabel) excelFileLabel.textContent = 'Replace file (optional)';
+                const excelFileHint = document.getElementById('excelFileHint');
+                if (excelFileHint) excelFileHint.textContent = 'Choose a single-sheet Excel or CSV to replace this connection\'s data, or leave empty to just rename/re-describe it.';
+
+                const saveBtnText = document.getElementById('saveBtnText');
+                if (saveBtnText) saveBtnText.innerHTML = '✏️ Update';
+
+                document.getElementById('formTitle').textContent = 'Edit Spreadsheet';
+                showFormAlert('Editing existing spreadsheet. Choose a file only if you want to replace its data.', 'info');
+                document.getElementById('connectionForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            })
+            .catch(error => {
+                console.error('Edit error:', error);
+                showAlert(`Failed to load connection: ${error.message}`, 'error');
+            });
+    }
+
+    function downloadConnection(connectionId) {
+        window.open(`/api/databases/${connectionId}/download`, '_blank');
+    }
+
+    function closePreviewModal() {
+        document.getElementById('previewModalOverlay').style.display = 'none';
+    }
+
+    function viewConnection(connectionId) {
+        const conn = allConnections.find(c => c.id === connectionId);
+        document.getElementById('previewModalTitle').textContent = 'Preview' + (conn ? ' · ' + conn.name : '');
+        document.getElementById('previewModalBody').innerHTML = '<div style="color: var(--text-secondary);">Loading...</div>';
+        document.getElementById('previewModalOverlay').style.display = 'flex';
+
+        authFetch(`/api/databases/${connectionId}/preview`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.status !== 'success') {
+                    document.getElementById('previewModalBody').innerHTML =
+                        `<div style="color: var(--text-secondary);">${escapeHtml(data.error || 'Could not load a preview for this connection.')}</div>`;
+                    return;
+                }
+
+                const html = data.tables.map(t => {
+                    const cols = t.columns;
+                    const rowsHtml = t.rows.map(row => (
+                        '<tr>' + cols.map(c => `<td style="padding: 6px 10px; border-bottom: 1px solid var(--border-color);">${escapeHtml(row[c])}</td>`).join('') + '</tr>'
+                    )).join('');
+                    return `
+                        <h4 style="color: var(--accent-green); margin: 16px 0 8px;">${escapeHtml(t.sheet || t.table)} (${t.row_count} rows${t.truncated ? ', showing first 50' : ''})</h4>
+                        <div style="overflow-x: auto;">
+                            <table style="border-collapse: collapse; width: 100%; font-size: 13px;">
+                                <thead><tr>${cols.map(c => `<th style="text-align: left; padding: 6px 10px; background: var(--hover-bg); border-bottom: 1px solid var(--border-color);">${escapeHtml(c)}</th>`).join('')}</tr></thead>
+                                <tbody>${rowsHtml}</tbody>
+                            </table>
+                        </div>
+                    `;
+                }).join('');
+                document.getElementById('previewModalBody').innerHTML = html;
+            })
+            .catch(error => {
+                document.getElementById('previewModalBody').innerHTML =
+                    `<div style="color: var(--text-secondary);">Failed to load preview: ${escapeHtml(error.message)}</div>`;
+            });
+    }
+
+    function deleteConnection(connectionId) {
+        if (!confirm('Are you sure you want to delete this spreadsheet?')) return;
+
+        authFetch(`/api/databases/${connectionId}`, { method: 'DELETE' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    showAlert('Spreadsheet deleted successfully', 'success');
+                    loadConnections();
+                } else {
+                    showAlert(data.error || 'Delete failed', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Delete error:', error);
+                showAlert(`Delete failed: ${error.message}`, 'error');
+            });
+    }
+
+    function resetForm() {
+        document.getElementById('connectionName').value = '';
+        document.getElementById('connectionDescription').value = '';
+        const fileInput = document.getElementById('excelFileInput');
+        if (fileInput) fileInput.value = '';
+
+        const excelFileLabel = document.getElementById('excelFileLabel');
+        if (excelFileLabel) excelFileLabel.textContent = 'Excel or CSV File *';
+        const excelFileHint = document.getElementById('excelFileHint');
+        if (excelFileHint) excelFileHint.textContent = 'Each sheet in an Excel workbook becomes its own table (a CSV becomes one). Column headers become column names.';
+
+        editingConnectionId = null;
+
+        const saveBtnText = document.getElementById('saveBtnText');
+        if (saveBtnText) saveBtnText.innerHTML = '💾 Save';
+
+        document.getElementById('formTitle').textContent = 'Upload Excel or CSV';
+        hideFormAlerts();
+    }
+
+    function showAlert(message, type) {
+        const alertId = type === 'success' ? 'alertSuccess' : type === 'error' ? 'alertError' : 'alertInfo';
+        const messageId = type === 'success' ? 'alertSuccessMessage' : type === 'error' ? 'alertErrorMessage' : 'alertInfoMessage';
+        const alertEl = document.getElementById(alertId);
+        const messageEl = document.getElementById(messageId);
+        if (alertEl && messageEl) {
+            document.querySelectorAll('.alert').forEach(alert => {
+                if (!alert.classList.contains('form-alert')) alert.classList.remove('show');
+            });
+            messageEl.textContent = message;
+            alertEl.classList.add('show');
+            setTimeout(() => alertEl.classList.remove('show'), 5000);
+        }
+    }
+
+    function showFormAlert(message, type) {
+        const alertId = type === 'success' ? 'formAlertSuccess' : type === 'error' ? 'formAlertError' : 'formAlertInfo';
+        const messageId = type === 'success' ? 'formAlertSuccessMessage' : type === 'error' ? 'formAlertErrorMessage' : 'formAlertInfoMessage';
+        const alertEl = document.getElementById(alertId);
+        const messageEl = document.getElementById(messageId);
+        if (alertEl && messageEl) {
+            hideFormAlerts();
+            messageEl.textContent = message;
+            alertEl.classList.add('show');
+            setTimeout(() => alertEl.classList.remove('show'), 5000);
+        }
+    }
+
+    function hideFormAlerts() {
+        ['formAlertSuccess', 'formAlertError', 'formAlertInfo'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('show');
+        });
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    async function runAgenticPipeline(id, btn) {
+        btn.disabled = true;
+        btn.innerText = "Processing...";
+        try {
+            const response = await authFetch(`/api/databases/${id}/process`, { method: 'POST' });
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                showAlert(result.message || 'This spreadsheet is now ready for queries.', 'success');
+            } else {
+                throw new Error(result.message || result.error || 'Something went wrong. Please try again.');
+            }
+        } catch (err) {
+            showAlert(err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Process";
+            loadConnections();
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+</script>
+{% endblock %}

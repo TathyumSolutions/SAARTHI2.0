@@ -1,5 +1,6 @@
 from flask import current_app
 import os
+import re
 import time
 import requests
 import json
@@ -7,8 +8,50 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.services.stream_manager import stream_manager
 from app.models.model_config import ModelConfiguration
-from app.utils.network_guard import is_safe_url
+from app.utils.network_guard import is_safe_url, build_full_api_url
+from app.utils.redaction import redact_secrets
+from app.utils.crypto import decrypt
 from app.models.api_connector import ApiConnector
+
+
+def _auth_headers_and_params(auth_type, encrypted_token):
+    """
+    Builds the request header(s)/query param(s) for a registered API
+    tool's saved auth_type/api_token - without this, every authenticated
+    integration (auth_type "API Key" or "Bearer Token") gets called with
+    no credentials at all, and fails with a 401/403 that then gets
+    narrated back to the user as "the API endpoint does not exist or
+    access is not permitted", which reads like a broken registration
+    rather than what it actually is (missing credentials).
+
+    "API Key" auth covers a lot of real-world APIs with no single
+    convention - some read a header, but plenty of public data APIs
+    (e.g. api.metals.dev, and much of the free-tier finance/weather/data
+    API space) only accept the key as a `?api_key=...` query parameter
+    and silently ignore any header. Sending it both ways covers both
+    conventions without needing per-integration configuration for where
+    the key goes.
+    """
+    token = decrypt(encrypted_token) if encrypted_token else None
+    normalized_type = (auth_type or '').strip().casefold()
+    if not token:
+        return {}, {}
+    if normalized_type == 'bearer token':
+        return {'Authorization': f'Bearer {token}'}, {}
+    if normalized_type == 'api key':
+        return {'X-API-Key': token}, {'api_key': token}
+    return {}, {}
+
+
+def _sanitize_tool_name(name):
+    """
+    Integration names are free-text (e.g. "Copper Price API"), but
+    OpenAI-compatible function-calling APIs require tool names to match
+    ^[a-zA-Z0-9_-]+$. Translate into a safe identifier before it's handed
+    to the LLM as a tool/function name.
+    """
+    sanitized = re.sub(r'[^a-zA-Z0-9_-]+', '_', name or '').strip('_')
+    return sanitized or 'tool'
 
 
 def fetch_and_translate_tools():
@@ -22,8 +65,8 @@ def fetch_and_translate_tools():
         {
             "type": "function",
             "function": {
-                "name": tool.integration_name,
-                "description": tool.api_description,
+                "name": _sanitize_tool_name(tool.integration_name),
+                "description": redact_secrets(tool.api_description),
                 "parameters": {
                     "type": "object",
                     "properties": {}
@@ -97,6 +140,7 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         tool_payload = None
         generation_text = ""
         is_local_ollama = False
+        had_error = False
 
         # --- ROUTE A: OPENAI ---
         if model_name in ["gpt-4o-mini", "gpt-4o"]:
@@ -175,29 +219,62 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         else:
             raise ValueError(f"Target '{model_name}' has no active route handler.")
 
-        push_tool_event("complete", "Finding the Right Tool", "Tool selection complete.")
+        # Resolve which registered tool the model actually picked *before*
+        # announcing the selection, so the step can name it directly (e.g.
+        # "Selected tool: Metal Price API") instead of a generic "Tool
+        # selection complete." that gives the user nothing to trace.
+        selected_tool = None
+        target_name = None
+        tool_args = {}
+        if has_tools and tool_payload:
+            try:
+                target_name = tool_payload[0]['name'] if isinstance(tool_payload[0], dict) else tool_payload[0].name
+                tool_args = tool_payload[0].get('args', {}) if isinstance(tool_payload[0], dict) else tool_payload[0].arguments
+                if isinstance(tool_args, str):
+                    tool_args = json.loads(tool_args)
+            except Exception:
+                target_name, tool_args = None, {}
+
+            if target_name:
+                selected_tool = next(
+                    (t for t in ApiConnector.query.filter_by(status='Active').all()
+                     if _sanitize_tool_name(t.integration_name) == target_name),
+                    None
+                )
+
+        if selected_tool:
+            push_tool_event("complete", "Finding the Right Tool", f"Selected tool: {selected_tool.integration_name}.")
+        elif has_tools:
+            push_tool_event("complete", "Finding the Right Tool", f"Selected tool: {target_name or 'unknown'} (its connection details could not be found).")
+        else:
+            push_tool_event("complete", "Finding the Right Tool", "No matching tool was found for this request.")
 
         if not has_tools:
             push_tool_event("start", "Putting Your Answer Together", "Preparing your final response.")
             push_tool_event("complete", "Putting Your Answer Together", "No matching tool was available for this request.")
             stream_manager.push_step(session_id, "DONE", is_sql=False)
             return {
-                "answer": "ERROR: No matching workflow tool found to execute this request.",
+                "answer": "I don't have a connected data source that covers this request.",
                 "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
             }
 
+        if selected_tool:
+            push_tool_event(
+                "start",
+                "Planning the Approach",
+                f"Strategy: call {selected_tool.integration_name} with a {selected_tool.method} request to fetch the data needed for your question."
+            )
+            push_tool_event("complete", "Planning the Approach", f"Ready to call {selected_tool.integration_name}.")
+
+        tool_call_detail = None
+
         if has_tools and not generation_text:
             try:
-                target_name = tool_payload[0]['name'] if isinstance(tool_payload[0], dict) else tool_payload[0].name
-                tool_args = tool_payload[0].get('args', {}) if isinstance(tool_payload[0], dict) else tool_payload[0].arguments
-                if isinstance(tool_args, str):
-                    tool_args = json.loads(tool_args)
-
-                tool = ApiConnector.query.filter_by(integration_name=target_name).first()
+                tool = selected_tool
 
                 if tool:
                     base_url, endpoint, method = tool.base_url, tool.endpoint, tool.method
-                    full_target_url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+                    full_target_url = build_full_api_url(base_url, endpoint)
 
                     # Re-checked here, not just at registration time - the
                     # host this resolves to today might not be the one it
@@ -213,15 +290,34 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                             "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
                         }
 
-                    push_tool_event("start", "Calling the Live System", f"Calling the live system with a {method} request.")
+                    push_tool_event("start", "Calling the Live System", f"Calling {tool.integration_name} with a {method} request.")
+
+                    auth_headers, auth_params = _auth_headers_and_params(tool.auth_type, tool.api_token)
+                    print(f"🔌 DEBUG [{tool.integration_name}] auth_type={tool.auth_type!r} "
+                          f"has_token={bool(tool.api_token)} header_sent={list(auth_headers.keys()) or 'none'} "
+                          f"param_sent={list(auth_params.keys()) or 'none'} url={full_target_url}")
 
                     if str(method).upper() == "POST":
-                        api_res = requests.post(url=full_target_url, json=tool_args, timeout=15)
+                        api_res = requests.post(url=full_target_url, json=tool_args, params=auth_params, headers=auth_headers, timeout=15)
                     else:
-                        api_res = requests.get(url=full_target_url, params=tool_args, timeout=15)
+                        api_res = requests.get(url=full_target_url, params={**auth_params, **(tool_args or {})}, headers=auth_headers, timeout=15)
+
+                    print(f"🔌 DEBUG [{tool.integration_name}] response status={api_res.status_code} "
+                          f"body_preview={api_res.text[:300]!r}")
 
                     raw_data = api_res.json()
-                    push_tool_event("complete", "Calling the Live System", "Live system call completed successfully.")
+                    push_tool_event("complete", "Calling the Live System", f"{tool.integration_name} responded successfully.")
+
+                    # Mirrors the "View technical query" detail the SQL track
+                    # shows for its generated query - lets anyone trace this
+                    # answer back to the exact live request that produced it.
+                    tool_call_detail = {
+                        "tool_name": tool.integration_name,
+                        "method": method,
+                        "url": full_target_url,
+                        "params": tool_args or {},
+                    }
+
                     push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
 
                     refinement_sys_msg = "You are an expert data analysis engine. Read the following raw API dataset payload context and provide a precise, targeted answer to the user's specific request. Do not include unneeded object structures or JSON syntax wrappers."
@@ -276,12 +372,16 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                     push_tool_event("complete", "Putting Your Answer Together", "Your answer is ready.")
                 else:
                     push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
-                    generation_text = f"Tool properties for execution identifier '{target_name}' could not be located in database records."
+                    had_error = True
+                    generation_text = "I found a matching tool for this request, but its connection details are missing. Please check the API Integrations setup."
+                    print(f"Tool properties for execution identifier '{target_name}' could not be located in database records.")
                     push_tool_event("complete", "Putting Your Answer Together", "Could not find configuration for the selected tool.")
 
             except Exception as e:
                 push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
-                generation_text = f"Tool identified successfully, but dynamic automation handler failed: {str(e)}"
+                had_error = True
+                generation_text = "I found a matching tool for this request, but the connected system didn't respond successfully, so I can't provide this data right now."
+                print(f"Dynamic automation handler failed: {str(e)}")
                 push_tool_event("complete", "Putting Your Answer Together", f"Could not complete the tool run: {str(e)}")
 
         time.sleep(0.5)
@@ -290,15 +390,18 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         return {
             "answer": generation_text,
             "tool_calls": tool_payload,
-            "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
+            "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought,
+            "error": had_error,
+            "tool_call": tool_call_detail,
         }
 
     except Exception as e:
         print(f"Engine failure: {str(e)}")
         stream_manager.push_step(session_id, "DONE", is_sql=False)
         return {
-            "answer": f"The system encountered an error processing your routing request: {str(e)}",
-            "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought
+            "answer": "I couldn't reach the connected external system for this request. Please try again in a moment, or let us know if the issue continues.",
+            "tool_calls": None, "sql": None, "table": [], "chart": {}, "insights": [], "steps": tool_chain_of_thought,
+            "error": True,
         }
 
 

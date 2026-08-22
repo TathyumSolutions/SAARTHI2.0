@@ -146,7 +146,7 @@
         background: #006bb3;
     }
 
-    .btn-primary:disabled {
+    .btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
     }
@@ -229,6 +229,23 @@
     .status-testing {
         background: var(--accent-orange);
         color: var(--dark-bg);
+    }
+
+    .status-processed {
+        background: var(--accent-green);
+        color: var(--dark-bg);
+    }
+
+    .status-error {
+        background: #d32f2f;
+        color: white;
+    }
+
+    .connection-error-message {
+        font-size: 11px;
+        color: #ff6b6b;
+        margin-top: 4px;
+        max-width: 220px;
     }
 
     .alert {
@@ -384,6 +401,20 @@
         display: flex;
         gap: 8px;
     }
+
+    /* Browsers ignore the page's dark theme for autofilled fields and paint
+       their own light background (and, on fields that merely look like a
+       login form - "Username"/"Password" labels, type="password" - guess a
+       saved email/password even though this isn't a login) - force our own
+       colors back so an autofilled field still matches the rest of the form. */
+    #connectionForm input:-webkit-autofill,
+    #connectionForm input:-webkit-autofill:hover,
+    #connectionForm input:-webkit-autofill:focus {
+        -webkit-box-shadow: 0 0 0 1000px var(--sidebar-bg) inset !important;
+        -webkit-text-fill-color: var(--text-primary) !important;
+        caret-color: var(--text-primary);
+        transition: background-color 9999s ease-in-out 0s;
+    }
 </style>
 {% endblock %}
 
@@ -432,45 +463,52 @@
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Connection Name *</label>
-                    <input type="text" id="connectionName" class="form-input" placeholder="e.g., Production DB" required>
+                    <input type="text" id="connectionName" class="form-input" autocomplete="off" placeholder="e.g., Production DB" required>
                     <div class="form-hint">Friendly name for this connection</div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Database Type</label>
-                    <input type="text" id="databaseType" class="form-input" readonly>
+                    <input type="text" id="databaseType" class="form-input" autocomplete="off" readonly>
                 </div>
             </div>
 
             <div class="form-row" id="standardFields">
                 <div class="form-group">
                     <label class="form-label">Host *</label>
-                    <input type="text" id="host" class="form-input" placeholder="e.g., localhost or db.example.com" required>
+                    <input type="text" id="host" class="form-input" autocomplete="off" placeholder="e.g., localhost or db.example.com" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Port *</label>
-                    <input type="number" id="port" class="form-input" placeholder="e.g., 5432" required>
+                    <input type="number" id="port" class="form-input" autocomplete="off" placeholder="e.g., 5432" required>
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Database Name *</label>
-                    <input type="text" id="databaseName" class="form-input" placeholder="e.g., mydb" required>
+                    <input type="text" id="databaseName" class="form-input" autocomplete="off" placeholder="e.g., mydb" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Username *</label>
-                    <input type="text" id="username" class="form-input" placeholder="Database username" required>
+                    <input type="text" id="username" class="form-input" autocomplete="off" name="db_username_field" placeholder="Database username" required>
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Password *</label>
-                    <input type="password" id="password" class="form-input" placeholder="Database password" required>
+                    <input type="password" id="password" class="form-input" autocomplete="new-password" name="db_password_field" placeholder="Database password" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Workspace ID</label>
-                    <input type="text" id="workspaceId" class="form-input optional" placeholder="Optional workspace ID">
+                    <input type="text" id="workspaceId" class="form-input optional" autocomplete="off" placeholder="Optional workspace ID">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group full-width">
+                    <label class="form-label">Description</label>
+                    <textarea id="connectionDescription" class="form-input" autocomplete="off" style="min-height: 70px; resize: vertical;" placeholder="What does this connection contain, and when should it be used? Shown alongside the AI router's own schema info."></textarea>
                 </div>
             </div>
 
@@ -620,13 +658,8 @@
             desc: 'Custom database connection',
             defaultPort: null,
             fields: []
-        },
-        'Excel': {
-            icon: '📊',
-            desc: 'Upload an Excel or CSV file - each sheet becomes a queryable table',
-            defaultPort: null,
-            fields: []
         }
+        // Excel/CSV uploads are their own data source now - see /spreadsheets.
     };
 
     let selectedDbType = null;
@@ -823,6 +856,13 @@
         const passwordInput = document.getElementById('password');
         if (usernameInput) usernameInput.parentElement.style.display = (dbType === 'Excel') ? 'none' : 'block';
         if (passwordInput) passwordInput.parentElement.style.display = (dbType === 'Excel') ? 'none' : 'block';
+
+        // Uploaded spreadsheets have no live connection to test.
+        const testConnBtn = document.getElementById('testConnectionBtn');
+        if (testConnBtn) {
+            testConnBtn.disabled = (dbType === 'Excel');
+            testConnBtn.title = (dbType === 'Excel') ? 'Uploaded spreadsheets have no live connection to test' : '';
+        }
 
         let excelFieldContainer = document.getElementById('excelFileFieldContainer');
         if (dbType === 'Excel') {
@@ -1071,6 +1111,10 @@
             formData.append('name', nameInput.value.trim());
             formData.append('file', fileInput.files[0]);
             formData.append('workspace_id', 1);
+            const descriptionEl = document.getElementById('connectionDescription');
+            if (descriptionEl && descriptionEl.value.trim()) {
+                formData.append('description', descriptionEl.value.trim());
+            }
 
             authFetch('/api/databases/excel', { method: 'POST', body: formData })
                 .then(res => res.json())
@@ -1276,7 +1320,12 @@
         if (workspaceId) {
             data.workspace_id = workspaceId;
         }
-        
+
+        const descriptionEl = document.getElementById('connectionDescription');
+        if (descriptionEl && descriptionEl.value.trim()) {
+            data.description = descriptionEl.value.trim();
+        }
+
         console.log('✅ Validation passed, returning data:', {
             ...data,
             password: '***'
@@ -1308,6 +1357,8 @@
     }
     
     function displayConnections(connections) {
+        // Excel/CSV-backed connections live on their own /spreadsheets page now.
+        connections = connections.filter(c => (c.type || '').toLowerCase() !== 'excel');
         allConnections = connections;
         console.log('🖼️ Displaying', connections.length, 'connections');
         const tbody = document.getElementById('connectionsTableBody');
@@ -1327,26 +1378,35 @@
             return;
         }
         
+        const STATUS_DISPLAY = {
+            connected: { cls: 'status-connected', text: 'Connected' },
+            processed: { cls: 'status-processed', text: 'Processed' },
+            error: { cls: 'status-error', text: 'Error' },
+            active: { cls: 'status-connected', text: 'Active' },
+        };
+
         let html = '';
         connections.forEach(conn => {
-            const statusClass = conn.status === 'connected' ? 'status-connected' : 'status-disconnected';
-            const statusText = conn.status === 'connected' ? 'Connected' : 'Disconnected';
+            const display = STATUS_DISPLAY[conn.status] || { cls: 'status-disconnected', text: conn.status || 'Disconnected' };
             const dbConfig = DB_CONFIGS[conn.type] || { icon: '📦' };
-            
+
             html += `
                 <tr>
                     <td><span class="connection-name">${escapeHtml(conn.name)}</span></td>
                     <td><span class="connection-type">${dbConfig.icon} ${escapeHtml(conn.type)}</span></td>
                     <td>${escapeHtml(conn.host || 'N/A')}</td>
                     <td>${escapeHtml(conn.database || 'N/A')}</td>
-                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    <td>
+                        <span class="status-badge ${display.cls}">${display.text}</span>
+                        ${conn.status === 'error' && conn.error_message ? `<div class="connection-error-message">${escapeHtml(conn.error_message)}</div>` : ''}
+                    </td>
                     <td>
                         <div class="action-btn-group">
                             <div id="formAlertSuccess" class="test-result success" style="display: none; margin-bottom: 5px;"><span id="formAlertSuccessMessage"></span></div>
                             <div id="formAlertError" class="test-result error" style="display: none; margin-bottom: 5px;"><span id="formAlertErrorMessage"></span></div>
     
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="runAgenticPipeline(${conn.id}, this)">Process</button>
-                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="testExistingConnection(${conn.id})">Test</button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" ${conn.type === 'Excel' ? 'disabled title="Uploaded spreadsheets have no live connection to test"' : `onclick="testExistingConnection(${conn.id})"`}>Test</button>
                             <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="editConnection(${conn.id})">Edit</button>
                             <button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteConnection(${conn.id})">Delete</button>
                         </div>
@@ -1359,9 +1419,12 @@
         console.log('✅ Connections displayed');
     }
     
-   /* function testExistingConnection(connectionId) {
+    function testExistingConnection(connectionId) {
         console.log('🔧 Testing existing connection:', connectionId);
-        
+
+        // Just re-test the connection using its already-saved credentials -
+        // this is a row action from the list, not an edit, so it must not
+        // open the create/edit form or touch any of its fields.
         authFetch(`/api/databases/${connectionId}/test`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
@@ -1374,55 +1437,11 @@
             } else {
                 showAlert(data.error || 'Connection test failed', 'error');
             }
-            loadConnections(); // Reload to update status
-        })
-        .catch(error => {
-            console.error('❌ Test error:', error);
-            showAlert(`Test failed: ${error.message}`, 'error');
-        });
-    }*/
-
-    function testExistingConnection(connectionId) {
-        console.log('🔧 Testing existing connection:', connectionId);
-        
-        // 1. Find the connection data from your loaded list
-        // Note: 'allConnections' should be the variable where you store your GET results
-        const conn = allConnections.find(c => c.id === connectionId);
-        
-        if (conn) {
-            // 2. Open the form UI first so we can see what's happening
-            selectDatabaseType(conn.database_type || conn.type);
-
-            // 3. Fill the visible form fields
-            setTimeout(() => {
-                if (document.getElementById('host')) document.getElementById('host').value = conn.host || '';
-                if (document.getElementById('port')) document.getElementById('port').value = conn.port || '';
-                if (document.getElementById('databaseName')) document.getElementById('databaseName').value = conn.database_name || '';
-                if (document.getElementById('username')) document.getElementById('username').value = conn.username || '';
-                
-                showFormAlert(`Testing ${conn.database_type} connection...`, 'info');
-            }, 100);
-        }
-
-        // 4. Perform the actual POST request to the backend
-        authFetch(`/api/databases/${connectionId}/test`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success || data.status === 'connected') {
-                const latency = data.latency ? ` (${data.latency})` : '';
-                showFormAlert(`Connection test successful!${latency}`, 'success');
-            } else {
-                // This targets the error shown in your screenshot
-                showFormAlert(data.error || 'Connection test failed', 'error');
-            }
             loadConnections(); // Refresh the table status
         })
         .catch(error => {
             console.error('❌ Test error:', error);
-            showFormAlert(`Test failed: ${error.message}`, 'error');
+            showAlert(`Test failed: ${error.message}`, 'error');
         });
     }
     
@@ -1464,6 +1483,8 @@
                     document.getElementById('databaseName').value = conn.database || '';
                     document.getElementById('username').value = conn.username || '';
                     document.getElementById('workspaceId').value = conn.workspace_id || '';
+                    const descriptionEl = document.getElementById('connectionDescription');
+                    if (descriptionEl) descriptionEl.value = conn.description || '';
                     // Don't populate password for security
 
                     const saveBtnText = document.getElementById('saveBtnText');
@@ -1673,7 +1694,8 @@
         } finally {
             btn.disabled = false;
             btn.innerText = "Process";
+            loadConnections();
         }
-    }        
+    }
 </script>
 {% endblock %}

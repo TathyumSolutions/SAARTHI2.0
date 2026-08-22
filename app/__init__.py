@@ -101,8 +101,8 @@ def create_app(config_name='development'):
         api_v1_routes,
         llm_routes,
         database_routes,
-        query_routes,
         datasource_routes,
+        query_log_routes,
         analytics_routes,
         chat_routes,
         history_routes,
@@ -112,7 +112,8 @@ def create_app(config_name='development'):
         upload_routes,
         settings_routes,
         resource_mapping_routes,
-        warehouse_routes
+        warehouse_routes,
+        bi_semantics_routes
     )
 
     # HTML page routes (no prefix)
@@ -123,8 +124,8 @@ def create_app(config_name='development'):
     app.register_blueprint(workspace_routes.bp)
     app.register_blueprint(llm_routes.bp)
     app.register_blueprint(database_routes.bp)
-    app.register_blueprint(query_routes.bp)
     app.register_blueprint(datasource_routes.bp)
+    app.register_blueprint(query_log_routes.bp)
     app.register_blueprint(analytics_routes.bp)
     app.register_blueprint(chat_routes.bp)
     app.register_blueprint(api_v1_routes.bp)
@@ -136,6 +137,7 @@ def create_app(config_name='development'):
     app.register_blueprint(settings_routes.bp)
     app.register_blueprint(resource_mapping_routes.bp)
     app.register_blueprint(warehouse_routes.bp)
+    app.register_blueprint(bi_semantics_routes.bp)
 
     from app.routes.upload_routes import upload_bp
     app.register_blueprint(upload_bp)
@@ -149,9 +151,14 @@ def create_app(config_name='development'):
             configure_mappers()
             print("[DB Bootstrap] Synchronizing schema across core/resources/workspace...")
             db.create_all()
+            from app.services.db_bootstrap import sync_missing_columns, drop_removed_tables
+            sync_missing_columns(db)
+            drop_removed_tables(db, ['router_configs'])
             print("[DB Bootstrap] Schema is up to date.")
         except Exception as e:
+            import traceback
             print(f"[DB Bootstrap] Schema sync error: {e}")
+            print(traceback.format_exc())
             db.session.rollback()
 
     # Health check endpoint

@@ -22,7 +22,7 @@ from app.services.stream_manager import stream_manager
 from app.services import spreadsheet_service
 from app.models.model_config import ModelConfiguration
 
-ALLOWED_FILTER_OPS = {"==", "!=", ">", "<", ">=", "<=", "in", "contains"}
+ALLOWED_FILTER_OPS = {"==", "!=", ">", "<", ">=", "<=", "in", "contains", "not_contains"}
 ALLOWED_AGG_FUNCS = {"sum", "mean", "count", "min", "max", "median", "nunique"}
 ALLOWED_JOIN_HOW = {"inner", "left", "right", "outer"}
 MAX_ROW_LIMIT = 5000
@@ -92,9 +92,11 @@ def _build_metadata_answer(table_name: str, info: dict) -> str:
 
 def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_content: str) -> str:
     """Same multi-provider dispatch pattern used throughout the other
-    tracks (general_service.py, llm_service.py) - kept local to this file
-    rather than shared, to avoid touching those modules for this feature."""
+    tracks (general_service.py, llm_service.py) - the api:// branch is
+    shared via llm_providers.resolve_dynamic_llm(), kept local otherwise
+    since the gpt-4o/ollama handling here differs from those modules."""
     from langchain_core.messages import SystemMessage, HumanMessage
+    from app.services.llm_providers import resolve_dynamic_llm
 
     messages = [SystemMessage(content=system_content), HumanMessage(content=user_content)]
 
@@ -164,19 +166,43 @@ def _extract_json(text: str) -> dict:
     return json.loads(match.group(0))
 
 
-def _build_plan_prompt(available_tables: dict) -> str:
+def _build_plan_prompt(available_tables: dict, feedback_context: str = "") -> str:
     tables_desc = []
     for table_name, info in available_tables.items():
         cols = ", ".join(f"{c['name']} ({c['type']})" for c in info.get("columns", []))
         tables_desc.append(f"- {table_name}: {info.get('description', '')}\n  columns: {cols}")
     tables_block = "\n".join(tables_desc) if tables_desc else "(no tables available)"
 
+    feedback_block = ""
+    if feedback_context:
+        feedback_block = f"""
+
+{feedback_context}
+
+The block above is feedback on how PAST similar questions were answered -
+it is not part of the current question. It can be about anything: a
+placeholder/"not applicable" value that shouldn't have been included, the
+wrong table or join, a wrong "group_by"/aggregation, a wrong sort order or
+limit, a missing filter, or an irrelevant column. If a DISLIKED remark is
+still relevant to this question, translate it into a matching change in
+this plan - e.g. a "filters" entry to exclude specific values ("op": "!="
+for one exact value, "op": "not_contains" to exclude every value sharing a
+fragment like "n/a" in any form), a different "group_by"/"aggregations",
+a different "sort_by"/"limit", or different "tables"/"join" - but only
+using tables/columns listed under AVAILABLE TABLES; never invent one. If
+a LIKED remark confirms a previous approach worked, reuse it when it fits.
+Ignore anything in the feedback that doesn't apply to this question, and
+leave the plan alone if none of it maps onto the fields this plan
+supports (e.g. feedback about tone or wording - that's for the answer
+step, not this plan).
+"""
+
     return f"""You turn a business question into a strict JSON query plan
 against spreadsheet-derived tables. You never write code - only this JSON.
 
 AVAILABLE TABLES:
 {tables_block}
-
+{feedback_block}
 Return ONLY a JSON object with this shape (omit fields you don't need,
 but "tables" is always required):
 {{
@@ -192,7 +218,7 @@ but "tables" is always required):
 
 Rules:
 - Only reference tables and columns listed above under AVAILABLE TABLES - never invent one.
-- "op" must be one of: == != > < >= <= in contains
+- "op" must be one of: == != > < >= <= in contains not_contains
 - "func" must be one of: sum mean count min max median nunique
 - "how" must be one of: inner left right outer
 - Use "join" only when the question needs data from two tables together.
@@ -287,6 +313,8 @@ def _apply_filter(df: pd.DataFrame, column: str, op: str, value) -> pd.DataFrame
         return df[series.isin(values)]
     if op == "contains":
         return df[series.astype(str).str.contains(str(value), case=False, na=False)]
+    if op == "not_contains":
+        return df[~series.astype(str).str.contains(str(value), case=False, na=False)]
     raise PlanValidationError(f"Unsupported filter operator '{op}'.")
 
 
@@ -353,9 +381,12 @@ def answer_from_spreadsheets(
     custom_key: str = "",
     system_instructions: str = "",
     session_id: str = "1",
+    feedback_context: str = "",
 ) -> dict:
     session_id = str(session_id)
     master_steps = []
+    if feedback_context:
+        print(f"🧠 [FEEDBACK-DEBUG] [SPREADSHEET] Using feedback context for plan-building and answer-writing:\n{feedback_context}")
 
     def push_event(event_type, title, description):
         payload = {"event": event_type, "title": title, "description": description, "is_sql": False}
@@ -388,10 +419,11 @@ def answer_from_spreadsheets(
                 "answer": answer_text,
                 "sql": None, "table": [], "chart": {}, "insights": [],
                 "steps": master_steps,
+                "tables": [table_name],
             }
 
         push_event("start", "Building the Data Query", "Working out how to filter, group, and join the relevant tables.")
-        plan_prompt = _build_plan_prompt(available_tables)
+        plan_prompt = _build_plan_prompt(available_tables, feedback_context)
         raw_plan = _invoke_llm(model_name, custom_key, plan_prompt, user_query)
 
         try:
@@ -405,6 +437,8 @@ def answer_from_spreadsheets(
                 "sql": None, "table": [], "chart": {}, "insights": [],
                 "steps": master_steps,
             }
+        if feedback_context:
+            print(f"🧠 [FEEDBACK-DEBUG] [SPREADSHEET] Plan built with feedback context in scope - filters: {plan.get('filters')}")
         push_event("complete", "Building the Data Query", "Prepared a plan: " + ", ".join(plan["tables"]) + ".")
 
         push_event("start", "Running the Query", "Applying filters, joins, and aggregations to your spreadsheet data.")
@@ -439,6 +473,19 @@ def answer_from_spreadsheets(
         system_content = "You are Saarthi AI, acting as a data analyst for this enterprise."
         if system_instructions and system_instructions.strip():
             system_content += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
+        if feedback_context:
+            system_content += (
+                f"\n\n{feedback_context}\n\n"
+                "That is feedback on how PAST similar questions were answered, not part of "
+                "this question. It can be about anything - wrong tone, too much/too little "
+                "detail, a data-quality problem, a wrong assumption. If any of it is still "
+                "relevant, apply it to how you write this answer. If a DISLIKED remark flagged "
+                "a data-quality problem (e.g. placeholder/'not applicable' rows) and the result "
+                "below still contains rows matching that complaint - the query plan wasn't able "
+                "to filter it out - do not present those rows as if they were real answers; "
+                "note briefly that they're excluded/unclear instead of listing them. Ignore "
+                "whatever in the feedback doesn't apply to this question."
+            )
         try:
             final_answer = _invoke_llm(model_name, custom_key, system_content, answer_prompt).strip()
         except Exception as e:
@@ -454,6 +501,8 @@ def answer_from_spreadsheets(
             "chart": {},
             "insights": [],
             "steps": master_steps,
+            "tables": plan["tables"],
+            "plan": plan,
         }
 
     except Exception as e:

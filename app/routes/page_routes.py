@@ -6,7 +6,6 @@ from flask import Blueprint, render_template
 
 bp = Blueprint('pages', __name__)
 
-print( "I am in the page_routes.py file" )
 # Home/Dashboard
 
 @bp.route('/')
@@ -36,6 +35,18 @@ def verify_email_page():
 def api_mode():
     """API Mode page showing Swagger docs inside the app layout."""
     return render_template('apidocs.html')
+
+# Data Sources - Directory of all data sources visible to the current user
+@bp.route('/data_sources')
+def data_sources_page():
+    """All Data Sources directory: databases, files, and API connectors the current user can see."""
+    return render_template('data_sources.html')
+
+# Query Logs - Every question that reached a data source, independent page (no longer a tab)
+@bp.route('/query_logs')
+def query_logs_page():
+    """Query log directory: every logged chat query with its strategy, sources, and feedback."""
+    return render_template('query_logs.html')
 
 # Data Sources - Unstructured Data
 @bp.route('/unstructured_data')
@@ -135,6 +146,15 @@ def database_connections():
     return render_template('database_connections.html')
 
 
+# Spreadsheet (Excel/CSV) Data Sources - a distinct 4th data source category,
+# backed by the same DatabaseConnection(type='Excel') rows and /api/databases/excel
+# endpoint as before, just no longer mixed into the generic Database Connections page.
+@bp.route('/spreadsheets')
+def spreadsheets_page():
+    """Spreadsheet (Excel/CSV) data sources management page"""
+    return render_template('spreadsheets.html')
+
+
 @bp.route('/build_warehouse')
 def build_warehouse_page():
     """Build Warehouse page"""
@@ -145,6 +165,11 @@ def build_warehouse_page():
 def model_selection_page():
     """Model Selection page"""
     return render_template('model_selection.html')
+
+@bp.route('/bi_semantics')
+def bi_semantics_page():
+    """BI Semantics config page - per-entity default measure/aggregation"""
+    return render_template('bi_semantics.html')
 
 #API integration
 @bp.route('/api_connectors/rest_apis')

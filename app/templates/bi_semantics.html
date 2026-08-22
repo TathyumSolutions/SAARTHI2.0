@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}BI Semantics - Saarthi{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .bi-semantics-container {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .bi-section {
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 16px;
+    }
+
+    .bi-section h3 {
+        margin-bottom: 6px;
+        color: var(--accent-green);
+        font-size: 16px;
+    }
+
+    .section-desc {
+        margin-bottom: 12px;
+        color: var(--text-secondary);
+        font-size: 13px;
+    }
+
+    .grid-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+    }
+
+    .grid-table th,
+    .grid-table td {
+        border-bottom: 1px solid var(--border-color);
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: middle;
+        font-size: 13px;
+    }
+
+    .grid-table th {
+        color: var(--text-secondary);
+    }
+
+    .grid-table input,
+    .grid-table select {
+        width: 100%;
+        background: var(--dark-bg);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 6px 8px;
+        font-size: 13px;
+    }
+
+    .source-badge {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        display: inline-block;
+    }
+    .source-badge.default { background: rgba(148, 163, 184, 0.2); color: var(--text-secondary); }
+    .source-badge.custom { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
+
+    .btn {
+        padding: 7px 12px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+    }
+    .btn-primary { background: var(--primary-blue); color: #fff; }
+    .btn-secondary { background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); }
+    .btn-danger { background: transparent; border: 1px solid #F48771; color: #F48771; }
+
+    .add-row-form {
+        display: grid;
+        grid-template-columns: 1.2fr 1.2fr 1.4fr 1fr auto;
+        gap: 8px;
+        margin-top: 12px;
+        align-items: end;
+    }
+    .add-row-form label {
+        display: block;
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 4px;
+    }
+
+    .status {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-top: 10px;
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bi-semantics-container">
+    <h2 style="margin-bottom: 4px;">BI Semantics</h2>
+    <div class="section-desc">
+        Maps each business table to the measure and aggregation that actually matters for it
+        (e.g. sales orders default to SUM(net_value), not row count). When a question doesn't
+        explicitly name a metric, the SQL Generator consults this to decide whether to add an
+        aggregate automatically.
+    </div>
+
+    <div class="bi-section">
+        <h3>Configured Entities</h3>
+        <div class="section-desc">Rows marked "default" are built-in; add a row with the same table name to override one.</div>
+        <table class="grid-table">
+            <thead>
+                <tr>
+                    <th style="width: 18%;">Table</th>
+                    <th style="width: 22%;">Entity Label</th>
+                    <th style="width: 20%;">Measure Column</th>
+                    <th style="width: 14%;">Aggregation</th>
+                    <th style="width: 12%;">Source</th>
+                    <th style="width: 14%;"></th>
+                </tr>
+            </thead>
+            <tbody id="entriesBody"></tbody>
+        </table>
+
+        <div class="add-row-form">
+            <div>
+                <label for="newTable">Table</label>
+                <input id="newTable" type="text" placeholder="e.g. vbak">
+            </div>
+            <div>
+                <label for="newLabel">Entity Label</label>
+                <input id="newLabel" type="text" placeholder="e.g. Sales Orders">
+            </div>
+            <div>
+                <label for="newMeasure">Measure Column</label>
+                <input id="newMeasure" type="text" placeholder="e.g. net_value">
+            </div>
+            <div>
+                <label for="newAgg">Aggregation</label>
+                <select id="newAgg">
+                    <option value="SUM">SUM</option>
+                    <option value="COUNT">COUNT</option>
+                    <option value="AVG">AVG</option>
+                    <option value="MIN">MIN</option>
+                    <option value="MAX">MAX</option>
+                </select>
+            </div>
+            <button id="addBtn" type="button" class="btn btn-primary">Add / Update</button>
+        </div>
+        <span id="status" class="status"></span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function loadEntries() {
+        const res = await authFetch('/api/bi-semantics/entries');
+        const data = await res.json();
+        renderEntries(data.entries || []);
+    }
+
+    function renderEntries(entries) {
+        const body = document.getElementById('entriesBody');
+        body.innerHTML = '';
+
+        entries.forEach(entry => {
+            const tr = document.createElement('tr');
+
+            const tdTable = document.createElement('td');
+            tdTable.textContent = entry.table_name;
+
+            const tdLabel = document.createElement('td');
+            tdLabel.textContent = entry.entity_label || '';
+
+            const tdMeasure = document.createElement('td');
+            tdMeasure.textContent = entry.measure_column;
+
+            const tdAgg = document.createElement('td');
+            tdAgg.textContent = entry.aggregation;
+
+            const tdSource = document.createElement('td');
+            const badge = document.createElement('span');
+            badge.className = `source-badge ${entry.source}`;
+            badge.textContent = entry.source === 'custom' ? 'custom' : 'default';
+            tdSource.appendChild(badge);
+
+            const tdActions = document.createElement('td');
+            if (entry.source === 'custom') {
+                const revertBtn = document.createElement('button');
+                revertBtn.className = 'btn btn-danger';
+                revertBtn.textContent = 'Revert';
+                revertBtn.addEventListener('click', () => deleteEntry(entry.table_name));
+                tdActions.appendChild(revertBtn);
+            }
+
+            tr.appendChild(tdTable);
+            tr.appendChild(tdLabel);
+            tr.appendChild(tdMeasure);
+            tr.appendChild(tdAgg);
+            tr.appendChild(tdSource);
+            tr.appendChild(tdActions);
+            body.appendChild(tr);
+        });
+    }
+
+    async function addOrUpdateEntry() {
+        const table_name = document.getElementById('newTable').value.trim();
+        const entity_label = document.getElementById('newLabel').value.trim();
+        const measure_column = document.getElementById('newMeasure').value.trim();
+        const aggregation = document.getElementById('newAgg').value;
+        const status = document.getElementById('status');
+
+        if (!table_name || !measure_column) {
+            status.textContent = 'Table and measure column are required.';
+            status.style.color = '#F48771';
+            return;
+        }
+
+        status.textContent = 'Saving...';
+        status.style.color = 'var(--text-secondary)';
+
+        const res = await authFetch('/api/bi-semantics/entries', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table_name, entity_label, measure_column, aggregation })
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            status.textContent = `Failed: ${errorData.error || `HTTP ${res.status}`}`;
+            status.style.color = '#F48771';
+            return;
+        }
+
+        document.getElementById('newTable').value = '';
+        document.getElementById('newLabel').value = '';
+        document.getElementById('newMeasure').value = '';
+        status.textContent = 'Saved successfully.';
+        status.style.color = 'var(--accent-green)';
+        await loadEntries();
+    }
+
+    async function deleteEntry(tableName) {
+        const status = document.getElementById('status');
+        const res = await authFetch(`/api/bi-semantics/entries/${encodeURIComponent(tableName)}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            status.textContent = `Failed: ${errorData.error || `HTTP ${res.status}`}`;
+            status.style.color = '#F48771';
+            return;
+        }
+        status.textContent = `Reverted '${tableName}' to its default.`;
+        status.style.color = 'var(--accent-green)';
+        await loadEntries();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadEntries();
+        document.getElementById('addBtn').addEventListener('click', addOrUpdateEntry);
+    });
+</script>
+{% endblock %}

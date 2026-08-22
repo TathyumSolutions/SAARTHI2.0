@@ -147,6 +147,18 @@
         color: var(--dark-bg);
     }
 
+    .status-error {
+        background: #d32f2f;
+        color: white;
+    }
+
+    .file-error-message {
+        font-size: 11px;
+        color: #ff6b6b;
+        margin-top: 4px;
+        max-width: 220px;
+    }
+
     .btn {
         padding: 10px 20px;
         border: none;
@@ -288,6 +300,11 @@
             <div class="upload-icon">📤</div>
             <div class="upload-text">Drag & drop files here or click to browse</div>
             <div class="upload-subtext">Maximum file size: 100MB</div>
+        </div>
+
+        <div style="margin-top: 16px;">
+            <label for="uploadDescription" style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500;">Description (optional)</label>
+            <textarea id="uploadDescription" style="width: 100%; min-height: 60px; padding: 10px 12px; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 14px; font-family: inherit; resize: vertical;" placeholder="What does this file contain, and when should it be used? Shown alongside the AI router's own schema info."></textarea>
         </div>
 
         <div class="progress-bar" id="progressBar">
@@ -526,6 +543,13 @@
                 return;
             }
             
+            const STATUS_DISPLAY = {
+                uploaded: { cls: 'status-processing', text: 'Uploaded' },
+                processing: { cls: 'status-processing', text: 'Processing...' },
+                processed: { cls: 'status-success', text: 'Processed' },
+                error: { cls: 'status-error', text: 'Error' }
+            };
+
             let html = '';
             files.forEach(function(file) {
                 const typeIcon = {
@@ -535,23 +559,33 @@
                     'audio': '🎵',
                     'emails': '📧'
                 }[file.file_type] || '📎';
-                
+
                 const sizeFormatted = formatFileSize(file.file_size);
-                
+                const display = STATUS_DISPLAY[file.status] || STATUS_DISPLAY.uploaded;
+
                 html += '<tr>' +
                     '<td><span class="document-code">' + file.document_code + '</span></td>' +
                     '<td>' + file.file_name + '</td>' +
                     '<td>' + typeIcon + ' ' + capitalizeFirst(file.file_type) + '</td>' +
                     '<td>' + sizeFormatted + '</td>' +
                     '<td>' + file.upload_date + '</td>' +
-                    '<td><span class="status-badge status-success">Uploaded</span></td>' +
+                    '<td><span class="status-badge ' + display.cls + '">' + display.text + '</span>' +
+                    (file.status === 'error' && file.error_message ? '<div class="file-error-message">' + escapeHtmlText(file.error_message) + '</div>' : '') +
+                    '</td>' +
                     '<td>' +'<button class="btn btn-primary" style="padding: 6px 12px; margin-right: 4px;" onclick="window.processFile(\'' + file.document_code + '\', this)">Process</button>' +
                     '<button class="btn btn-secondary" style="padding: 6px 12px; margin-right: 4px;" onclick="viewFile(\'' + file.document_code + '\')">View</button>' +
+                    '<button class="btn btn-secondary" style="padding: 6px 12px; margin-right: 4px;" onclick="downloadFile(\'' + file.document_code + '\')">Download</button>' +
                     '<button class="btn btn-danger" style="padding: 6px 12px;" onclick="deleteFile(\'' + file.document_code + '\')">Delete</button>' +
                     '</td>' +
                     '</tr>';
             });
             tbody.innerHTML = html;
+        }
+
+        function escapeHtmlText(value) {
+            const div = document.createElement('div');
+            div.textContent = value == null ? '' : String(value);
+            return div.innerHTML;
         }
         
         function formatFileSize(bytes) {
@@ -580,6 +614,10 @@
                 formData.append('files', file);
             });
             formData.append('file_type', selectedFileType);
+            const descriptionEl = document.getElementById('uploadDescription');
+            if (descriptionEl && descriptionEl.value.trim()) {
+                formData.append('description', descriptionEl.value.trim());
+            }
             
             authFetch('/api/upload/unstructured', {
                 method: 'POST',
@@ -605,6 +643,8 @@
                 document.querySelectorAll('.file-type-card').forEach(function(c) {
                     c.classList.remove('selected');
                 });
+                const descriptionEl = document.getElementById('uploadDescription');
+                if (descriptionEl) descriptionEl.value = '';
                 updateUI();
                 
                 setTimeout(function() {
@@ -623,6 +663,10 @@
         
         window.viewFile = function(documentCode) {
             window.open('/api/files/view/' + documentCode, '_blank');
+        };
+
+        window.downloadFile = function(documentCode) {
+            window.open('/api/files/download/' + documentCode, '_blank');
         };
 
 
@@ -669,10 +713,12 @@
                     btn.disabled = false;
                     resultContainer.innerHTML = `<span style="color: #ff6b6b;">❌ ${data.message}</span>`;
                 }
+                loadUploadedFiles();
             })
             .catch(function(error) {
                 btn.disabled = false;
                 resultContainer.innerHTML = '<span style="color: #ff6b6b;">❌ Error connecting to backend</span>';
+                loadUploadedFiles();
             });
         };
         

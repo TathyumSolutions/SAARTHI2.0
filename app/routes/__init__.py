@@ -7,7 +7,6 @@ from . import (
     workspace_routes,
     llm_routes,
     database_routes,
-    query_routes,
     datasource_routes,
     analytics_routes,
     chat_routes,
@@ -18,7 +17,8 @@ from . import (
     upload_routes,
     settings_routes,
     resource_mapping_routes,
-    warehouse_routes
+    warehouse_routes,
+    bi_semantics_routes
 )
 
 __all__ = [
@@ -27,7 +27,6 @@ __all__ = [
     'workspace_routes',
     'llm_routes',
     'database_routes',
-    'query_routes',
     'datasource_routes',
     'analytics_routes',
     'chat_routes',
@@ -38,5 +37,6 @@ __all__ = [
     'upload_routes',
     'settings_routes',
     'resource_mapping_routes',
-    'warehouse_routes'
+    'warehouse_routes',
+    'bi_semantics_routes'
 ]

@@ -13,9 +13,10 @@ from flask import Response, stream_with_context, request
 from app.services.stream_manager import stream_manager
 from app.models.model_config import ModelConfiguration
 from app.models.feedback import ResponseFeedback
+from app.models.query_log import QueryLog
 from app.models.user import User
 from app.models.chat import ChatSession
-from app.services.updated_router_services import RouterService
+from app.services.router_service import RouterService
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
@@ -38,13 +39,13 @@ def _resolve_feedback_user():
 
 def _resolve_router_snapshot(router_decision: str, user_id: int):
     try:
-        from app.models.router_config import RouterConfig
-        row = RouterConfig.query.filter_by(user_id=user_id).first()
-        if not row or not row.config:
+        from app.services.automated_metamind import generate_router_config
+        menu = generate_router_config(user_id)
+        if not menu:
             return None
 
         decision = (router_decision or '').upper()
-        data_sources = row.config.get('routing_menu', {}).get('datasources', {})
+        data_sources = menu.get('routing_menu', {}).get('datasources', {})
         return data_sources.get(decision)
     except Exception as exc:
         print(f"⚠️ Could not attach metamind info to feedback: {exc}")
@@ -69,6 +70,7 @@ def submit_feedback():
         fb = ResponseFeedback(
             user_id=current_user.id,
             company_code=current_user.company_code,
+            query_code=data.get('query_code'),
             question=data.get('question'),
             answer=data.get('answer'),
             sql_query=data.get('sql_query'),
@@ -78,12 +80,107 @@ def submit_feedback():
             metamind_snapshot=_resolve_router_snapshot(data.get('router_decision'), current_user.id)
         )
         db.session.add(fb)
+
+        # Mirror the rating onto the Queries log row this answer came from
+        # (if the caller sent one) - this is what lets the Queries section
+        # filter by accepted/rejected, and what the self-learning reuse
+        # match in router_service.py looks for (only ever reuses
+        # a query that was explicitly liked here).
+        query_code = data.get('query_code')
+        if query_code:
+            logged_query = QueryLog.query.filter_by(query_code=query_code).first()
+            if logged_query:
+                logged_query.feedback_type = data.get('feedback_type')
+                logged_query.remarks = data.get('remarks')
+
         db.session.commit()
         return jsonify({'status': 'success'}), 200
     except Exception as exc:
         db.session.rollback()
         print(f"Feedback save failed: {exc}")
         return jsonify({'error': 'Failed to save feedback'}), 500
+
+
+@bp.route('/feedback/<string:query_code>', methods=['PUT'])
+@jwt_required()
+def upsert_feedback(query_code):
+    """
+    Add or edit the self-learning feedback on an already-logged query, from
+    the Settings > Self-Learning > Feedback & Queries list. Upserts the
+    ResponseFeedback row for this query_code (edits it in place if one
+    already exists, rather than piling up duplicates the way the chat
+    thumbs-up/down flow does) and mirrors the result onto QueryLog, same as
+    submit_feedback above, so both tables stay in sync.
+    """
+    data = request.get_json() or {}
+    feedback_type = data.get('feedback_type')
+    if feedback_type not in ('like', 'dislike'):
+        return jsonify({'error': 'feedback_type must be like or dislike'}), 400
+    remarks = data.get('remarks')
+
+    logged_query = QueryLog.query.filter_by(query_code=query_code).first()
+    if not logged_query:
+        return jsonify({'error': 'Query not found'}), 404
+
+    current_user = _resolve_feedback_user()
+    if not current_user:
+        return jsonify({'error': 'No authenticated user found for feedback'}), 401
+
+    try:
+        fb = (ResponseFeedback.query
+              .filter_by(query_code=query_code)
+              .order_by(ResponseFeedback.created_at.desc())
+              .first())
+        if fb:
+            fb.feedback_type = feedback_type
+            fb.remarks = remarks
+        else:
+            fb = ResponseFeedback(
+                user_id=current_user.id,
+                company_code=current_user.company_code,
+                query_code=query_code,
+                question=logged_query.question,
+                answer=logged_query.answer or '',
+                sql_query=logged_query.main_query,
+                router_decision=logged_query.router_decision,
+                feedback_type=feedback_type,
+                remarks=remarks,
+                metamind_snapshot=_resolve_router_snapshot(logged_query.router_decision, current_user.id)
+            )
+            db.session.add(fb)
+
+        logged_query.feedback_type = feedback_type
+        logged_query.remarks = remarks
+
+        db.session.commit()
+        return jsonify({'status': 'success', 'query': logged_query.to_dict()}), 200
+    except Exception as exc:
+        db.session.rollback()
+        print(f"Feedback update failed: {exc}")
+        return jsonify({'error': 'Failed to update feedback'}), 500
+
+
+@bp.route('/feedback/<string:query_code>', methods=['DELETE'])
+@jwt_required()
+def delete_feedback(query_code):
+    """Clear self-learning feedback from a query - removes its
+    ResponseFeedback row(s) and clears the mirrored fields on QueryLog, so
+    the query goes back to showing as Unrated everywhere."""
+    logged_query = QueryLog.query.filter_by(query_code=query_code).first()
+    if not logged_query:
+        return jsonify({'error': 'Query not found'}), 404
+
+    try:
+        ResponseFeedback.query.filter_by(query_code=query_code).delete()
+        logged_query.feedback_type = None
+        logged_query.remarks = None
+        db.session.commit()
+        return jsonify({'status': 'success', 'query': logged_query.to_dict()}), 200
+    except Exception as exc:
+        db.session.rollback()
+        print(f"Feedback delete failed: {exc}")
+        return jsonify({'error': 'Failed to delete feedback'}), 500
+
 
 @bp.route('/sessions', methods=['GET'])
 @jwt_required()
@@ -340,6 +437,8 @@ def send_message():
         current_user = _resolve_feedback_user()
         user_id = current_user.id if current_user else 1
         company_code = current_user.company_code if current_user else None
+        if current_user:
+            system_instructions = current_user.effective_query_instructions(system_instructions)
 
         ai_response = router_service.get_smart_response(
             user_query,
@@ -371,6 +470,17 @@ def send_message():
 @jwt_required(locations=["query_string"])
 def stream_steps():
     session_id = str(request.args.get('session_id', '1'))
+
+    # The frontend opens this connection BEFORE sending the actual chat
+    # request (it gates the POST on this stream's onopen firing), so this
+    # is the true start of a new query - clearing history here, before
+    # listen() below flushes whatever's currently buffered, is what stops
+    # a fresh connection from immediately replaying the previous query's
+    # steps. Clearing only in the /message handler (still done, as a
+    # backstop for any caller that isn't this SSE flow) was always too
+    # late: that runs only after this connection already flushed the old
+    # history into the new listener's queue.
+    stream_manager.start_new_query(session_id)
 
     def generate():
         q = stream_manager.listen(session_id)

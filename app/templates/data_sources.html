@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+{% block title %}Saarthi - Reports{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .ds-page { max-width: 1200px; }
+    .ds-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; gap: 12px; }
+    .ds-subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 18px; }
+    .ds-controls { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .ds-search { flex: 1; min-width: 220px; padding: 8px 10px; background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); }
+    .ds-filter-btn { background: var(--panel-bg); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+    .ds-filter-btn.active { background: var(--primary-blue); color: #fff; border-color: var(--primary-blue); }
+    .ds-stats { display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+    .ds-stat-card { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 18px; min-width: 130px; }
+    .ds-stat-value { font-size: 22px; font-weight: 700; color: var(--accent-green); }
+    .ds-stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+    .ds-card { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .ds-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .ds-card-title { font-size: 15px; font-weight: 600; color: var(--text-primary); word-break: break-word; }
+    .ds-type-badge { font-size: 10px; padding: 3px 8px; border-radius: 10px; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+    .ds-type-database { background: rgba(0, 120, 212, 0.18); color: #5AA9F0; }
+    .ds-type-file { background: rgba(78, 201, 176, 0.18); color: var(--accent-green); }
+    .ds-type-api { background: rgba(197, 134, 192, 0.18); color: var(--accent-purple); }
+    .ds-type-spreadsheet { background: rgba(255, 167, 38, 0.18); color: #FFA726; }
+    .ds-subtype { font-size: 11px; color: var(--text-secondary); }
+    .ds-description { font-size: 13px; color: var(--text-secondary); line-height: 1.4; }
+    .ds-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 4px; }
+    .ds-meta strong { color: var(--text-primary); font-weight: 500; }
+    .ds-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+    .ds-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7280; }
+    .ds-status-dot.active, .ds-status-dot.connected, .ds-status-dot.success, .ds-status-dot.processed { background: var(--accent-green); }
+    .ds-status-dot.error, .ds-status-dot.failed, .ds-status-dot.inactive { background: #F48771; }
+    .ds-status-dot.processing, .ds-status-dot.uploaded, .ds-status-dot.testing { background: var(--accent-orange); }
+    .ds-error-text { font-size: 11px; color: #F48771; }
+    .ds-access-badge { font-size: 10px; padding: 2px 7px; border-radius: 8px; border: 1px solid var(--border-color); color: var(--text-secondary); }
+    .ds-empty { color: var(--text-secondary); font-size: 13px; padding: 40px 0; text-align: center; }
+    .ds-loading { color: var(--text-secondary); font-size: 13px; padding: 20px 0; }
+    .ds-actions { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+    .ds-action-btn { background: var(--panel-bg); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+    .ds-action-btn:hover { border-color: var(--primary-blue); color: var(--text-primary); }
+
+    .ds-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+    .ds-modal-overlay.show { display: flex; }
+    .ds-modal { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px; width: 100%; max-width: 640px; max-height: 85vh; overflow-y: auto; padding: 22px; }
+    .ds-modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+    .ds-modal-title { font-size: 17px; font-weight: 600; color: var(--text-primary); margin: 0; }
+    .ds-modal-subtitle { font-size: 12px; color: var(--text-secondary); margin: 2px 0 0; }
+    .ds-modal-close { background: transparent; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; line-height: 1; }
+    .ds-modal-close:hover { color: var(--text-primary); }
+    .ds-modal-section { margin-top: 16px; }
+    .ds-modal-section-title { font-size: 13px; font-weight: 600; color: var(--accent-green); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; }
+    .ds-modal-body-text { font-size: 13px; color: var(--text-secondary); }
+    .ds-textarea { width: 100%; min-height: 110px; padding: 10px 12px; background: var(--dark-bg, var(--sidebar-bg)); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 13px; font-family: inherit; resize: vertical; }
+    .ds-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+    .ds-btn-primary { background: var(--primary-blue); color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+    .ds-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .ds-modal-message { font-size: 12px; margin-top: 8px; display: none; }
+    .ds-modal-message.show { display: block; }
+    .ds-modal-message.error { color: #F48771; }
+    .ds-modal-message.success { color: var(--accent-green); }
+    .ds-meta-pre { background: var(--dark-bg, #10141c); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; font-size: 12px; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow-y: auto; }
+
+    .ds-section-heading { margin: 4px 0 2px; font-size: 16px; color: var(--text-primary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ds-page">
+    <div class="ds-toolbar">
+        <h2 style="margin: 0;">Reports</h2>
+    </div>
+
+    <div id="reportsSection">
+        <p class="ds-subtitle">
+            Every database connection, uploaded file, and API integration you can currently use - your own, plus anything a company admin has explicitly shared with you.
+        </p>
+
+        <div class="ds-stats" id="dsStats"></div>
+
+        <div class="ds-controls">
+            <input id="dsSearch" class="ds-search" type="text" placeholder="Search by name, description, or creator..." />
+            <button type="button" class="ds-filter-btn active" data-filter="all">All</button>
+            <button type="button" class="ds-filter-btn" data-filter="database">Databases</button>
+            <button type="button" class="ds-filter-btn" data-filter="spreadsheet">Spreadsheets</button>
+            <button type="button" class="ds-filter-btn" data-filter="file">Files</button>
+            <button type="button" class="ds-filter-btn" data-filter="api">APIs</button>
+        </div>
+
+        <div id="dsGrid" class="ds-grid">
+            <div class="ds-loading">Loading data sources...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Description modal -->
+<div class="ds-modal-overlay" id="descModalOverlay">
+    <div class="ds-modal">
+        <div class="ds-modal-header">
+            <div>
+                <h3 class="ds-modal-title">Description</h3>
+                <p class="ds-modal-subtitle" id="descModalSubtitle"></p>
+            </div>
+            <button type="button" class="ds-modal-close" id="descModalClose">&times;</button>
+        </div>
+        <textarea class="ds-textarea" id="descModalTextarea" placeholder="Describe what this data source contains and when it should be used..."></textarea>
+        <div class="ds-modal-message" id="descModalMessage"></div>
+        <div class="ds-modal-actions">
+            <button type="button" class="ds-action-btn" id="descModalCancel">Cancel</button>
+            <button type="button" class="ds-btn-primary" id="descModalSave">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Details modal -->
+<div class="ds-modal-overlay" id="detailsModalOverlay">
+    <div class="ds-modal">
+        <div class="ds-modal-header">
+            <div>
+                <h3 class="ds-modal-title">Details</h3>
+                <p class="ds-modal-subtitle" id="detailsModalSubtitle"></p>
+            </div>
+            <button type="button" class="ds-modal-close" id="detailsModalClose">&times;</button>
+        </div>
+        <div id="detailsModalBody">
+            <div class="ds-modal-body-text">Loading...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let allDatasources = [];
+    let activeFilter = 'all';
+
+    const TYPE_LABELS = { database: 'Database', file: 'File', api: 'API' };
+
+    // 'type' always stays the REST resource type ('database'/'file'/'api') so the
+    // description/metadata API calls keep hitting the right backend routes -
+    // 'category' is what actually distinguishes an Excel-backed database
+    // connection ('spreadsheet') from a real one ('database') for display/filtering.
+    function dsCategory(ds) { return ds.category || ds.type; }
+    function categoryLabel(ds) { return dsCategory(ds) === 'spreadsheet' ? 'Spreadsheet' : (TYPE_LABELS[ds.type] || ds.type); }
+    const STATUS_LABELS = {
+        active: 'Active', connected: 'Connected', processed: 'Processed', processing: 'Processing',
+        uploaded: 'Uploaded', error: 'Error', failed: 'Error', inactive: 'Inactive', success: 'Success'
+    };
+
+    function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function renderStats() {
+        const counts = { database: 0, spreadsheet: 0, file: 0, api: 0 };
+        allDatasources.forEach(function (ds) {
+            const key = dsCategory(ds);
+            if (counts[key] !== undefined) counts[key]++;
+        });
+
+        document.getElementById('dsStats').innerHTML = `
+            <div class="ds-stat-card"><div class="ds-stat-value">${allDatasources.length}</div><div class="ds-stat-label">Total Data Sources</div></div>
+            <div class="ds-stat-card"><div class="ds-stat-value">${counts.database}</div><div class="ds-stat-label">Databases</div></div>
+            <div class="ds-stat-card"><div class="ds-stat-value">${counts.spreadsheet}</div><div class="ds-stat-label">Spreadsheets</div></div>
+            <div class="ds-stat-card"><div class="ds-stat-value">${counts.file}</div><div class="ds-stat-label">Files</div></div>
+            <div class="ds-stat-card"><div class="ds-stat-value">${counts.api}</div><div class="ds-stat-label">API Integrations</div></div>
+        `;
+    }
+
+    function renderGrid() {
+        const query = document.getElementById('dsSearch').value.toLowerCase();
+        const grid = document.getElementById('dsGrid');
+
+        const visible = allDatasources.filter(function (ds) {
+            if (activeFilter !== 'all' && dsCategory(ds) !== activeFilter) return false;
+            if (!query) return true;
+            const haystack = [
+                ds.name, ds.description, ds.subtype,
+                ds.creator && ds.creator.name, ds.creator && ds.creator.email
+            ].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(query);
+        });
+
+        if (!visible.length) {
+            grid.innerHTML = '<div class="ds-empty">No data sources match your search.</div>';
+            return;
+        }
+
+        grid.innerHTML = visible.map(function (ds, idx) {
+            const creatorLabel = ds.creator && (ds.creator.name || ds.creator.email) || 'Unknown';
+            const createdLabel = ds.created_at ? new Date(ds.created_at).toLocaleDateString() : 'Unknown';
+            const statusClass = (ds.status || '').toLowerCase();
+            const statusLabel = STATUS_LABELS[statusClass] || (ds.status || 'Unknown');
+            return `
+                <div class="ds-card">
+                    <div class="ds-card-header">
+                        <div class="ds-card-title">${escapeHtml(ds.name || 'Untitled')}</div>
+                        <span class="ds-type-badge ds-type-${dsCategory(ds)}">${categoryLabel(ds)}</span>
+                    </div>
+                    ${ds.subtype ? `<div class="ds-subtype">${escapeHtml(ds.subtype)}</div>` : ''}
+                    <div class="ds-description">${escapeHtml(ds.description || 'No description available.')}</div>
+                    <div class="ds-meta">
+                        <span>Creator: <strong>${escapeHtml(creatorLabel)}</strong></span>
+                        <span>Added: <strong>${createdLabel}</strong></span>
+                        <span class="ds-status"><span class="ds-status-dot ${statusClass}"></span>${escapeHtml(statusLabel)}</span>
+                        <span class="ds-access-badge">${ds.access === 'owner' ? 'Owned by you' : 'Shared with you'}</span>
+                    </div>
+                    ${(statusClass === 'error' || statusClass === 'failed') && ds.error_message ? `<div class="ds-error-text">⚠️ ${escapeHtml(ds.error_message)}</div>` : ''}
+                    <div class="ds-actions">
+                        <button type="button" class="ds-action-btn" onclick="openDescriptionModal(${idx})">📝 Description</button>
+                        <button type="button" class="ds-action-btn" onclick="openDetailsModal(${idx})">🔍 Details</button>
+                        ${dsCategory(ds) === 'file' ? `
+                            <button type="button" class="ds-action-btn" onclick="viewFileCard(${idx})">👁️ View</button>
+                            <button type="button" class="ds-action-btn" onclick="downloadFileCard(${idx})">⬇️ Download</button>
+                        ` : ''}
+                        ${dsCategory(ds) === 'spreadsheet' ? `
+                            <button type="button" class="ds-action-btn" onclick="viewSpreadsheetCard(${idx})">👁️ View</button>
+                            <button type="button" class="ds-action-btn" onclick="downloadSpreadsheetCard(${idx})">⬇️ Download</button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function loadDatasources() {
+        try {
+            const res = await authFetch('/api/datasources/');
+            const data = await res.json();
+            allDatasources = data.datasources || [];
+        } catch (err) {
+            console.error('Failed to load data sources:', err);
+            allDatasources = [];
+        }
+        renderStats();
+        renderGrid();
+    }
+
+    // ===================== Description modal =====================
+    let descTarget = null;
+
+    function filteredList() {
+        const query = document.getElementById('dsSearch').value.toLowerCase();
+        return allDatasources.filter(function (ds) {
+            if (activeFilter !== 'all' && dsCategory(ds) !== activeFilter) return false;
+            if (!query) return true;
+            const haystack = [
+                ds.name, ds.description, ds.subtype,
+                ds.creator && ds.creator.name, ds.creator && ds.creator.email
+            ].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(query);
+        });
+    }
+
+    function openDescriptionModal(idx) {
+        const ds = filteredList()[idx];
+        if (!ds) return;
+        descTarget = ds;
+        document.getElementById('descModalSubtitle').textContent = `${categoryLabel(ds)} · ${ds.name || ''}`;
+        document.getElementById('descModalTextarea').value = ds.has_custom_description ? (ds.description || '') : '';
+        const msg = document.getElementById('descModalMessage');
+        msg.classList.remove('show', 'error', 'success');
+        msg.textContent = '';
+        document.getElementById('descModalOverlay').classList.add('show');
+    }
+
+    function closeDescriptionModal() {
+        document.getElementById('descModalOverlay').classList.remove('show');
+        descTarget = null;
+    }
+
+    async function saveDescription() {
+        if (!descTarget) return;
+        const saveBtn = document.getElementById('descModalSave');
+        const msg = document.getElementById('descModalMessage');
+        const description = document.getElementById('descModalTextarea').value;
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        try {
+            const res = await authFetch(`/api/datasources/${descTarget.type}/${descTarget.id}/description`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ description })
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'success') {
+                msg.textContent = 'Description saved.';
+                msg.className = 'ds-modal-message show success';
+                await loadDatasources();
+                setTimeout(closeDescriptionModal, 700);
+            } else {
+                msg.textContent = data.message || 'Could not save description.';
+                msg.className = 'ds-modal-message show error';
+            }
+        } catch (err) {
+            msg.textContent = 'Error connecting to backend.';
+            msg.className = 'ds-modal-message show error';
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
+        }
+    }
+
+    // ===================== Details modal =====================
+    function openDetailsModal(idx) {
+        const ds = filteredList()[idx];
+        if (!ds) return;
+        document.getElementById('detailsModalSubtitle').textContent = `${categoryLabel(ds)} · ${ds.name || ''}`;
+        document.getElementById('detailsModalBody').innerHTML = '<div class="ds-modal-body-text">Loading...</div>';
+        document.getElementById('detailsModalOverlay').classList.add('show');
+
+        authFetch(`/api/datasources/${ds.type}/${ds.id}/metadata`)
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.status !== 'success') {
+                    document.getElementById('detailsModalBody').innerHTML =
+                        `<div class="ds-modal-body-text">${escapeHtml(data.message || 'Could not load metadata for this data source.')}</div>`;
+                    return;
+                }
+                document.getElementById('detailsModalBody').innerHTML = `
+                    <div class="ds-modal-section">
+                        <div class="ds-modal-section-title">Meta Data Summary</div>
+                        <div class="ds-meta-pre">${escapeHtml(JSON.stringify(data.summary, null, 2))}</div>
+                    </div>
+                    <div class="ds-modal-section">
+                        <div class="ds-modal-section-title">Meta Data</div>
+                        <div class="ds-meta-pre">${escapeHtml(JSON.stringify(data.metadata, null, 2))}</div>
+                    </div>
+                `;
+            })
+            .catch(function () {
+                document.getElementById('detailsModalBody').innerHTML =
+                    '<div class="ds-modal-body-text">Error connecting to backend.</div>';
+            });
+    }
+
+    // ===================== File view/download =====================
+    function viewFileCard(idx) {
+        const ds = filteredList()[idx];
+        if (!ds) return;
+        window.open(`/api/files/view/${ds.document_code}`, '_blank');
+    }
+
+    function downloadFileCard(idx) {
+        const ds = filteredList()[idx];
+        if (!ds) return;
+        window.open(`/api/files/download/${ds.document_code}`, '_blank');
+    }
+
+    // ===================== Spreadsheet view/download =====================
+    function downloadSpreadsheetCard(idx) {
+        const ds = filteredList()[idx];
+        if (!ds) return;
+        window.open(`/api/databases/${ds.id}/download`, '_blank');
+    }
+
+    function viewSpreadsheetCard(idx) {
+        const ds = filteredList()[idx];
+        if (!ds) return;
+        document.getElementById('detailsModalSubtitle').textContent = `Preview · ${ds.name || ''}`;
+        document.getElementById('detailsModalBody').innerHTML = '<div class="ds-modal-body-text">Loading...</div>';
+        document.getElementById('detailsModalOverlay').classList.add('show');
+
+        authFetch(`/api/databases/${ds.id}/preview`)
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.status !== 'success') {
+                    document.getElementById('detailsModalBody').innerHTML =
+                        `<div class="ds-modal-body-text">${escapeHtml(data.error || 'Could not load a preview for this data source.')}</div>`;
+                    return;
+                }
+                document.getElementById('detailsModalBody').innerHTML = data.tables.map(function (t) {
+                    const cols = t.columns;
+                    const rowsHtml = t.rows.map(function (row) {
+                        return '<tr>' + cols.map(function (c) { return `<td style="padding: 6px 10px; border-bottom: 1px solid var(--border-color);">${escapeHtml(row[c])}</td>`; }).join('') + '</tr>';
+                    }).join('');
+                    return `
+                        <div class="ds-modal-section">
+                            <div class="ds-modal-section-title">${escapeHtml(t.sheet || t.table)} (${t.row_count} rows${t.truncated ? ', showing first 50' : ''})</div>
+                            <div style="overflow-x: auto;">
+                                <table style="border-collapse: collapse; width: 100%; font-size: 13px;">
+                                    <thead><tr>${cols.map(function (c) { return `<th style="text-align: left; padding: 6px 10px; background: var(--hover-bg); border-bottom: 1px solid var(--border-color);">${escapeHtml(c)}</th>`; }).join('')}</tr></thead>
+                                    <tbody>${rowsHtml}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            })
+            .catch(function () {
+                document.getElementById('detailsModalBody').innerHTML =
+                    '<div class="ds-modal-body-text">Error connecting to backend.</div>';
+            });
+    }
+
+    function closeDetailsModal() {
+        document.getElementById('detailsModalOverlay').classList.remove('show');
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('dsSearch').addEventListener('input', renderGrid);
+        document.querySelectorAll('#reportsSection .ds-filter-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('#reportsSection .ds-filter-btn').forEach(function (b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                activeFilter = btn.dataset.filter;
+                renderGrid();
+            });
+        });
+
+        document.getElementById('descModalClose').addEventListener('click', closeDescriptionModal);
+        document.getElementById('descModalCancel').addEventListener('click', closeDescriptionModal);
+        document.getElementById('descModalSave').addEventListener('click', saveDescription);
+        document.getElementById('descModalOverlay').addEventListener('click', function (e) {
+            if (e.target === this) closeDescriptionModal();
+        });
+
+        document.getElementById('detailsModalClose').addEventListener('click', closeDetailsModal);
+        document.getElementById('detailsModalOverlay').addEventListener('click', function (e) {
+            if (e.target === this) closeDetailsModal();
+        });
+
+        loadDatasources();
+    });
+</script>
+{% endblock %}

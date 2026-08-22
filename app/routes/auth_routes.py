@@ -5,7 +5,7 @@ company employee-approval workflow.
 """
 import secrets
 from datetime import datetime, timedelta
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app import db, limiter
 from app.models.user import User, ROLE_ADMIN, ROLE_USER, STATUS_ACTIVE, STATUS_PENDING, STATUS_REJECTED
@@ -41,6 +41,9 @@ def register():
     password = data.get("password") or request.form.get("password")
     confirm_password = data.get("confirm_password") or request.form.get("confirm_password")
     company_code = (data.get("company_code") or request.form.get("company_code") or "").strip()
+    agree_terms = data.get("agree_terms")
+    if agree_terms is None:
+        agree_terms = request.form.get("agree_terms")
 
     if email:
         email = email.strip().lower()
@@ -50,6 +53,9 @@ def register():
 
     if password != confirm_password:
         return jsonify({"status": "error", "message": "Passwords do not match."}), 400
+
+    if agree_terms not in (True, "true", "True", "1", 1):
+        return jsonify({"status": "error", "message": "You must accept the Terms & Privacy Policy to create an account."}), 400
 
     if User.query.filter_by(email=email).first():
         return jsonify({"status": "error", "message": "An account with this email already exists."}), 400
@@ -230,7 +236,9 @@ def get_profile():
     user = User.query.get(int(current_user_id))
     if not user:
         return jsonify({"status": "error", "message": "User profile not found."}), 404
-    return jsonify({"status": "success", "user": user.to_dict()}), 200
+    profile = user.to_dict()
+    profile['is_superadmin'] = user.email.lower() in current_app.config.get('SUPERADMIN_EMAILS', [])
+    return jsonify({"status": "success", "user": profile}), 200
 
 
 @bp.route('/pending-approvals', methods=['GET'])
