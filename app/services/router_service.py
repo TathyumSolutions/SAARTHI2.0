@@ -1268,6 +1268,36 @@ def _decide_output_format(table: list) -> str:
     return "table" if row_count < 50 else "chart"
 
 
+def _generate_chart_for_merged_table(table: list, user_query: str) -> dict:
+    """
+    Runs the same deterministic, no-LLM-call chart-config generator the DB
+    track's own pipeline uses (DataVisualizerAgent - column classification,
+    measure/dimension picking, aggregation, chart config assembly, all
+    plain Python) directly on a MULTI-track's merged table.
+
+    Without this, a merged table's chart_configs was always just whichever
+    contributing track's own `chart` field happened to be non-empty - which
+    in practice meant only a DB-involving combo ever got a real chart,
+    since DB is the only track whose own pipeline runs a visualizer step.
+    A Spreadsheet+API merge (no DB involved at all) that clearly calls for
+    a chart got an empty {} instead, even though the exact same
+    column-shape data from a DB source would have gotten one.
+
+    DataVisualizerAgent decides for itself whether the data is actually
+    chart-worthy (e.g. two ID/text columns is a lookup mapping, not
+    something a bar/line/pie chart can represent) - this just gives it the
+    chance to make that call for a merged table too, instead of skipping
+    it outright.
+    """
+    if not table or not isinstance(table[0], dict):
+        return {}
+    from .databridge_services.agents import DataVisualizerAgent
+
+    visualizer = DataVisualizerAgent()
+    state = {"data": table, "columns": list(table[0].keys()), "user_query": user_query}
+    return visualizer.execute(state).get("chart_configs", {})
+
+
 def _pick_primary_tabular_result(ok_results: list):
     """Picks whichever contributing track actually has row data to show,
     preferring query_database then query_spreadsheet_data (the two tracks
@@ -1894,6 +1924,16 @@ that appears inside it.
             # back to the chat UI, instead of picking it a second time.
             output_format = _decide_output_format(primary_result.get("table"))
 
+            # No contributing track's own chart survives a merge unless
+            # that exact track happened to build one (only DB's pipeline
+            # does) - if the merged data itself calls for a chart and
+            # nothing already provided one, generate it directly from the
+            # merged table instead of returning an empty {} that
+            # contradicts format="chart".
+            merged_chart = primary_result.get("chart") or {}
+            if output_format == "chart" and not merged_chart:
+                merged_chart = _generate_chart_for_merged_table(primary_result.get("table") or [], user_query)
+
             combined_sources = []
             for _, r in ok_results:
                 combined_sources.extend(r.get("sources") or [])
@@ -1926,7 +1966,7 @@ that appears inside it.
             return {
                 "answer": answer_text,
                 "sql": primary_result.get("sql"), "table": primary_result.get("table", []),
-                "chart": primary_result.get("chart", {}), "insights": primary_result.get("insights", []),
+                "chart": merged_chart, "insights": primary_result.get("insights", []),
                 "format": output_format,
                 "steps": master_steps,
                 "chain_of_thought": master_steps,
