@@ -925,16 +925,24 @@ def _run_db_track(question: str, ctx: dict) -> dict:
     tables = ((cot_logs.get("query_sense_output") or {}).get("tables")) or []
     sql = chat_ui.get("sql")
     main_query = sql if sql and sql != "-- No SQL Generated --" else None
+    # Report honestly on failure - previously this said "Generated and
+    # executed a SQL query..." even when chat_ui["error"] was True, so a
+    # failed run's own strategy text claimed success. had_error mirrors the
+    # same "error" flag returned below, computed once here so the wording
+    # matches what actually happened.
+    had_error = bool(chat_ui.get("error"))
+    target = f"against {', '.join(tables)} " if tables else ""
     strategy = (
-        f"Generated and executed a SQL query against {', '.join(tables)} to answer this question."
-        if tables else "Generated and executed a SQL query to answer this question."
+        f"Attempted to generate and execute a SQL query {target}but the execution failed."
+        if had_error else
+        f"Generated and executed a SQL query {target}to answer this question."
     )
     return {
         "answer": chat_ui.get("answer"),
         "steps": chat_ui.get("steps", []),
         "sql": sql, "table": chat_ui.get("table", []),
         "chart": chat_ui.get("chart", {}), "insights": chat_ui.get("insights", []),
-        "error": bool(chat_ui.get("error")),
+        "error": had_error,
         "strategy": strategy,
         "sources": _tag_sources(tables, "query_database"),
         "main_query": main_query,
