@@ -430,22 +430,38 @@ def _log_query(
         return None
 
 
-def _find_reusable_db_query(company_code: Optional[str], user_id: Optional[int], user_query: str):
+# Tracks whose QueryLog.main_query stores enough raw state to be replayed
+# deterministically, with no LLM call at all: DB stores the exact SQL text,
+# SPREADSHEET stores the exact query plan JSON. FILES (semantic retrieval,
+# not a fixed query), API (params aren't persisted, only method+URL), and
+# GENERAL/MULTI (no single re-runnable action) are excluded on purpose -
+# "reusing" them would still require the same LLM call(s) that made them
+# expensive in the first place, so there is nothing to save by trying.
+REUSABLE_TRACKS = ("DB", "SPREADSHEET")
+
+
+def _find_reusable_query(company_code: Optional[str], user_id: Optional[int], user_query: str):
     """
-    Looks for a previously-accepted (liked) DB-track query that is a
-    near-duplicate of user_query. Scoped to the company (shared across
-    every user of that company) when company_code is set; otherwise
-    scoped to just this user's own liked queries - a company_code is not
-    required for an individual account's own self-learning to work.
-    Returns (QueryLog row, score) if one clears REUSE_MATCH_THRESHOLD,
-    else (None, 0.0).
+    Looks for a previously-accepted (liked) query - DB or SPREADSHEET - that
+    is a near-duplicate of user_query. Scoped to the company (shared across
+    every user of that company) when company_code is set; otherwise scoped
+    to just this user's own liked queries - a company_code is not required
+    for an individual account's own self-learning to work.
+
+    Runs BEFORE the router LLM is ever called (see get_smart_response's
+    self-learning check), not just before a track's own generation step -
+    a match here skips the entire routing decision, not only the SQL/plan
+    generation inside one track.
+
+    Returns (QueryLog row, score, router_decision) if one clears
+    REUSE_MATCH_THRESHOLD, else (None, 0.0, None).
     """
     if not user_query or (not company_code and not user_id):
-        return None, 0.0
+        return None, 0.0, None
 
     candidates_query = (
         QueryLog.query
-        .filter(QueryLog.router_decision == "DB")
+        .filter(QueryLog.router_decision.in_(REUSABLE_TRACKS))
         .filter(QueryLog.feedback_type == "like")
         .filter(QueryLog.main_query.isnot(None))
     )
@@ -456,7 +472,7 @@ def _find_reusable_db_query(company_code: Optional[str], user_id: Optional[int],
     )
     candidates = candidates_query.order_by(QueryLog.created_at.desc()).limit(200).all()
     if not candidates:
-        return None, 0.0
+        return None, 0.0, None
 
     embedder = _get_feedback_embedder()
     query_vec = embedder.embed_query(user_query)
@@ -471,8 +487,8 @@ def _find_reusable_db_query(company_code: Optional[str], user_id: Optional[int],
             best_row, best_score = row, score
 
     if best_row and best_score >= REUSE_MATCH_THRESHOLD:
-        return best_row, best_score
-    return None, 0.0
+        return best_row, best_score, best_row.router_decision
+    return None, 0.0, None
 
 
 def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: dict) -> dict:
@@ -526,6 +542,81 @@ def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: 
             "score": round(score, 4),
         }],
     }
+
+
+def _run_reused_spreadsheet_query(question: str, matched: "QueryLog", score: float, ctx: dict) -> dict:
+    """
+    Re-executes a previously-accepted spreadsheet query's exact plan
+    (stored as JSON in QueryLog.main_query - see _run_spreadsheet_track)
+    directly against the live spreadsheet data via _execute_plan, instead
+    of paying for a fresh plan-building LLM call. The underlying data may
+    have changed since the plan was first built, so this still runs the
+    plan live rather than replaying stored results.
+
+    Unlike DB reuse (which re-derives its answer text from a live
+    formatter call), there's no LLM-free way to re-phrase the answer from
+    fresh numbers here - answer_from_spreadsheets' only answer-writing
+    step is itself an LLM call. Reusing matched.answer verbatim is the
+    trade-off that actually saves the cost reuse exists for; it can read
+    slightly stale if the numbers shifted, which is an acceptable cost
+    for skipping both the plan-building and answer-writing LLM calls.
+    """
+    from .spreadsheet_query_service import _execute_plan
+
+    session_id = ctx["session_id"]
+    _push_router_event(
+        session_id, "start", "Reusing a Matched Query",
+        f"This closely matches a previously accepted query ({matched.query_code}) - reusing its plan instead of regenerating it."
+    )
+
+    try:
+        plan = json.loads(matched.main_query)
+        result_df = _execute_plan(plan)
+        table_records = json.loads(result_df.to_json(orient="records", date_format="iso"))
+        had_error = False
+    except Exception as e:
+        print(f"⚠️ Reused spreadsheet plan {matched.query_code} failed on re-execution: {e}")
+        table_records = []
+        had_error = True
+
+    _push_router_event(
+        session_id, "complete", "Reusing a Matched Query",
+        f"Re-executed the plan from {matched.query_code} and refreshed the results."
+        if not had_error else f"Reuse of {matched.query_code} failed on re-execution."
+    )
+
+    return {
+        "answer": matched.answer or "",
+        "steps": [f"Reusing a Matched Query - Re-executed the plan from {matched.query_code} ({score:.2f} similarity match)."],
+        "sql": None, "table": table_records,
+        "chart": {}, "insights": [],
+        "error": had_error,
+        "strategy": f"Reused query {matched.query_code} (similarity {score:.2f}) instead of regenerating the plan.",
+        "sources": matched.sources or [],
+        "main_query": matched.main_query,
+        "child_query": question,
+        "format": _decide_output_format(table_records),
+        "execution_type": "reused",
+        "matched_query_code": matched.query_code,
+        "match_score": round(score, 4),
+        "related_queries": [{
+            "query_code": matched.query_code,
+            "question": matched.question,
+            "feedback_type": "like",
+            "remarks": matched.remarks,
+            "score": round(score, 4),
+        }],
+    }
+
+
+# Dispatches a reuse hit to the right replay function by the matched row's
+# own router_decision - kept alongside REUSABLE_TRACKS so the two can never
+# drift (a track listed as reusable with no dispatch entry would KeyError
+# the moment a real match for it came in).
+REUSE_DISPATCH = {
+    "DB": _run_reused_db_query,
+    "SPREADSHEET": _run_reused_spreadsheet_query,
+}
 
 
 # Generic question words that would otherwise spuriously "match" almost any
@@ -937,20 +1028,12 @@ def _run_db_track(question: str, ctx: dict, hint_tables: list = None) -> dict:
     if resolved_context:
         enriched_question = f"{resolved_context}\n\n{enriched_question}"
 
-    # Self-learning query reuse: skip a full fresh generation if this
-    # question is a near-duplicate of a previously accepted (liked) DB
-    # query - reuse that query's SQL instead. Falls through to the normal
-    # fresh pipeline if no strong match exists, or if re-running the
-    # matched SQL errors out (e.g. the schema moved on since it was
-    # generated).
-    if ctx.get("self_learning_enabled"):
-        matched, score = _find_reusable_db_query(ctx.get("company_code"), ctx.get("user_id"), question)
-        if matched:
-            reused_result = _run_reused_db_query(question, matched, score, ctx)
-            if not reused_result.get("error"):
-                return reused_result
-            print(f"⚠️ Reused query {matched.query_code} failed on re-execution, falling back to fresh generation.")
-
+    # Self-learning reuse is checked once, up front, in get_smart_response's
+    # Layer 1.5 - before the router LLM even runs - not here. By the time
+    # _run_db_track is reached, that check has already run and found no
+    # strong match (a match there returns directly and never reaches any
+    # track). Re-checking here would just repeat the same embedding search
+    # for no benefit.
     full_result = run_data_bridge_agent(
         enriched_question, session_id=ctx["session_id"],
         model_name=ctx["model_name"], custom_key=ctx["custom_key"], user_id=ctx.get("user_id", 1),
@@ -1472,6 +1555,39 @@ class RouterService:
                 return fast_res
 
             # ------------------------------------------------
+            # LAYER 1.5: Self-learning reuse - check for a liked query
+            # BEFORE the router LLM ever runs. Only DB and SPREADSHEET
+            # store enough raw state (exact SQL / exact query plan JSON)
+            # in QueryLog to be replayed with no further LLM call at all
+            # (see REUSABLE_TRACKS) - a match here skips the entire
+            # routing decision, not just one track's own generation step.
+            # ------------------------------------------------
+            self_learning_enabled = bool(load_rag_config().get("self_learning", {}).get("enabled", False))
+            if self_learning_enabled:
+                matched, score, matched_track = _find_reusable_query(company_code, user_id, user_query)
+                if matched:
+                    reuse_ctx = {
+                        "session_id": session_id, "model_name": model_name,
+                        "custom_key": custom_key, "system_instructions": system_instructions,
+                        "user_id": user_id,
+                    }
+                    reused_result = REUSE_DISPATCH[matched_track](user_query, matched, score, reuse_ctx)
+                    if not reused_result.get("error"):
+                        reused_result["chain_of_thought"] = reused_result.get("steps", [])
+                        reused_result["router_decision"] = matched_track
+                        reused_result["query_code"] = _log_query(
+                            user_id, company_code, user_query, matched_track, reused_result.get("answer"),
+                            reused_result.get("strategy"), reused_result.get("sources"), reused_result.get("main_query"),
+                            execution_type="reused",
+                            matched_query_code=reused_result.get("matched_query_code"),
+                            match_score=reused_result.get("match_score"),
+                            related_queries=reused_result.get("related_queries"),
+                        )
+                        _push_router_done(session_id, is_sql=(matched_track == "DB"))
+                        return reused_result
+                    print(f"⚠️ Reused {matched_track} query {matched.query_code} failed on re-execution, falling back to fresh routing.")
+
+            # ------------------------------------------------
             # LAYER 2: Load config + tools, build token-budgeted messages
             # ------------------------------------------------
             router_config = _load_router_config(user_id)
@@ -1481,7 +1597,7 @@ class RouterService:
                 for t in active_db_tools
             ) or "No active external tools registered currently."
 
-            self_learning_enabled = bool(load_rag_config().get("self_learning", {}).get("enabled", False))
+            # self_learning_enabled was already computed in Layer 1.5 above.
             feedback_context = ""
             related_queries: list = []
             router_level_steps: list = []
