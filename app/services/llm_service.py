@@ -571,13 +571,21 @@ class LLMService:
     #         print(f"Analysis Error: {e}")
     #         return "Analyzing natural language inquiry for document matching modules."    
 
-    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions='',user_id=None,feedback_context=''):
+    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions='',user_id=None,feedback_context='',hint_document_codes=None):
         """
         Retrieves relevant chunks from Qdrant and updates the live steps
         using the new structured event payload layout. Retrieval is scoped
         to documents visible to user_id (their own uploads plus anything
         granted via Resource Mapping) so one user's answers never surface
         content from a document another user never shared with them.
+
+        hint_document_codes: document_code(s) the router already identified
+        from the FILES metadata (router_service.py's search_documents tool
+        call) as relevant to this question. Narrows retrieval to just those
+        documents when the hint is non-empty AND every hinted code is
+        actually visible to this user - the visibility check runs first and
+        is never widened by the hint, so a wrong or stale hint can only
+        narrow retrieval, never leak a document this user can't see.
         """
         rag_chain_of_thought = []
         session_id = str(session_id)
@@ -595,6 +603,10 @@ class LLMService:
                     "chart": {},
                     "rag_chain_of_thought": rag_chain_of_thought
                 }
+            if hint_document_codes:
+                hinted_and_visible = [c for c in hint_document_codes if c in doc_codes]
+                if hinted_and_visible:
+                    doc_codes = hinted_and_visible
             from qdrant_client.http import models as qmodels
             qdrant_filter = qmodels.Filter(
                 must=[
@@ -929,7 +941,7 @@ class LLMService:
 
 _shared_llm_service = LLMService()
 
-def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions='', user_id=None, feedback_context=''):
+def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions='', user_id=None, feedback_context='', hint_document_codes=None):
     """
     Top-level module function mapping so your orchestrator router can import
     it cleanly without needing class-level structural instantiation overhead.
@@ -942,6 +954,7 @@ def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system
         system_instructions=system_instructions,
         user_id=user_id,
         feedback_context=feedback_context,
+        hint_document_codes=hint_document_codes,
     )
        
 

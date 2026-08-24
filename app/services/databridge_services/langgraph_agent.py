@@ -446,7 +446,7 @@ def _build_db_config_for_user(user_id: int):
         return None
 
 
-def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "", user_id: int = 1, router_config: dict = None, feedback_context: str = "") -> dict:
+def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "", user_id: int = 1, router_config: dict = None, feedback_context: str = "", hint_tables: list = None) -> dict:
     """Run the Data Bridge agent with error recovery"""
     print(f"\n{'='*80}")
     print(f"🚀 Starting LangGraph Data Bridge Agent with Error Recovery")
@@ -500,6 +500,10 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
         "custom_key": custom_key,
         "system_instructions": system_instructions,
         "feedback_context": feedback_context,
+        # Tables the router already identified from the live schema
+        # metadata (router_service.py's query_database tool call) - read
+        # by QuerySenseAgent as a starting hint, not a hard filter.
+        "hint_tables": hint_tables or [],
         "_agents": agents,
         "db_config": db_config,
         "steps": [],
