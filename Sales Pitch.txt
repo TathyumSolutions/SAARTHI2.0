@@ -1,0 +1,15 @@
+Most enterprises want to scale generative AI, but hit four major roadblocks: unpredictable token costs, data security/leakage risks, lack of auditability and data readiness.
+
+At Tathyum Solutions Private Limited, we built Saarthi—a governed enterprise AI layer designed to solve these exact challenges:
+
+Predictable Economics: Self-host open-source models inside your own VPC/On-Prem to eliminate per-token meter spikes.
+
+Zero Data Leakage: Your confidential data never leaves your environment to third-party APIs.
+
+Autonomous Schema Discovery: Agent dynamically maps data relationships and learns the underlying schema on the fly.
+
+Runtime Governance & RBAC: Enforce strict role-based access and complete reasoning traceability on every query.
+
+On-the-Fly Analytics: Move beyond static BI dashboards to real-time, evidence-backed insights.
+
+Would you be open to a quick 10-minute demo to see how Saarthi runs securely inside an enterprise infrastructure?

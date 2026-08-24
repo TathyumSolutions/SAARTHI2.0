@@ -1,0 +1,36 @@
+Here are example questions grouped by which data source(s) they'd exercise, based on the actual schema in `db_setup.py` and the two Excel files you uploaded (`material_lookup.xlsx`, `code_lookup.xlsx`). No API calls involved in any of these.
+
+## Pure Database questions (SAP-style tables only)
+
+These stay entirely within `vbak`, `vbap`, `vbak_region`, `mara`, `kna1`, `lfa1`, `bkpf`, `bseg`, `ekko`/`ekpo`, `mseg`, `marc`, `mbew`:
+
+- "How many sales orders were placed in the last 30 days?"
+- "Which customer has the highest total order value across all sales documents?"
+- "List the top 5 vendors by number of purchase orders in `ekko`."
+- "What's the total quantity of material movements (`mseg`) with movement type '261' in the last 90 days?"
+- "Show me materials in `mbew` where the moving average price differs from the standard price by more than 10%."
+- "Which plant (`t001w`) has the most materials with a reorder point set in `marc`?"
+- "What's the total billing amount (`vbrk`) for company code '1000' this fiscal year?"
+- "List all GL accounts (`ska1`) with account_group '3000' and their associated company codes (`skb1`)."
+
+## Pure Spreadsheet questions (Excel lookups only)
+
+These only touch `material_lookup.xlsx` / `code_lookup.xlsx` as standalone spreadsheet tables — no DB join:
+
+- "What does posting key '01' mean?" (`posting_key_lookup`)
+- "Which countries fall under the MEA region?" (`region_lookup`)
+- "List all materials in the 'Raw Material - Aluminum' group." (`material_lookup` sheet)
+- "What commodity category does material group RM04 map to?" (`material_group_lookup`)
+- "What's the business-readable name for account_type_code 'D'?" (`account_type_lookup`)
+
+## Combined Database + Spreadsheet questions (the interesting multi-hop ones)
+
+These require joining a real SAP-style table with a code/lookup translation from the Excel files — the same pattern as your copper-exposure question, minus the live API rate:
+
+- "How many orders were placed for steel-based materials in Europe over the last 90 days?" (`vbak_region` + `mara.description`/`material_lookup` for the 'steel' commodity category)
+- "What's the total order value for aluminum-group materials shipped to APAC customers?" (`vbak_region` region filter + `mara.material_group`/`material_group_lookup`)
+- "Which region had the highest total order value for zinc/alloy materials this year?" (`vbak_region` + `RM04`/'zinc' mapping)
+- "Show total purchase order value (`ekpo.net_value`) for materials in the Electronic Components group." (`ekpo`/`mara` + `ELEC` group)
+- "Break down accounting document amounts (`bseg.amount`) by G/L account group name, not just the raw code." (`bseg`/`ska1` + `gl_account_group_lookup`)
+
+If you want, I can also add versions of these that pull in `product_composition_process.docx` (BOM %) for a three-way DB + spreadsheet + document test — just say the word.

@@ -1,0 +1,26 @@
+Live cost exposure by region (vbak_region SQL → material_lookup → material_rates API → code_lookup)
+
+"What's our current material cost exposure for copper-based orders in APAC over the last 90 days, using today's market rate?"
+"Break down live material cost exposure by region name (not code) for all steel orders this quarter."
+
+Finished-good costing from the BOM doc (product_composition_process.docx → material_lookup → material_rates API)
+
+"What would it cost today, at current market rates, to build one Industrial Pump Assembly (MAT-00025)?"
+"Which of our six FG01 products is most exposed to copper price swings, based on BOM composition?"
+
+Booked vs. live cost comparison (mbew → material_lookup → material_rates API, optionally + t001w for plant names)
+
+"Compare the booked standard price in mbew against today's live spot rate for all aluminum materials at the Noida plant."
+"Which materials have the biggest gap between moving average price and current market rate right now?"
+
+Purchase history vs. live market (ekpo → material_lookup → material_rates API)
+
+"How does our average purchase price for zinc materials across all POs compare to today's live zinc rate?"
+
+Production consumption at a plant (mseg → t001w → material_lookup → material_rates API)
+
+"What's the live cost of copper issued to production at the Noida Manufacturing Plant this month?"
+
+End-to-end: order → BOM → live rate (vbak_region → product_composition_process.docx → material_lookup → material_rates API)
+
+"For pump assembly orders booked in EU this quarter, what's the live raw-material cost versus the booked order value?"

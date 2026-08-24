@@ -614,6 +614,31 @@ def _find_static_data_hints(user_query: str, router_config: dict) -> list:
     return hints[:6]
 
 
+def _log_build_router_messages_params(
+    user_query: str,
+    chat_history,
+    router_config: dict,
+    live_tools_summary: str,
+    system_instructions: str,
+    feedback_context: str,
+) -> None:
+    """Logs full, raw _build_router_messages parameters for debugging."""
+    print("\n================ ROUTER DEBUG: _build_router_messages params (FULL) ================", flush=True)
+    print("user_query:", flush=True)
+    print(user_query, flush=True)
+    print("\nchat_history:", flush=True)
+    print(chat_history, flush=True)
+    print("\nrouter_config:", flush=True)
+    print(router_config, flush=True)
+    print("\nlive_tools_summary:", flush=True)
+    print(live_tools_summary, flush=True)
+    print("\nsystem_instructions:", flush=True)
+    print(system_instructions, flush=True)
+    print("\nfeedback_context:", flush=True)
+    print(feedback_context, flush=True)
+    print("================ END ROUTER DEBUG: _build_router_messages params ==================\n", flush=True)
+
+
 def _build_router_messages(user_query: str, chat_history, router_config: dict,
                             live_tools_summary: str, system_instructions: str,
                             feedback_context: str = "") -> list:
@@ -624,6 +649,15 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
       2. recent chat history  — oldest turns dropped first
       3. router config JSON   — capped, then hard-truncated if still too big
     """
+    _log_build_router_messages_params(
+        user_query=user_query,
+        chat_history=chat_history,
+        router_config=router_config,
+        live_tools_summary=live_tools_summary,
+        system_instructions=system_instructions,
+        feedback_context=feedback_context,
+    )
+
     query_tokens = _count_tokens(user_query)
     remaining = max(ROUTER_CONTEXT_TOKEN_BUDGET - query_tokens - 400, _MIN_CONFIG_BUDGET)  # 400 ~ instructions/tool schema overhead
 
@@ -1374,6 +1408,24 @@ class RouterService:
             print("\n" + "=" * 60)
             print(f"🧠 SMART ROUTER PROCESSING QUERY: {user_query}")
             session_id = str(session_id)
+            print("\n================ ROUTER DEBUG: get_smart_response inputs (FULL) ================", flush=True)
+            print("user_query:", flush=True)
+            print(user_query, flush=True)
+            print("\nmodel_name:", flush=True)
+            print(model_name, flush=True)
+            print("\nsession_id:", flush=True)
+            print(session_id, flush=True)
+            print("\ncustom_key:", flush=True)
+            print(custom_key, flush=True)
+            print("\nsystem_instructions:", flush=True)
+            print(system_instructions, flush=True)
+            print("\nchat_history:", flush=True)
+            print(chat_history, flush=True)
+            print("\ncompany_code:", flush=True)
+            print(company_code, flush=True)
+            print("\nuser_id:", flush=True)
+            print(user_id, flush=True)
+            print("================ END ROUTER DEBUG: get_smart_response inputs ==================\n", flush=True)
 
             # ------------------------------------------------
             # LAYER 1: Fast heuristic check (Zero LLM Token Cost)
@@ -1423,6 +1475,21 @@ class RouterService:
                     feedback_step_desc = "No relevant past feedback found for a question like this yet."
                 _push_router_event(session_id, "complete", "Checking Self-Learning Feedback", feedback_step_desc)
                 router_level_steps.append(f"Checking Self-Learning Feedback - {feedback_step_desc}")
+
+            print("\n================ ROUTER DEBUG: pre-call args to _build_router_messages (FULL) ================", flush=True)
+            print("user_query:", flush=True)
+            print(user_query, flush=True)
+            print("\nchat_history:", flush=True)
+            print(chat_history, flush=True)
+            print("\nrouter_config:", flush=True)
+            print(router_config, flush=True)
+            print("\nlive_tools_summary:", flush=True)
+            print(live_tools_summary, flush=True)
+            print("\nsystem_instructions:", flush=True)
+            print(system_instructions, flush=True)
+            print("\nfeedback_context:", flush=True)
+            print(feedback_context, flush=True)
+            print("================ END ROUTER DEBUG: pre-call args ===============================================\n", flush=True)
 
             messages = _build_router_messages(
                 user_query,
