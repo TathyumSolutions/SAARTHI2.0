@@ -361,6 +361,7 @@ def answer_from_spreadsheets(
     system_instructions: str = "",
     session_id: str = "1",
     feedback_context: str = "",
+    hint_tables: list = None,
 ) -> dict:
     session_id = str(session_id)
     master_steps = []
@@ -387,6 +388,14 @@ def answer_from_spreadsheets(
             }
         push_event("complete", "Matching the Right Data Source", f"Found {len(available_tables)} spreadsheet table(s) to consider.")
 
+        # Tables the router already identified from the SPREADSHEET
+        # metadata (router_service.py's query_spreadsheet_data tool call) -
+        # only real, existing tables are kept, and this narrows the
+        # plan-builder's PROMPT below, never the validation step (a plan
+        # is still validated against the full available_tables, so an
+        # incomplete hint can't block a legitimately needed table).
+        hinted_tables = {name: info for name, info in available_tables.items() if name in (hint_tables or [])}
+
         metadata_match = _find_metadata_match(user_query, available_tables)
         if metadata_match:
             table_name, info = metadata_match
@@ -402,7 +411,7 @@ def answer_from_spreadsheets(
             }
 
         push_event("start", "Building the Data Query", "Working out how to filter, group, and join the relevant tables.")
-        plan_prompt = _build_plan_prompt(available_tables, feedback_context)
+        plan_prompt = _build_plan_prompt(hinted_tables or available_tables, feedback_context)
         raw_plan = _invoke_llm(model_name, custom_key, plan_prompt, user_query)
 
         try:

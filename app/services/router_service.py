@@ -430,22 +430,38 @@ def _log_query(
         return None
 
 
-def _find_reusable_db_query(company_code: Optional[str], user_id: Optional[int], user_query: str):
+# Tracks whose QueryLog.main_query stores enough raw state to be replayed
+# deterministically, with no LLM call at all: DB stores the exact SQL text,
+# SPREADSHEET stores the exact query plan JSON. FILES (semantic retrieval,
+# not a fixed query), API (params aren't persisted, only method+URL), and
+# GENERAL/MULTI (no single re-runnable action) are excluded on purpose -
+# "reusing" them would still require the same LLM call(s) that made them
+# expensive in the first place, so there is nothing to save by trying.
+REUSABLE_TRACKS = ("DB", "SPREADSHEET")
+
+
+def _find_reusable_query(company_code: Optional[str], user_id: Optional[int], user_query: str):
     """
-    Looks for a previously-accepted (liked) DB-track query that is a
-    near-duplicate of user_query. Scoped to the company (shared across
-    every user of that company) when company_code is set; otherwise
-    scoped to just this user's own liked queries - a company_code is not
-    required for an individual account's own self-learning to work.
-    Returns (QueryLog row, score) if one clears REUSE_MATCH_THRESHOLD,
-    else (None, 0.0).
+    Looks for a previously-accepted (liked) query - DB or SPREADSHEET - that
+    is a near-duplicate of user_query. Scoped to the company (shared across
+    every user of that company) when company_code is set; otherwise scoped
+    to just this user's own liked queries - a company_code is not required
+    for an individual account's own self-learning to work.
+
+    Runs BEFORE the router LLM is ever called (see get_smart_response's
+    self-learning check), not just before a track's own generation step -
+    a match here skips the entire routing decision, not only the SQL/plan
+    generation inside one track.
+
+    Returns (QueryLog row, score, router_decision) if one clears
+    REUSE_MATCH_THRESHOLD, else (None, 0.0, None).
     """
     if not user_query or (not company_code and not user_id):
-        return None, 0.0
+        return None, 0.0, None
 
     candidates_query = (
         QueryLog.query
-        .filter(QueryLog.router_decision == "DB")
+        .filter(QueryLog.router_decision.in_(REUSABLE_TRACKS))
         .filter(QueryLog.feedback_type == "like")
         .filter(QueryLog.main_query.isnot(None))
     )
@@ -456,7 +472,7 @@ def _find_reusable_db_query(company_code: Optional[str], user_id: Optional[int],
     )
     candidates = candidates_query.order_by(QueryLog.created_at.desc()).limit(200).all()
     if not candidates:
-        return None, 0.0
+        return None, 0.0, None
 
     embedder = _get_feedback_embedder()
     query_vec = embedder.embed_query(user_query)
@@ -471,8 +487,8 @@ def _find_reusable_db_query(company_code: Optional[str], user_id: Optional[int],
             best_row, best_score = row, score
 
     if best_row and best_score >= REUSE_MATCH_THRESHOLD:
-        return best_row, best_score
-    return None, 0.0
+        return best_row, best_score, best_row.router_decision
+    return None, 0.0, None
 
 
 def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: dict) -> dict:
@@ -526,6 +542,81 @@ def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: 
             "score": round(score, 4),
         }],
     }
+
+
+def _run_reused_spreadsheet_query(question: str, matched: "QueryLog", score: float, ctx: dict) -> dict:
+    """
+    Re-executes a previously-accepted spreadsheet query's exact plan
+    (stored as JSON in QueryLog.main_query - see _run_spreadsheet_track)
+    directly against the live spreadsheet data via _execute_plan, instead
+    of paying for a fresh plan-building LLM call. The underlying data may
+    have changed since the plan was first built, so this still runs the
+    plan live rather than replaying stored results.
+
+    Unlike DB reuse (which re-derives its answer text from a live
+    formatter call), there's no LLM-free way to re-phrase the answer from
+    fresh numbers here - answer_from_spreadsheets' only answer-writing
+    step is itself an LLM call. Reusing matched.answer verbatim is the
+    trade-off that actually saves the cost reuse exists for; it can read
+    slightly stale if the numbers shifted, which is an acceptable cost
+    for skipping both the plan-building and answer-writing LLM calls.
+    """
+    from .spreadsheet_query_service import _execute_plan
+
+    session_id = ctx["session_id"]
+    _push_router_event(
+        session_id, "start", "Reusing a Matched Query",
+        f"This closely matches a previously accepted query ({matched.query_code}) - reusing its plan instead of regenerating it."
+    )
+
+    try:
+        plan = json.loads(matched.main_query)
+        result_df = _execute_plan(plan)
+        table_records = json.loads(result_df.to_json(orient="records", date_format="iso"))
+        had_error = False
+    except Exception as e:
+        print(f"⚠️ Reused spreadsheet plan {matched.query_code} failed on re-execution: {e}")
+        table_records = []
+        had_error = True
+
+    _push_router_event(
+        session_id, "complete", "Reusing a Matched Query",
+        f"Re-executed the plan from {matched.query_code} and refreshed the results."
+        if not had_error else f"Reuse of {matched.query_code} failed on re-execution."
+    )
+
+    return {
+        "answer": matched.answer or "",
+        "steps": [f"Reusing a Matched Query - Re-executed the plan from {matched.query_code} ({score:.2f} similarity match)."],
+        "sql": None, "table": table_records,
+        "chart": {}, "insights": [],
+        "error": had_error,
+        "strategy": f"Reused query {matched.query_code} (similarity {score:.2f}) instead of regenerating the plan.",
+        "sources": matched.sources or [],
+        "main_query": matched.main_query,
+        "child_query": question,
+        "format": _decide_output_format(table_records),
+        "execution_type": "reused",
+        "matched_query_code": matched.query_code,
+        "match_score": round(score, 4),
+        "related_queries": [{
+            "query_code": matched.query_code,
+            "question": matched.question,
+            "feedback_type": "like",
+            "remarks": matched.remarks,
+            "score": round(score, 4),
+        }],
+    }
+
+
+# Dispatches a reuse hit to the right replay function by the matched row's
+# own router_decision - kept alongside REUSABLE_TRACKS so the two can never
+# drift (a track listed as reusable with no dispatch entry would KeyError
+# the moment a real match for it came in).
+REUSE_DISPATCH = {
+    "DB": _run_reused_db_query,
+    "SPREADSHEET": _run_reused_spreadsheet_query,
+}
 
 
 # Generic question words that would otherwise spuriously "match" almost any
@@ -754,6 +845,18 @@ commodities?" and a call_external_api call asking "what is the latest price
 of each major metal?" - two independent sub-queries that get executed in
 parallel and merged, not one vague question repeated twice.
 
+DO NOT just pick a data source type and stop there. query_database and
+query_spreadsheet_data also require a `tables` argument, search_documents
+requires a `document_codes` argument, and call_external_api requires a
+`tool_name` argument - in every case, name the SPECIFIC table(s)/
+document(s)/tool from the metadata shown below (CURRENT DATA SOURCE
+CONFIGURATION and LIVE REGISTERED TOOLS) that this question actually
+needs, not just the category of data source. The downstream agent for
+each track still validates your choice against the live schema/tool
+registry and can recover from a wrong or missing pick, but it should
+start from your metadata-based read of the question rather than
+re-discovering it from scratch.
+
 ANSWER GUIDELINES:
 {_load_answer_guidelines()}
 
@@ -803,31 +906,55 @@ def check_data_source_status(track: Literal["DB", "FILES", "API", "SPREADSHEET",
 
 
 @tool
-def query_database(question: str) -> str:
+def query_database(question: str, tables: List[str]) -> str:
     """Answer a question that needs real data from connected structured
-    database tables (counts, sums, filters, lookups)."""
+    database tables (counts, sums, filters, lookups).
+
+    tables: the specific table name(s) - from this user's real DB tables
+    listed under CURRENT DATA SOURCE CONFIGURATION.DB.tables below - that
+    this question actually needs. Name every table required; the SQL agent
+    still validates each one against the live schema and can join across
+    them, but it should not have to guess which tables you meant. Never
+    invent a name that isn't listed there. Pass an empty list only if the
+    metadata genuinely doesn't make it clear which table(s) apply."""
     raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
 
 
 @tool
-def search_documents(question: str) -> str:
+def search_documents(question: str, document_codes: List[str]) -> str:
     """Answer a question about internal company documents, policies, or
-    uploaded files."""
+    uploaded files.
+
+    document_codes: the specific document_code value(s) - from this user's
+    documents listed under CURRENT DATA SOURCE CONFIGURATION.FILES.
+    vector_store_info.documents below - that are relevant to this question.
+    Pass an empty list if the question could reasonably apply to any/all of
+    the uploaded documents, or if no per-document metadata is listed."""
     raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
 
 
 @tool
-def call_external_api(question: str) -> str:
-    """Answer a question by calling a live registered external API tool."""
+def call_external_api(question: str, tool_name: str) -> str:
+    """Answer a question by calling a live registered external API tool.
+
+    tool_name: the exact name of ONE tool - from LIVE REGISTERED TOOLS FOR
+    THE 'API' TRACK below - that should be called for this question. Never
+    invent a name that isn't listed there; pass an empty string only if you
+    truly cannot tell which registered tool applies."""
     raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
 
 
 @tool
-def query_spreadsheet_data(question: str) -> str:
+def query_spreadsheet_data(question: str, tables: List[str]) -> str:
     """Answer a question that needs data from an uploaded Excel or CSV file.
     These tables are stored separately from the main database (no spare
     warehouse to hold them) and are answered via a Python/pandas-based path,
-    never SQL."""
+    never SQL.
+
+    tables: the specific spreadsheet table name(s) - from this user's real
+    spreadsheet tables listed under CURRENT DATA SOURCE CONFIGURATION.
+    SPREADSHEET.tables below - that this question needs. Never invent a
+    name that isn't listed there."""
     raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
 
 
@@ -922,7 +1049,7 @@ def _answer_status_check(args: dict, router_config: dict) -> dict:
 # ============================================================
 # TRACK DISPATCH (same underlying services as before, called manually)
 # ============================================================
-def _run_db_track(question: str, ctx: dict) -> dict:
+def _run_db_track(question: str, ctx: dict, hint_tables: list = None) -> dict:
     enriched_question = question
 
     # Data Source Finaliser: resolve any business term in the question
@@ -935,40 +1062,46 @@ def _run_db_track(question: str, ctx: dict) -> dict:
     if resolved_context:
         enriched_question = f"{resolved_context}\n\n{enriched_question}"
 
-    # Self-learning query reuse: skip a full fresh generation if this
-    # question is a near-duplicate of a previously accepted (liked) DB
-    # query - reuse that query's SQL instead. Falls through to the normal
-    # fresh pipeline if no strong match exists, or if re-running the
-    # matched SQL errors out (e.g. the schema moved on since it was
-    # generated).
-    if ctx.get("self_learning_enabled"):
-        matched, score = _find_reusable_db_query(ctx.get("company_code"), ctx.get("user_id"), question)
-        if matched:
-            reused_result = _run_reused_db_query(question, matched, score, ctx)
-            if not reused_result.get("error"):
-                return reused_result
-            print(f"⚠️ Reused query {matched.query_code} failed on re-execution, falling back to fresh generation.")
-
+    # Self-learning reuse is checked once, up front, in get_smart_response's
+    # Layer 1.5 - before the router LLM even runs - not here. By the time
+    # _run_db_track is reached, that check has already run and found no
+    # strong match (a match there returns directly and never reaches any
+    # track). Re-checking here would just repeat the same embedding search
+    # for no benefit.
     full_result = run_data_bridge_agent(
         enriched_question, session_id=ctx["session_id"],
         model_name=ctx["model_name"], custom_key=ctx["custom_key"], user_id=ctx.get("user_id", 1),
         router_config=ctx.get("router_config"), feedback_context=ctx.get("feedback_context", ""),
+        # Tables the router already identified from the live schema
+        # metadata (see query_database's tool schema) - handed to
+        # QuerySenseAgent as a strong starting point, not a hard filter,
+        # since it still validates against the schema and can add/drop
+        # tables the router missed or over-picked.
+        hint_tables=hint_tables or [],
     )
     chat_ui = full_result.get("chat_ui", {}) if isinstance(full_result, dict) else {}
     cot_logs = full_result.get("cot_logs", {}) if isinstance(full_result, dict) else {}
     tables = ((cot_logs.get("query_sense_output") or {}).get("tables")) or []
     sql = chat_ui.get("sql")
     main_query = sql if sql and sql != "-- No SQL Generated --" else None
+    # Report honestly on failure - previously this said "Generated and
+    # executed a SQL query..." even when chat_ui["error"] was True, so a
+    # failed run's own strategy text claimed success. had_error mirrors the
+    # same "error" flag returned below, computed once here so the wording
+    # matches what actually happened.
+    had_error = bool(chat_ui.get("error"))
+    target = f"against {', '.join(tables)} " if tables else ""
     strategy = (
-        f"Generated and executed a SQL query against {', '.join(tables)} to answer this question."
-        if tables else "Generated and executed a SQL query to answer this question."
+        f"Attempted to generate and execute a SQL query {target}but the execution failed."
+        if had_error else
+        f"Generated and executed a SQL query {target}to answer this question."
     )
     return {
         "answer": chat_ui.get("answer"),
         "steps": chat_ui.get("steps", []),
         "sql": sql, "table": chat_ui.get("table", []),
         "chart": chat_ui.get("chart", {}), "insights": chat_ui.get("insights", []),
-        "error": bool(chat_ui.get("error")),
+        "error": had_error,
         "strategy": strategy,
         "sources": _tag_sources(tables, "query_database"),
         "main_query": main_query,
@@ -986,11 +1119,17 @@ def _run_db_track(question: str, ctx: dict) -> dict:
     }
 
 
-def _run_files_track(question: str, ctx: dict) -> dict:
+def _run_files_track(question: str, ctx: dict, hint_document_codes: list = None) -> dict:
     rag_res = answer_from_docs(
         question, model_name=ctx["model_name"],
         session_id=ctx["session_id"], custom_key=ctx["custom_key"],
         user_id=ctx.get("user_id"), feedback_context=ctx.get("feedback_context", ""),
+        # Documents the router already identified from the FILES metadata
+        # (document_code/name/description list) - narrows retrieval to
+        # just these when they're real, visible documents; answer_from_docs
+        # falls back to this user's full visible set otherwise (a wrong or
+        # empty hint never blocks the question from being answered).
+        hint_document_codes=hint_document_codes or [],
     )
 
     document_codes = rag_res.get("document_codes") or []
@@ -1017,7 +1156,7 @@ def _run_files_track(question: str, ctx: dict) -> dict:
     }
 
 
-def _run_api_track(question: str, ctx: dict) -> dict:
+def _run_api_track(question: str, ctx: dict, hint_tool_name: str = "") -> dict:
     payload = ask_dynamic_model_with_tools(
         user_message=question, llm_tools_list=ctx["active_db_tools"],
         model_name=ctx["model_name"], session_id=ctx["session_id"],
@@ -1025,6 +1164,11 @@ def _run_api_track(question: str, ctx: dict) -> dict:
         ollama_config={"url": "http://ollama:11434/api/chat", "temperature": 0},
         display_query=question,
         feedback_context=ctx.get("feedback_context", ""),
+        # The specific registered tool the router already identified from
+        # the LIVE REGISTERED TOOLS metadata - forced as the tool_choice on
+        # providers that support it, and reinforced in the prompt for the
+        # ones that don't (see ask_dynamic_model_with_tools).
+        hint_tool_name=hint_tool_name or "",
     )
     if isinstance(payload, dict):
         tool_call = payload.get("tool_call")
@@ -1053,7 +1197,7 @@ def _run_api_track(question: str, ctx: dict) -> dict:
             "related_queries": ctx.get("related_queries", [])}
 
 
-def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
+def _run_spreadsheet_track(question: str, ctx: dict, hint_tables: list = None) -> dict:
     # feedback_context is passed through as its own argument (not glued onto
     # the question string) - see answer_from_spreadsheets, which puts it in
     # the plan-building and answer-writing SYSTEM prompts with explicit
@@ -1065,6 +1209,10 @@ def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
         question, model_name=ctx["model_name"], custom_key=ctx["custom_key"],
         system_instructions=ctx.get("system_instructions", ""), session_id=ctx["session_id"],
         feedback_context=ctx.get("feedback_context", ""),
+        # Tables the router already identified from the SPREADSHEET
+        # metadata - narrows the plan-builder's candidate tables to just
+        # these when they're real; falls back to the full set otherwise.
+        hint_tables=hint_tables or [],
     )
 
     tables = result.get("tables") or []
@@ -1152,6 +1300,36 @@ def _decide_output_format(table: list) -> str:
     if row_count < 4:
         return "table"
     return "table" if row_count < 50 else "chart"
+
+
+def _generate_chart_for_merged_table(table: list, user_query: str) -> dict:
+    """
+    Runs the same deterministic, no-LLM-call chart-config generator the DB
+    track's own pipeline uses (DataVisualizerAgent - column classification,
+    measure/dimension picking, aggregation, chart config assembly, all
+    plain Python) directly on a MULTI-track's merged table.
+
+    Without this, a merged table's chart_configs was always just whichever
+    contributing track's own `chart` field happened to be non-empty - which
+    in practice meant only a DB-involving combo ever got a real chart,
+    since DB is the only track whose own pipeline runs a visualizer step.
+    A Spreadsheet+API merge (no DB involved at all) that clearly calls for
+    a chart got an empty {} instead, even though the exact same
+    column-shape data from a DB source would have gotten one.
+
+    DataVisualizerAgent decides for itself whether the data is actually
+    chart-worthy (e.g. two ID/text columns is a lookup mapping, not
+    something a bar/line/pie chart can represent) - this just gives it the
+    chance to make that call for a merged table too, instead of skipping
+    it outright.
+    """
+    if not table or not isinstance(table[0], dict):
+        return {}
+    from .databridge_services.agents import DataVisualizerAgent
+
+    visualizer = DataVisualizerAgent()
+    state = {"data": table, "columns": list(table[0].keys()), "user_query": user_query}
+    return visualizer.execute(state).get("chart_configs", {})
 
 
 def _pick_primary_tabular_result(ok_results: list):
@@ -1285,11 +1463,22 @@ def _build_multi_strategy(ok_results: list, parallel: bool, output_format: str) 
     return f"{intro} {merge_clause}"
 
 
+# Each lambda forwards the router LLM's metadata-based resource selection
+# (tables / document_codes / tool_name - see the tool schemas above) into
+# the track, alongside the (possibly per-tool-rewritten) question. Every
+# track treats this as a hint, not a blind override: the track's own
+# downstream agent still validates it against the live schema/registry and
+# can recover if the router's pick was wrong or empty (see each track's
+# hint_* handling).
 TOOL_DISPATCH = {
-    "query_database": lambda args, ctx: _run_db_track(args.get("question", ctx["user_query"]), ctx),
-    "search_documents": lambda args, ctx: _run_files_track(args.get("question", ctx["user_query"]), ctx),
-    "call_external_api": lambda args, ctx: _run_api_track(args.get("question", ctx["user_query"]), ctx),
-    "query_spreadsheet_data": lambda args, ctx: _run_spreadsheet_track(args.get("question", ctx["user_query"]), ctx),
+    "query_database": lambda args, ctx: _run_db_track(
+        args.get("question", ctx["user_query"]), ctx, hint_tables=args.get("tables") or []),
+    "search_documents": lambda args, ctx: _run_files_track(
+        args.get("question", ctx["user_query"]), ctx, hint_document_codes=args.get("document_codes") or []),
+    "call_external_api": lambda args, ctx: _run_api_track(
+        args.get("question", ctx["user_query"]), ctx, hint_tool_name=args.get("tool_name") or ""),
+    "query_spreadsheet_data": lambda args, ctx: _run_spreadsheet_track(
+        args.get("question", ctx["user_query"]), ctx, hint_tables=args.get("tables") or []),
     "answer_general_knowledge_tool": lambda args, ctx: _run_general_track(args.get("question", ctx["user_query"]), ctx),
     "check_data_source_status": lambda args, ctx: _answer_status_check(args, ctx["router_config"]),
 }
@@ -1448,6 +1637,39 @@ class RouterService:
                 return fast_res
 
             # ------------------------------------------------
+            # LAYER 1.5: Self-learning reuse - check for a liked query
+            # BEFORE the router LLM ever runs. Only DB and SPREADSHEET
+            # store enough raw state (exact SQL / exact query plan JSON)
+            # in QueryLog to be replayed with no further LLM call at all
+            # (see REUSABLE_TRACKS) - a match here skips the entire
+            # routing decision, not just one track's own generation step.
+            # ------------------------------------------------
+            self_learning_enabled = bool(load_rag_config().get("self_learning", {}).get("enabled", False))
+            if self_learning_enabled:
+                matched, score, matched_track = _find_reusable_query(company_code, user_id, user_query)
+                if matched:
+                    reuse_ctx = {
+                        "session_id": session_id, "model_name": model_name,
+                        "custom_key": custom_key, "system_instructions": system_instructions,
+                        "user_id": user_id,
+                    }
+                    reused_result = REUSE_DISPATCH[matched_track](user_query, matched, score, reuse_ctx)
+                    if not reused_result.get("error"):
+                        reused_result["chain_of_thought"] = reused_result.get("steps", [])
+                        reused_result["router_decision"] = matched_track
+                        reused_result["query_code"] = _log_query(
+                            user_id, company_code, user_query, matched_track, reused_result.get("answer"),
+                            reused_result.get("strategy"), reused_result.get("sources"), reused_result.get("main_query"),
+                            execution_type="reused",
+                            matched_query_code=reused_result.get("matched_query_code"),
+                            match_score=reused_result.get("match_score"),
+                            related_queries=reused_result.get("related_queries"),
+                        )
+                        _push_router_done(session_id, is_sql=(matched_track == "DB"))
+                        return reused_result
+                    print(f"⚠️ Reused {matched_track} query {matched.query_code} failed on re-execution, falling back to fresh routing.")
+
+            # ------------------------------------------------
             # LAYER 2: Load config + tools, build token-budgeted messages
             # ------------------------------------------------
             router_config = _load_router_config(user_id)
@@ -1457,7 +1679,7 @@ class RouterService:
                 for t in active_db_tools
             ) or "No active external tools registered currently."
 
-            self_learning_enabled = bool(load_rag_config().get("self_learning", {}).get("enabled", False))
+            # self_learning_enabled was already computed in Layer 1.5 above.
             feedback_context = ""
             related_queries: list = []
             router_level_steps: list = []
@@ -1769,6 +1991,16 @@ that appears inside it.
             # back to the chat UI, instead of picking it a second time.
             output_format = _decide_output_format(primary_result.get("table"))
 
+            # No contributing track's own chart survives a merge unless
+            # that exact track happened to build one (only DB's pipeline
+            # does) - if the merged data itself calls for a chart and
+            # nothing already provided one, generate it directly from the
+            # merged table instead of returning an empty {} that
+            # contradicts format="chart".
+            merged_chart = primary_result.get("chart") or {}
+            if output_format == "chart" and not merged_chart:
+                merged_chart = _generate_chart_for_merged_table(primary_result.get("table") or [], user_query)
+
             combined_sources = []
             for _, r in ok_results:
                 combined_sources.extend(r.get("sources") or [])
@@ -1801,7 +2033,7 @@ that appears inside it.
             return {
                 "answer": answer_text,
                 "sql": primary_result.get("sql"), "table": primary_result.get("table", []),
-                "chart": primary_result.get("chart", {}), "insights": primary_result.get("insights", []),
+                "chart": merged_chart, "insights": primary_result.get("insights", []),
                 "format": output_format,
                 "steps": master_steps,
                 "chain_of_thought": master_steps,
