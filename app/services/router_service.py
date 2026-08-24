@@ -720,6 +720,18 @@ commodities?" and a call_external_api call asking "what is the latest price
 of each major metal?" - two independent sub-queries that get executed in
 parallel and merged, not one vague question repeated twice.
 
+DO NOT just pick a data source type and stop there. query_database and
+query_spreadsheet_data also require a `tables` argument, search_documents
+requires a `document_codes` argument, and call_external_api requires a
+`tool_name` argument - in every case, name the SPECIFIC table(s)/
+document(s)/tool from the metadata shown below (CURRENT DATA SOURCE
+CONFIGURATION and LIVE REGISTERED TOOLS) that this question actually
+needs, not just the category of data source. The downstream agent for
+each track still validates your choice against the live schema/tool
+registry and can recover from a wrong or missing pick, but it should
+start from your metadata-based read of the question rather than
+re-discovering it from scratch.
+
 ANSWER GUIDELINES:
 {_load_answer_guidelines()}
 
@@ -769,31 +781,55 @@ def check_data_source_status(track: Literal["DB", "FILES", "API", "SPREADSHEET",
 
 
 @tool
-def query_database(question: str) -> str:
+def query_database(question: str, tables: List[str]) -> str:
     """Answer a question that needs real data from connected structured
-    database tables (counts, sums, filters, lookups)."""
+    database tables (counts, sums, filters, lookups).
+
+    tables: the specific table name(s) - from this user's real DB tables
+    listed under CURRENT DATA SOURCE CONFIGURATION.DB.tables below - that
+    this question actually needs. Name every table required; the SQL agent
+    still validates each one against the live schema and can join across
+    them, but it should not have to guess which tables you meant. Never
+    invent a name that isn't listed there. Pass an empty list only if the
+    metadata genuinely doesn't make it clear which table(s) apply."""
     raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
 
 
 @tool
-def search_documents(question: str) -> str:
+def search_documents(question: str, document_codes: List[str]) -> str:
     """Answer a question about internal company documents, policies, or
-    uploaded files."""
+    uploaded files.
+
+    document_codes: the specific document_code value(s) - from this user's
+    documents listed under CURRENT DATA SOURCE CONFIGURATION.FILES.
+    vector_store_info.documents below - that are relevant to this question.
+    Pass an empty list if the question could reasonably apply to any/all of
+    the uploaded documents, or if no per-document metadata is listed."""
     raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
 
 
 @tool
-def call_external_api(question: str) -> str:
-    """Answer a question by calling a live registered external API tool."""
+def call_external_api(question: str, tool_name: str) -> str:
+    """Answer a question by calling a live registered external API tool.
+
+    tool_name: the exact name of ONE tool - from LIVE REGISTERED TOOLS FOR
+    THE 'API' TRACK below - that should be called for this question. Never
+    invent a name that isn't listed there; pass an empty string only if you
+    truly cannot tell which registered tool applies."""
     raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
 
 
 @tool
-def query_spreadsheet_data(question: str) -> str:
+def query_spreadsheet_data(question: str, tables: List[str]) -> str:
     """Answer a question that needs data from an uploaded Excel or CSV file.
     These tables are stored separately from the main database (no spare
     warehouse to hold them) and are answered via a Python/pandas-based path,
-    never SQL."""
+    never SQL.
+
+    tables: the specific spreadsheet table name(s) - from this user's real
+    spreadsheet tables listed under CURRENT DATA SOURCE CONFIGURATION.
+    SPREADSHEET.tables below - that this question needs. Never invent a
+    name that isn't listed there."""
     raise NotImplementedError("dispatched manually, see TOOL_DISPATCH")
 
 
@@ -888,7 +924,7 @@ def _answer_status_check(args: dict, router_config: dict) -> dict:
 # ============================================================
 # TRACK DISPATCH (same underlying services as before, called manually)
 # ============================================================
-def _run_db_track(question: str, ctx: dict) -> dict:
+def _run_db_track(question: str, ctx: dict, hint_tables: list = None) -> dict:
     enriched_question = question
 
     # Data Source Finaliser: resolve any business term in the question
@@ -919,6 +955,12 @@ def _run_db_track(question: str, ctx: dict) -> dict:
         enriched_question, session_id=ctx["session_id"],
         model_name=ctx["model_name"], custom_key=ctx["custom_key"], user_id=ctx.get("user_id", 1),
         router_config=ctx.get("router_config"), feedback_context=ctx.get("feedback_context", ""),
+        # Tables the router already identified from the live schema
+        # metadata (see query_database's tool schema) - handed to
+        # QuerySenseAgent as a strong starting point, not a hard filter,
+        # since it still validates against the schema and can add/drop
+        # tables the router missed or over-picked.
+        hint_tables=hint_tables or [],
     )
     chat_ui = full_result.get("chat_ui", {}) if isinstance(full_result, dict) else {}
     cot_logs = full_result.get("cot_logs", {}) if isinstance(full_result, dict) else {}
@@ -960,11 +1002,17 @@ def _run_db_track(question: str, ctx: dict) -> dict:
     }
 
 
-def _run_files_track(question: str, ctx: dict) -> dict:
+def _run_files_track(question: str, ctx: dict, hint_document_codes: list = None) -> dict:
     rag_res = answer_from_docs(
         question, model_name=ctx["model_name"],
         session_id=ctx["session_id"], custom_key=ctx["custom_key"],
         user_id=ctx.get("user_id"), feedback_context=ctx.get("feedback_context", ""),
+        # Documents the router already identified from the FILES metadata
+        # (document_code/name/description list) - narrows retrieval to
+        # just these when they're real, visible documents; answer_from_docs
+        # falls back to this user's full visible set otherwise (a wrong or
+        # empty hint never blocks the question from being answered).
+        hint_document_codes=hint_document_codes or [],
     )
 
     document_codes = rag_res.get("document_codes") or []
@@ -991,7 +1039,7 @@ def _run_files_track(question: str, ctx: dict) -> dict:
     }
 
 
-def _run_api_track(question: str, ctx: dict) -> dict:
+def _run_api_track(question: str, ctx: dict, hint_tool_name: str = "") -> dict:
     payload = ask_dynamic_model_with_tools(
         user_message=question, llm_tools_list=ctx["active_db_tools"],
         model_name=ctx["model_name"], session_id=ctx["session_id"],
@@ -999,6 +1047,11 @@ def _run_api_track(question: str, ctx: dict) -> dict:
         ollama_config={"url": "http://ollama:11434/api/chat", "temperature": 0},
         display_query=question,
         feedback_context=ctx.get("feedback_context", ""),
+        # The specific registered tool the router already identified from
+        # the LIVE REGISTERED TOOLS metadata - forced as the tool_choice on
+        # providers that support it, and reinforced in the prompt for the
+        # ones that don't (see ask_dynamic_model_with_tools).
+        hint_tool_name=hint_tool_name or "",
     )
     if isinstance(payload, dict):
         tool_call = payload.get("tool_call")
@@ -1027,7 +1080,7 @@ def _run_api_track(question: str, ctx: dict) -> dict:
             "related_queries": ctx.get("related_queries", [])}
 
 
-def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
+def _run_spreadsheet_track(question: str, ctx: dict, hint_tables: list = None) -> dict:
     # feedback_context is passed through as its own argument (not glued onto
     # the question string) - see answer_from_spreadsheets, which puts it in
     # the plan-building and answer-writing SYSTEM prompts with explicit
@@ -1039,6 +1092,10 @@ def _run_spreadsheet_track(question: str, ctx: dict) -> dict:
         question, model_name=ctx["model_name"], custom_key=ctx["custom_key"],
         system_instructions=ctx.get("system_instructions", ""), session_id=ctx["session_id"],
         feedback_context=ctx.get("feedback_context", ""),
+        # Tables the router already identified from the SPREADSHEET
+        # metadata - narrows the plan-builder's candidate tables to just
+        # these when they're real; falls back to the full set otherwise.
+        hint_tables=hint_tables or [],
     )
 
     tables = result.get("tables") or []
@@ -1259,11 +1316,22 @@ def _build_multi_strategy(ok_results: list, parallel: bool, output_format: str) 
     return f"{intro} {merge_clause}"
 
 
+# Each lambda forwards the router LLM's metadata-based resource selection
+# (tables / document_codes / tool_name - see the tool schemas above) into
+# the track, alongside the (possibly per-tool-rewritten) question. Every
+# track treats this as a hint, not a blind override: the track's own
+# downstream agent still validates it against the live schema/registry and
+# can recover if the router's pick was wrong or empty (see each track's
+# hint_* handling).
 TOOL_DISPATCH = {
-    "query_database": lambda args, ctx: _run_db_track(args.get("question", ctx["user_query"]), ctx),
-    "search_documents": lambda args, ctx: _run_files_track(args.get("question", ctx["user_query"]), ctx),
-    "call_external_api": lambda args, ctx: _run_api_track(args.get("question", ctx["user_query"]), ctx),
-    "query_spreadsheet_data": lambda args, ctx: _run_spreadsheet_track(args.get("question", ctx["user_query"]), ctx),
+    "query_database": lambda args, ctx: _run_db_track(
+        args.get("question", ctx["user_query"]), ctx, hint_tables=args.get("tables") or []),
+    "search_documents": lambda args, ctx: _run_files_track(
+        args.get("question", ctx["user_query"]), ctx, hint_document_codes=args.get("document_codes") or []),
+    "call_external_api": lambda args, ctx: _run_api_track(
+        args.get("question", ctx["user_query"]), ctx, hint_tool_name=args.get("tool_name") or ""),
+    "query_spreadsheet_data": lambda args, ctx: _run_spreadsheet_track(
+        args.get("question", ctx["user_query"]), ctx, hint_tables=args.get("tables") or []),
     "answer_general_knowledge_tool": lambda args, ctx: _run_general_track(args.get("question", ctx["user_query"]), ctx),
     "check_data_source_status": lambda args, ctx: _answer_status_check(args, ctx["router_config"]),
 }

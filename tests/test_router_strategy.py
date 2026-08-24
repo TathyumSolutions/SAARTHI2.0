@@ -1,22 +1,33 @@
 """
-Tests for RouterService's DB-track strategy/steps generation.
+Tests for RouterService's metadata-driven resource selection and the
+DB-track strategy/steps generation.
 
-These cover the question raised while reviewing router_service.py: given
-the CURRENT metadata a table produces for a question (i.e. the `tables`
-QuerySenseAgent resolves live against the schema, inside the DB-track's
-LangGraph pipeline), _run_db_track() must:
+Two things are covered here:
 
-  1. build a `strategy` narration FROM that metadata (naming the tables
-     actually used, not a fixed/generic string), and
-  2. return the `steps` chain-of-thought produced while resolving it.
+1. The router doesn't just pick a data source TYPE (DB/FILES/API/
+   SPREADSHEET) - the tool schemas in router_service.py (query_database,
+   search_documents, call_external_api, query_spreadsheet_data) each
+   require a structured resource-selector argument (tables /
+   document_codes / tool_name) populated from the live metadata already
+   in the router's prompt. TOOL_DISPATCH must forward that selection into
+   the corresponding track as a hint_* kwarg - see
+   test_tool_dispatch_forwards_metadata_selected_resources_to_each_track
+   and test_db_track_forwards_hint_tables_to_bridge_agent.
 
-It also locks in the success/failure wording fix: a failed run's strategy
-must say so ("...but the execution failed"), not claim success.
+2. Given the CURRENT metadata a table produces for a question (i.e. the
+   `tables` QuerySenseAgent resolves live against the schema, inside the
+   DB-track's LangGraph pipeline), _run_db_track() must:
+   a. build a `strategy` narration FROM that metadata (naming the tables
+      actually used, not a fixed/generic string), and
+   b. return the `steps` chain-of-thought produced while resolving it.
+   It also locks in the success/failure wording fix: a failed run's
+   strategy must say so ("...but the execution failed"), not claim
+   success.
 
 run_data_bridge_agent (the actual LangGraph/SQL pipeline) and
-finalize_data_source_strategy are mocked so this test needs no live DB,
+finalize_data_source_strategy are mocked so these tests need no live DB,
 LLM, or network access - only the routing/aggregation logic in
-_run_db_track itself is under test.
+router_service.py itself is under test.
 """
 import os
 import sys
@@ -132,3 +143,95 @@ def test_db_track_strategy_falls_back_when_no_tables_resolved():
     assert result["strategy"] == "Generated and executed a SQL query to answer this question."
     assert result["sources"] == []
     assert result["steps"] == steps
+
+
+def test_db_track_forwards_hint_tables_to_bridge_agent():
+    """The router's query_database tool call carries a `tables` argument
+    populated from the live DB metadata (see the tool's schema in
+    router_service.py). _run_db_track must forward it into
+    run_data_bridge_agent as hint_tables - this is what lets
+    QuerySenseAgent start from the router's metadata-based read of the
+    question instead of re-discovering the tables from scratch."""
+    fake_result = _fake_bridge_result(["orders", "customers"], ["step"])
+
+    with patch.object(router_service, "run_data_bridge_agent", return_value=fake_result) as mocked, \
+         patch.object(router_service, "finalize_data_source_strategy", return_value=""):
+        router_service._run_db_track(
+            "How many orders per customer?", _ctx(), hint_tables=["orders", "customers"]
+        )
+
+    assert mocked.call_args.kwargs["hint_tables"] == ["orders", "customers"]
+
+
+def test_db_track_defaults_hint_tables_to_empty_list():
+    """A missing/None hint must never propagate as None into the bridge
+    agent - QuerySenseAgent's schema-validation step expects a list."""
+    fake_result = _fake_bridge_result([], ["step"])
+
+    with patch.object(router_service, "run_data_bridge_agent", return_value=fake_result) as mocked, \
+         patch.object(router_service, "finalize_data_source_strategy", return_value=""):
+        router_service._run_db_track("Some question?", _ctx())
+
+    assert mocked.call_args.kwargs["hint_tables"] == []
+
+
+def test_tool_dispatch_forwards_metadata_selected_resources_to_each_track():
+    """The router's tool-calling schema requires each tool to name the
+    SPECIFIC resource - not just the data source type - from metadata:
+    query_database/query_spreadsheet_data need `tables`, search_documents
+    needs `document_codes`, call_external_api needs `tool_name` (see each
+    @tool docstring in router_service.py). This locks in that
+    TOOL_DISPATCH actually threads that structured selection into the
+    matching track as a hint_* kwarg, not just the free-text `question` -
+    i.e. that "which type" and "which specific source" are both decided
+    from metadata before the track ever runs."""
+    captured = {}
+
+    def _spy(label):
+        def _fn(question, ctx, **kwargs):
+            captured[label] = {"question": question, **kwargs}
+            return {"answer": f"{label} ok"}
+        return _fn
+
+    ctx = {"user_query": "fallback question"}
+
+    with patch.object(router_service, "_run_db_track", side_effect=_spy("db")), \
+         patch.object(router_service, "_run_files_track", side_effect=_spy("files")), \
+         patch.object(router_service, "_run_api_track", side_effect=_spy("api")), \
+         patch.object(router_service, "_run_spreadsheet_track", side_effect=_spy("spreadsheet")):
+
+        router_service.TOOL_DISPATCH["query_database"](
+            {"question": "orders per customer?", "tables": ["orders", "customers"]}, ctx)
+        router_service.TOOL_DISPATCH["search_documents"](
+            {"question": "refund policy?", "document_codes": ["DOC-42"]}, ctx)
+        router_service.TOOL_DISPATCH["call_external_api"](
+            {"question": "current copper price?", "tool_name": "Metal_Price_API"}, ctx)
+        router_service.TOOL_DISPATCH["query_spreadsheet_data"](
+            {"question": "list metal codes", "tables": ["metal_codes"]}, ctx)
+
+    assert captured["db"] == {"question": "orders per customer?", "hint_tables": ["orders", "customers"]}
+    assert captured["files"] == {"question": "refund policy?", "hint_document_codes": ["DOC-42"]}
+    assert captured["api"] == {"question": "current copper price?", "hint_tool_name": "Metal_Price_API"}
+    assert captured["spreadsheet"] == {"question": "list metal codes", "hint_tables": ["metal_codes"]}
+
+
+def test_tool_dispatch_defaults_missing_resource_args_safely():
+    """A router tool call that omits the resource-selector argument (e.g.
+    an older cached prompt, or the model leaving it out) must still
+    dispatch - with an empty hint, never a KeyError/None crash."""
+    captured = {}
+
+    def _spy(label):
+        def _fn(question, ctx, **kwargs):
+            captured[label] = kwargs
+            return {"answer": "ok"}
+        return _fn
+
+    ctx = {"user_query": "fallback question"}
+    with patch.object(router_service, "_run_db_track", side_effect=_spy("db")), \
+         patch.object(router_service, "_run_api_track", side_effect=_spy("api")):
+        router_service.TOOL_DISPATCH["query_database"]({"question": "q"}, ctx)
+        router_service.TOOL_DISPATCH["call_external_api"]({"question": "q"}, ctx)
+
+    assert captured["db"] == {"hint_tables": []}
+    assert captured["api"] == {"hint_tool_name": ""}
