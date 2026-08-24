@@ -78,7 +78,7 @@ class QuerySenseAgent:
        
             
 
-        def _call_llm_for_plan(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None) -> Dict[str, Any]:
+        def _call_llm_for_plan(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "") -> Dict[str, Any]:
             schema_tables = self._all_tables()
             schema_brief = "\n".join(
                 f"Table '{t}': [{', '.join(self.schema['tables'][t]['columns'].keys())}]"
@@ -113,6 +113,37 @@ class QuerySenseAgent:
                 if valid_hint_tables else ""
             )
 
+            # Self-learning feedback on past similar questions - previously
+            # threaded all the way down into initial_state["feedback_context"]
+            # (see run_data_bridge_agent) but never actually read by this
+            # agent, so a DISLIKED remark like "wrong table" or "missed a
+            # join" never reached the one step that picks tables/columns in
+            # the first place - only SQLGeneratorAgent downstream saw it.
+            self_learning_block = ""
+            if feedback_context:
+                self_learning_block = f"""
+{feedback_context}
+
+The block above is feedback on how PAST similar questions were answered -
+it is NOT part of the current question. It can describe a wrong table or
+column chosen, a missed or unnecessary join, a wrong aggregation/grouping,
+or a wrong intent classification. If a DISLIKED note is still relevant to
+this question, adjust the table/column/join/aggregation selection to
+address it. If a LIKED note confirms a past selection worked, prefer
+reusing that approach when it fits. Ignore anything that doesn't apply to
+this specific question.
+"""
+
+            # Was previously accepted as a parameter and threaded all the
+            # way down here, but never inserted into the prompt - so a
+            # user's custom persona/formatting instructions had no effect
+            # on table/column selection at all.
+            system_instructions_block = (
+                f"\nUSER CUSTOM FORMATTING INSTRUCTIONS (context only - does not "
+                f"change which tables/columns are correct):\n{system_instructions.strip()}\n"
+                if system_instructions and system_instructions.strip() else ""
+            )
+
             #prompt = f"""
 #You are QuerySense — an expert SQL planner.
 
@@ -137,7 +168,7 @@ You are QuerySense — an expert SQL planner.
 Use ONLY the tables, columns, and foreign-key relationships from the schema.
 Do NOT invent names.
 1. PRINCIPLE OF MINIMAL SELECTION: Include ONLY the tables absolutely required to resolve the user's specific question. If a query can be answered using columns from a single table (e.g., just 'mara'), you must ONLY list that table in the "tables" array and leave the "joins" array completely empty `[]`. Do NOT add extra tables just because they are linked in the schema.
-{hint_block}
+{hint_block}{self_learning_block}{system_instructions_block}
 Return a concise JSON with:
 - tables: list of table names
 - columns: list of "table.column"
@@ -465,11 +496,11 @@ USER QUESTION:
                 "grouping_reasoning": str(plan["group_by"]),
             }
 
-        def analyze(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None) -> Dict[str, Any]:
+        def analyze(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "") -> Dict[str, Any]:
             self.state["timestamp"] = datetime.now().isoformat()
             self.state["user_query"] = user_query
 
-            plan = self._call_llm_for_plan(user_query,target_model,system_instructions,hint_tables=hint_tables)
+            plan = self._call_llm_for_plan(user_query,target_model,system_instructions,hint_tables=hint_tables,feedback_context=feedback_context)
             if not plan:
                 plan = self._fallback_simple(user_query)
 
@@ -534,10 +565,14 @@ USER QUESTION:
         chosen_model = state.get("model_name", self.ollama_model)
         custom_key = state.get("custom_key", "")
         system_instructions = state.get("system_instructions", "")
+        feedback_context = state.get("feedback_context", "")
         self.query_sense.custom_key = custom_key
         self.query_sense.model = chosen_model
         hint_tables = state.get("hint_tables") or []
-        analysis = self.query_sense.analyze(simplified_query,chosen_model,system_instructions,hint_tables=hint_tables)
+        if feedback_context:
+            print(f"🧠 [FEEDBACK-DEBUG] [QuerySense] Using feedback context for table/column selection:\n{feedback_context}")
+        analysis = self.query_sense.analyze(
+            simplified_query,chosen_model,system_instructions,hint_tables=hint_tables,feedback_context=feedback_context)
 
         state["query_sense_output"] = analysis
         state["current_step"] = "query_sense"
