@@ -1365,7 +1365,24 @@ def _merge_tabular_results(ok_results: list):
     Joins on the strongest shared key column when the tracks' tables have
     one in common; falls back to a positional (row-by-row) merge when row
     counts line up but no shared column name exists; otherwise falls back
-    to the single richest table, same as before."""
+    to the single richest table, same as before.
+
+    A shared *column name* is not proof the two tracks share an ID space -
+    e.g. a DB table's material_id values ("M00123") and a Spreadsheet
+    lookup's ("MAT-00123") can both be called "material_id" while never
+    matching a single row (different seed data, different systems of
+    record). Joining on the name alone and getting zero matches used to
+    still mark the merge as done (new_columns folded into known_columns
+    even though not one row actually got those values), so downstream
+    synthesis saw what looked like a completed enrichment and had no
+    signal that the "real name" for an ID was actually just some other,
+    unrelated column from the base table - producing a confident-sounding
+    but fabricated-feeling answer instead of admitting the two sources
+    couldn't be cross-referenced. Zero-match shared-key joins are now
+    treated the same as "no reliable way to align" (skipped, not counted
+    as merged), and recorded in merged_result["merge_notes"] so the caller
+    can tell the synthesis step the alignment failed instead of staying
+    silent about it."""
     tabular = [(name, result) for name, result in ok_results if result.get("table")]
     if not tabular:
         return _pick_primary_tabular_result(ok_results)
@@ -1378,6 +1395,7 @@ def _merge_tabular_results(ok_results: list):
     base_name, base_result = _pick_primary_tabular_result(ok_results)
     merged_table = [dict(row) for row in base_result.get("table") or []]
     known_columns = set(merged_table[0].keys()) if merged_table else set()
+    merge_notes = []
 
     for name, result in tabular:
         if name == base_name:
@@ -1393,11 +1411,25 @@ def _merge_tabular_results(ok_results: list):
         shared_key = next((col for col in known_columns & other_columns), None)
         if shared_key:
             index = {str(row.get(shared_key)): row for row in other_table}
+            matched_rows = 0
             for row in merged_table:
                 match = index.get(str(row.get(shared_key)))
                 if match:
+                    matched_rows += 1
                     for col in new_columns:
                         row[col] = match.get(col)
+            if matched_rows == 0:
+                merge_notes.append(
+                    f"Could not align {name} with {base_name}: both have a "
+                    f"'{shared_key}' column, but none of their values actually "
+                    f"matched, so {', '.join(sorted(new_columns))} from {name} "
+                    f"could NOT be attached to any {base_name} row. Do not "
+                    f"treat any {base_name} column as a stand-in for the "
+                    f"missing {', '.join(sorted(new_columns))} - if a "
+                    f"human-readable name isn't available, say so rather than "
+                    f"presenting an unrelated field as if it were one."
+                )
+                continue
         elif len(other_table) == len(merged_table):
             for row, extra in zip(merged_table, other_table):
                 for col in new_columns:
@@ -1409,6 +1441,8 @@ def _merge_tabular_results(ok_results: list):
 
     merged_result = dict(base_result)
     merged_result["table"] = merged_table
+    if merge_notes:
+        merged_result["merge_notes"] = merge_notes
     return base_name, merged_result
 
 
@@ -1933,9 +1967,24 @@ class RouterService:
                     "answer calls for specific figures]:\n" + json.dumps(sample_rows, default=str)
                 )
 
+            # Surfaced when _merge_tabular_results found a same-named "shared
+            # key" column across two tracks (e.g. material_id) that never
+            # actually matched a single row between them - without this, the
+            # synthesis model below sees only the base track's own table (a
+            # DB lookup column that may itself be meaningless placeholder
+            # data) with no signal that a second source's real values
+            # existed but couldn't be tied to it, and ends up presenting the
+            # base track's raw field as if it were the missing information.
+            merge_notes = primary_result.get("merge_notes") or []
+            merge_notes_context = (
+                "\n\n[Data alignment note - could NOT be cross-referenced]:\n"
+                + "\n".join(merge_notes)
+                if merge_notes else ""
+            )
+
             accumulated_context = "\n".join(
                 f"[Context from {name}]: {result.get('answer')}" for name, result in ok_results
-            ) + table_context
+            ) + table_context + merge_notes_context
             # accumulated_context is built from database rows, document
             # content, and external API responses - none of it is
             # trusted. Delimit it clearly and tell the model explicitly to
@@ -1959,6 +2008,21 @@ user's question asks for specific figures (amounts, totals, counts, prices,
 etc.), state those exact values from that data - don't just describe the
 data's shape (e.g. never answer with only "N rows were retrieved" or offer
 to share the numbers "if you'd like them"; give them directly).
+
+If the context includes a "Data alignment note" section, it means two of
+the sources above could NOT be cross-referenced (e.g. a database record and
+a spreadsheet lookup shared a column name but never actually matched on a
+value). In that case do not substitute a value from one source for the
+missing information from the other, and do not present an unrelated field
+as if it were the requested detail - state plainly that a human-readable
+name/value isn't available from the connected data instead of guessing.
+
+If any "[Context from ...]" entry itself starts with or contains "Note:",
+that is a caveat the source flagged about its own answer (e.g. it had to
+substitute one metric for another the question actually asked for because
+no exact match existed). Preserve that caveat's meaning in your response
+instead of smoothing it away - the user needs to know when what's reported
+isn't exactly what they asked for.
 
 ANSWER GUIDELINES:
 {_load_answer_guidelines()}

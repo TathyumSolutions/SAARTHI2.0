@@ -226,13 +226,24 @@ def _compose_final_answer(state: DataBridgeState) -> str:
     base_message = (state.get("message") or "").strip()
     fmt = state.get("format")
 
+    # QuerySenseAgent flags this when the question named a specific metric
+    # (e.g. "net value") that had no matching column, so it substituted a
+    # different one (e.g. "quantity") to still produce an answer. Surfaced
+    # up front, before anything else, so the substitution is never baked
+    # silently into a confident-sounding answer - the user sees what was
+    # actually computed vs. what they asked for.
+    assumption_note = (state.get("assumption_note") or "").strip()
+
     if fmt == "error" or not state.get("columns"):
-        return base_message or "I wasn't able to retrieve any data for this request."
+        base = base_message or "I wasn't able to retrieve any data for this request."
+        return f"Note: {assumption_note} {base}" if assumption_note else base
 
     columns = state.get("columns") or []
     row_count = state.get("row_count", 0)
 
     parts = []
+    if assumption_note:
+        parts.append(f"Note: {assumption_note}")
     if row_count and columns:
         row_word = "row" if row_count == 1 else "rows"
         col_word = "column" if len(columns) == 1 else "columns"
