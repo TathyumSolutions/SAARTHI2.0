@@ -171,6 +171,19 @@ Use ONLY the tables, columns, and foreign-key relationships from the schema.
 Do NOT invent names.
 1. PRINCIPLE OF MINIMAL SELECTION: Include ONLY the tables absolutely required to resolve the user's specific question. If a query can be answered using columns from a single table (e.g., just 'mara'), you must ONLY list that table in the "tables" array and leave the "joins" array completely empty `[]`. Do NOT add extra tables just because they are linked in the schema.
 {hint_block}{self_learning_block}{system_instructions_block}
+2. NAME THE METRIC, DON'T SWAP IT SILENTLY: if the user's question names a
+specific metric or value (e.g. "net value", "price", "cost", "revenue")
+and NO column in the schema above actually matches it for the table(s) this
+question needs, do not silently pick a different column (like "quantity")
+as if it answers the question - that produces a confident-sounding but
+wrong answer. Instead: (a) check whether some OTHER table in the schema has
+a column that genuinely matches the requested metric before giving up, and
+only use it if it can be reached from the same rows via a real foreign-key
+relation; (b) if truly nothing in the schema matches, still return your
+best-effort plan using the closest available column, but explain the
+substitution in the "assumption_note" field below so the user is told what
+was actually computed instead of what they asked for.
+
 Return a concise JSON with:
 - tables: list of table names
 - columns: list of "table.column"
@@ -181,6 +194,10 @@ Return a concise JSON with:
 - filters: list of SQL boolean expressions
 - order_by: list of SQL order expressions
 - limit: integer
+- assumption_note: "" normally. Only non-empty when you had to substitute a
+  different column for a metric the user explicitly named because no exact
+  match exists in the schema - one plain-English sentence naming what was
+  asked for and what is being returned instead.
 
 EXAMPLE:
 Query: "Show 3 document numbers from bkpf"
@@ -194,7 +211,8 @@ Output:
   "joins": [],
   "filters": [],
   "order_by": [],
-  "limit": 3
+  "limit": 3,
+  "assumption_note": ""
 }}
 
 Now output JSON for the user query above.
@@ -318,10 +336,26 @@ USER QUESTION:
                 import re
             # This regex finds everything between the first { and the last }
                 match = re.search(r'(\{.*\})', text, re.DOTALL)
-            
+
                 if match:
                 # Use match.group(1) to get only the JSON part
-                    return json.loads(match.group(1))
+                    parsed = json.loads(match.group(1))
+                    if isinstance(parsed, dict) and not (parsed.get("assumption_note") or "").strip():
+                        # Some models explain themselves in prose before the
+                        # JSON instead of filling in "assumption_note" as
+                        # instructed (e.g. "Since the schema doesn't have X,
+                        # we assume Y... if X was meant, please clarify").
+                        # That explanation is exactly the caveat this field
+                        # exists to carry downstream to the user - without
+                        # this fallback it's simply discarded, and a metric
+                        # substitution (e.g. "quantity" standing in for "net
+                        # value") reaches the user with no indication it
+                        # ever happened.
+                        preamble = text[:match.start()].strip()
+                        preamble = re.sub(r"```(?:json)?\s*$", "", preamble).strip()
+                        if preamble:
+                            parsed["assumption_note"] = preamble
+                    return parsed
                 else:
                     print("⚠️ No JSON brackets found in LLM response.")
                     return {}
@@ -570,6 +604,7 @@ USER QUESTION:
                 "column_context": column_context,
                 "join_context": join_context,
                 "selection_rationale": rationale,
+                "assumption_note": (plan.get("assumption_note") or "").strip() if isinstance(plan, dict) else "",
             }
 
             self.state["output"] = output
@@ -603,6 +638,13 @@ USER QUESTION:
 
         state["query_sense_output"] = analysis
         state["current_step"] = "query_sense"
+        # A metric the user explicitly named (e.g. "net value") but that had
+        # no matching column, so a different one was substituted - carried
+        # forward as its own state key (read by _compose_final_answer in
+        # langgraph_agent.py) so the substitution reaches the user instead
+        # of being silently baked into a confident-sounding answer.
+        if analysis.get("assumption_note"):
+            state["assumption_note"] = analysis["assumption_note"]
         tables = analysis.get('tables', [])
         columns = analysis.get('columns', [])
         
