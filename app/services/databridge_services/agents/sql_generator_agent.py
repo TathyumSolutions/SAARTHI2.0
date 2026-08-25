@@ -69,8 +69,10 @@ from typing import Dict, Any
 import requests
 import json
 import os
+import time
 from langchain_openai import ChatOpenAI
 from app.services.bi_semantics_service import build_measure_guidance
+from app.services.llm_call_logger import tracked_invoke, record_llm_call
 
 
 class SQLGeneratorAgent:
@@ -122,6 +124,27 @@ class SQLGeneratorAgent:
 
         return full_text.strip()
 
+    def _extract_ollama_usage(self, raw_text: str):
+        """Ollama's token counts (prompt_eval_count/eval_count) land on
+        whichever JSON object has done=true - the single object for a
+        normal stream=False response, or the last line for the NDJSON
+        fallback _parse_ollama_ndjson handles. Returns (None, None) if
+        neither count is found anywhere in the payload."""
+        prompt_tokens = completion_tokens = None
+        for line in raw_text.strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "prompt_eval_count" in obj:
+                prompt_tokens = obj["prompt_eval_count"]
+            if "eval_count" in obj:
+                completion_tokens = obj["eval_count"]
+        return prompt_tokens, completion_tokens
+
     def generate_sql_from_querysense(
         self,
         user_query: str,
@@ -131,7 +154,8 @@ class SQLGeneratorAgent:
         target_model: str = "llama3",
         system_instructions: str = "",
         bi_semantics_hint: str = "",
-        feedback_context: str = ""
+        feedback_context: str = "",
+        user_id=None,
 
     ) -> str:
         """Generate SQL from QuerySense output using LLM (Ollama-safe)"""
@@ -214,18 +238,24 @@ Return ONLY the PostgreSQL query, nothing else.
                 temperature=0.0,
                 openai_api_key=self.openai_key
                 )
-                ai_response = llm.invoke(prompt)
+                ai_response = tracked_invoke(
+                    llm, prompt, purpose="sql_generator.generate_sql", model_name="gpt-4o",
+                    provider="openai", user_id=user_id,
+                )
                 raw_sql = ai_response.content.strip()
 
             elif target_model == "gpt-4o-mini":
                 print("🤖 [SQLGeneratorAgent] Routing to ChatOpenAI [gpt-4o-mini] Layer...")
-                
+
                 llm = ChatOpenAI(
                 model="gpt-4o-mini",
                 temperature=0.0,
                 openai_api_key=self.openai_key
                 )
-                ai_response = llm.invoke(prompt)
+                ai_response = tracked_invoke(
+                    llm, prompt, purpose="sql_generator.generate_sql", model_name="gpt-4o-mini",
+                    provider="openai", user_id=user_id,
+                )
                 raw_sql = ai_response.content.strip()
 
             elif target_model == "llama3":
@@ -237,6 +267,7 @@ Return ONLY the PostgreSQL query, nothing else.
                 "max_tokens": self.llm_backend.get("max_tokens", 1024),
                 "temperature": self.llm_backend.get("temperature", 0.0)
                 }
+                _t0 = time.monotonic()
                 response = requests.post(
                 self.llm_backend["url"],
                 json=payload,
@@ -245,6 +276,13 @@ Return ONLY the PostgreSQL query, nothing else.
                 response.raise_for_status()
                 raw_text = response.text
                 raw_sql = self._parse_ollama_ndjson(raw_text)
+                _p_tok, _c_tok = self._extract_ollama_usage(raw_text)
+                record_llm_call(
+                    purpose="sql_generator.generate_sql", model_name="llama3", provider="ollama",
+                    prompt_text=prompt, response_text=raw_sql,
+                    prompt_tokens=_p_tok, completion_tokens=_c_tok,
+                    duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                )
 
             elif str(target_model).startswith("api://"):
                 actual_model = target_model.replace("api://", "").lower()
@@ -258,7 +296,10 @@ Return ONLY the PostgreSQL query, nothing else.
                     openai_fallback_key=self.openai_key,
                     strict=True,
                 )
-                ai_response = dynamic_llm.invoke(prompt)
+                ai_response = tracked_invoke(
+                    dynamic_llm, prompt, purpose="sql_generator.generate_sql", model_name=actual_model,
+                    user_id=user_id,
+                )
                 raw_sql = ai_response.content.strip()
 
             elif str(target_model).startswith("ollama://"):
@@ -270,6 +311,7 @@ Return ONLY the PostgreSQL query, nothing else.
                     "stream": False,
                     "options": {"temperature": 0.0}
                 }
+                _t0 = time.monotonic()
                 response = requests.post(self.llm_backend["url"], json=payload, timeout=300)
                 response.raise_for_status()
                 raw_text = response.text
@@ -277,6 +319,13 @@ Return ONLY the PostgreSQL query, nothing else.
                     raw_sql = self._parse_ollama_ndjson(raw_text)
                 else:
                     raw_sql = raw_text.strip()
+                _p_tok, _c_tok = self._extract_ollama_usage(raw_text)
+                record_llm_call(
+                    purpose="sql_generator.generate_sql", model_name=actual_model, provider="ollama",
+                    prompt_text=prompt, response_text=raw_sql,
+                    prompt_tokens=_p_tok, completion_tokens=_c_tok,
+                    duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                )
             else:
                 raise ValueError(f"Requested model '{target_model}' has no active route configuration.") 
             # Cleanup: remove JSON/object-like lines or explanations
@@ -339,6 +388,7 @@ Return ONLY the PostgreSQL query, nothing else.
                 system_instructions=system_instructions,
                 bi_semantics_hint=bi_semantics_hint,
                 feedback_context=feedback_context,
+                user_id=state.get("user_id"),
             )
 
             if not sql:
@@ -363,32 +413,47 @@ Return ONLY the PostgreSQL query, nothing else.
                 """
                 
                 try:
+                    _uid = state.get("user_id")
                     if chosen_model == "gpt-4o":
-                        
+
                         llm = ChatOpenAI(
                         model="gpt-4o",
                         temperature=0.3,
                         openai_api_key=self.openai_key
                         )
-                        description = llm.invoke(extra_narration_prompt).content.strip()
+                        description = tracked_invoke(
+                            llm, extra_narration_prompt, purpose="sql_generator.narration",
+                            model_name="gpt-4o", provider="openai", user_id=_uid,
+                        ).content.strip()
 
                     elif chosen_model == "gpt-4o-mini":
-                        
+
                         llm = ChatOpenAI(
                         model="gpt-4o-mini",
                         temperature=0.3,
                         openai_api_key=self.openai_key
                         )
-                        description = llm.invoke(extra_narration_prompt).content.strip()
+                        description = tracked_invoke(
+                            llm, extra_narration_prompt, purpose="sql_generator.narration",
+                            model_name="gpt-4o-mini", provider="openai", user_id=_uid,
+                        ).content.strip()
 
                     elif chosen_model == "llama3":
+                        _t0 = time.monotonic()
                         resp = requests.post(self.llm_backend["url"], json={
-                        "model": "llama3", 
-                        "prompt": extra_narration_prompt, 
-                        "stream": False, 
+                        "model": "llama3",
+                        "prompt": extra_narration_prompt,
+                        "stream": False,
                         "temperature": 0.3
                         }, timeout=300)
-                        description = resp.json().get("response", "").strip()
+                        resp_json = resp.json()
+                        description = resp_json.get("response", "").strip()
+                        record_llm_call(
+                            purpose="sql_generator.narration", model_name="llama3", provider="ollama",
+                            prompt_text=extra_narration_prompt, response_text=description,
+                            prompt_tokens=resp_json.get("prompt_eval_count"), completion_tokens=resp_json.get("eval_count"),
+                            duration_ms=int((time.monotonic() - _t0) * 1000), user_id=_uid,
+                        )
                     elif str(chosen_model).startswith("api://"):
                         actual_model = chosen_model.replace("api://", "").lower()
 
@@ -400,22 +465,33 @@ Return ONLY the PostgreSQL query, nothing else.
                             openai_fallback_key=self.openai_key,
                             strict=True,
                         )
-                        description = dynamic_llm.invoke(extra_narration_prompt).content.strip()
+                        description = tracked_invoke(
+                            dynamic_llm, extra_narration_prompt, purpose="sql_generator.narration",
+                            model_name=actual_model, user_id=_uid,
+                        ).content.strip()
 
                     elif str(chosen_model).startswith("ollama://"):
                         actual_model = chosen_model.replace("ollama://", "")
+                        _t0 = time.monotonic()
                         resp = requests.post(self.llm_backend["url"], json={
-                            "model": actual_model, 
-                            "prompt": extra_narration_prompt, 
-                            "stream": False, 
+                            "model": actual_model,
+                            "prompt": extra_narration_prompt,
+                            "stream": False,
                             "options": {"temperature": 0.3}
                         }, timeout=600)
-                        
+
                         raw_resp = resp.text
                         if "{" in raw_resp and "}" in raw_resp:
                             description = self._parse_ollama_ndjson(raw_resp)
                         else:
-                            description = raw_resp.strip()    
+                            description = raw_resp.strip()
+                        _p_tok, _c_tok = self._extract_ollama_usage(raw_resp)
+                        record_llm_call(
+                            purpose="sql_generator.narration", model_name=actual_model, provider="ollama",
+                            prompt_text=extra_narration_prompt, response_text=description,
+                            prompt_tokens=_p_tok, completion_tokens=_c_tok,
+                            duration_ms=int((time.monotonic() - _t0) * 1000), user_id=_uid,
+                        )
                     else:
                         description = "Successfully generated an optimized SQL query."
             

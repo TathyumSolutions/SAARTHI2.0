@@ -3,9 +3,11 @@ QuerySimplifierAgent - Simplifies user queries to extract core intent
 """
 import requests
 import json
+import time
 from typing import Dict, Any
 import os
 from langchain_openai import ChatOpenAI
+from app.services.llm_call_logger import tracked_invoke, record_llm_call
 
 
 class QuerySimplifierAgent:
@@ -51,7 +53,7 @@ class QuerySimplifierAgent:
         print(f"DEBUG: target_model received in execution layer is: '{chosen_model}' (Type: {type(chosen_model)})")
         custom_key = state.get("custom_key", "")
         system_instructions = state.get("system_instructions", "")
-        simplified = self.simplify(user_query, chosen_model,custom_key,system_instructions)
+        simplified = self.simplify(user_query, chosen_model,custom_key,system_instructions,user_id=state.get("user_id"))
         #chosen_model = state.get("model_name", self.model_name)
         #simplified = self.simplify(user_query,chosen_model)
         
@@ -69,7 +71,7 @@ class QuerySimplifierAgent:
         print(f"✅ [QuerySimplifierAgent] Simplified: {simplified}")
         return state
     
-    def simplify(self, user_query: str,target_model: str,custom_key: str = "",system_instructions:str = "") -> str:
+    def simplify(self, user_query: str,target_model: str,custom_key: str = "",system_instructions:str = "", user_id=None) -> str:
         """Simplify the user query using LLM"""
         # Get table names for context
         table_names = list(self.schema.get("tables", {}).keys())
@@ -122,20 +124,27 @@ Return ONLY the simplified query, nothing else.
                 temperature=0,
                 openai_api_key=self.openai_key
                 )
-                response = llm.invoke(prompt)
+                response = tracked_invoke(
+                    llm, prompt, purpose="query_simplifier.simplify", model_name="gpt-4o",
+                    provider="openai", user_id=user_id,
+                )
                 simplified = response.content.strip()
             elif target_model == "gpt-4o-mini":
                 print("🤖 [QuerySimplifierAgent] Routing to ChatOpenAI [gpt-4o-mini] Layer...")
-                
+
                 llm = ChatOpenAI(
                 model="gpt-4o-mini",
                 temperature=0,
                 openai_api_key=self.openai_key
                 )
-                response = llm.invoke(prompt)
+                response = tracked_invoke(
+                    llm, prompt, purpose="query_simplifier.simplify", model_name="gpt-4o-mini",
+                    provider="openai", user_id=user_id,
+                )
                 simplified = response.content.strip()
             elif target_model == "llama3":
                 print("🦙 [QuerySimplifierAgent] Routing to local Ollama [llama3] container layer...")
+                _t0 = time.monotonic()
                 response = requests.post(
                 self.url,
                 json={
@@ -152,11 +161,17 @@ Return ONLY the simplified query, nothing else.
                 response.raise_for_status()
                 result = response.json()
                 simplified = result.get("response", user_query).strip()
+                record_llm_call(
+                    purpose="query_simplifier.simplify", model_name="llama3", provider="ollama",
+                    prompt_text=prompt, response_text=simplified,
+                    prompt_tokens=result.get("prompt_eval_count"), completion_tokens=result.get("eval_count"),
+                    duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                )
                 return simplified if simplified else user_query
             elif str(target_model).startswith("api://"):
                 actual_model = target_model.replace("api://", "").lower()
                 print(f"🌐 [QuerySimplifierAgent] Dynamic Routing payload to Custom Cloud API model: {actual_model}")
-                
+
                 from app.services.llm_providers import resolve_dynamic_llm
                 dynamic_llm = resolve_dynamic_llm(
                     actual_model,
@@ -165,14 +180,17 @@ Return ONLY the simplified query, nothing else.
                     openai_fallback_key=self.openai_key,
                     strict=True,
                 )
-                response = dynamic_llm.invoke(prompt)
+                response = tracked_invoke(
+                    dynamic_llm, prompt, purpose="query_simplifier.simplify", model_name=actual_model, user_id=user_id,
+                )
                 return response.content.strip()
 
             # --- 4. DYNAMIC LOCAL OLLAMA ROUTING BLOCK (ollama://) ---
             elif str(target_model).startswith("ollama://"):
                 actual_model = target_model.replace("ollama://", "")
                 print(f"📦 [QuerySimplifierAgent] Dynamic Routing payload to Custom Local Ollama model: {actual_model}")
-                
+
+                _t0 = time.monotonic()
                 response = requests.post(
                     self.url,
                     json={
@@ -189,6 +207,12 @@ Return ONLY the simplified query, nothing else.
                 response.raise_for_status()
                 result = response.json()
                 simplified = result.get("response", user_query).strip()
+                record_llm_call(
+                    purpose="query_simplifier.simplify", model_name=actual_model, provider="ollama",
+                    prompt_text=prompt, response_text=simplified,
+                    prompt_tokens=result.get("prompt_eval_count"), completion_tokens=result.get("eval_count"),
+                    duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                )
                 return simplified if simplified else user_query
                 
             else:

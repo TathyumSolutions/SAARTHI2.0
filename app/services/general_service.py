@@ -7,6 +7,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 # Import the exact stream manager your architecture uses
 from app.services.stream_manager import stream_manager
+from app.services.llm_call_logger import tracked_invoke, record_ollama_call
 
 def answer_general_knowledge(
     user_query: str,
@@ -100,10 +101,12 @@ def answer_general_knowledge(
                 temperature=0.3,
                 openai_api_key=openai_api_key
             )
-            response = llm.invoke([
-                SystemMessage(content=system_content),
-                HumanMessage(content=user_query)
-            ])
+            response = tracked_invoke(
+                llm,
+                [SystemMessage(content=system_content), HumanMessage(content=user_query)],
+                purpose="general.answer", model_name=model_name, provider="openai",
+                session_id=session_id,
+            )
             final_answer = response.content
 
         # 2. Dynamic Custom Cloud API Providers
@@ -119,13 +122,18 @@ def answer_general_knowledge(
                 openai_fallback_key=os.getenv("OPENAI_API_KEY"),
                 strict=True,
             )
-            final_answer = dynamic_llm.invoke(messages).content
+            final_answer = tracked_invoke(
+                dynamic_llm, messages,
+                purpose="general.answer", model_name=actual_model,
+                session_id=session_id,
+            ).content
 
         # 3. Dynamic Local Ollama Runtime Containers
         elif str(model_name).startswith("ollama://") or model_name == "llama3":
             actual_model = model_name.replace("ollama://", "") if str(model_name).startswith("ollama://") else "llama3"
             ollama_prompt = f"{system_content}\n\nUSER QUESTION:\n{user_query}"
 
+            _t0 = time.monotonic()
             response = requests.post(
                 "http://ollama:11434/api/generate",
                 json={
@@ -142,7 +150,14 @@ def answer_general_knowledge(
                 timeout=300
             )
             response.raise_for_status()
-            final_answer = response.json().get("response", "").strip()
+            response_json = response.json()
+            final_answer = response_json.get("response", "").strip()
+            record_ollama_call(
+                purpose="general.answer", model_name=actual_model,
+                prompt_text=ollama_prompt, response_json=response_json,
+                duration_ms=int((time.monotonic() - _t0) * 1000),
+                session_id=session_id,
+            )
 
         else:
             raise ValueError(f"Requested model target configuration error: '{model_name}'")

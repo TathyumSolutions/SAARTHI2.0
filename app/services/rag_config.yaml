@@ -58,3 +58,43 @@ chain_of_thought:
   show_retrieved_chunk_previews: false
 self_learning:
   enabled: true
+# Drives the "LLM Calls" log (see Settings > LLM Call Logging, and the
+# /llm_calls page) - every LLM invocation anywhere in the app is recorded
+# here when enabled, with its token counts and a cost computed from the
+# pricing table below. Disabling `enabled` turns logging into a no-op
+# without touching any call site.
+llm_logging:
+  enabled: true
+  # When false, only metering columns (tokens/cost/duration) are stored -
+  # the actual prompt/response text is left out of the log.
+  log_prompts: true
+  preview_max_chars: 2000
+  # USD cost per 1,000 tokens. Keys are matched against the model name
+  # (exact match first, then substring), falling back to "default" (0 cost)
+  # for any model not listed - e.g. free local Ollama models. Edit these
+  # from Settings to reflect your provider's current pricing.
+  pricing:
+    default:
+      input_per_1k: 0.0
+      output_per_1k: 0.0
+    gpt-4o-mini:
+      input_per_1k: 0.00015
+      output_per_1k: 0.0006
+    gpt-4o:
+      input_per_1k: 0.0025
+      output_per_1k: 0.01
+    claude-3-5-sonnet:
+      input_per_1k: 0.003
+      output_per_1k: 0.015
+    claude-3-5-haiku:
+      input_per_1k: 0.0008
+      output_per_1k: 0.004
+    gemini-1.5-pro:
+      input_per_1k: 0.00125
+      output_per_1k: 0.005
+    gemini-1.5-flash:
+      input_per_1k: 0.000075
+      output_per_1k: 0.0003
+    deepseek-chat:
+      input_per_1k: 0.00027
+      output_per_1k: 0.0011

@@ -25,6 +25,7 @@ from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
+from app.services.llm_call_logger import tracked_invoke
 
 try:
     from qdrant_client import QdrantClient
@@ -416,10 +417,14 @@ def enrich_table_descriptions_with_llm(db_config, connection_description=None):
                 )
 
                 try:
-                    response = llm.invoke([
-                        SystemMessage(content="You are a database documentation assistant that writes single-sentence table descriptions."),
-                        HumanMessage(content=prompt),
-                    ])
+                    response = tracked_invoke(
+                        llm,
+                        [
+                            SystemMessage(content="You are a database documentation assistant that writes single-sentence table descriptions."),
+                            HumanMessage(content=prompt),
+                        ],
+                        purpose="metamind.table_description", model_name="gpt-4o-mini", provider="openai",
+                    )
                     description = (response.content or "").strip()
                 except Exception as e:
                     print(f"⚠️ [DB] Could not generate a description for {table_name}: {e}")

@@ -20,6 +20,7 @@ import pandas as pd
 
 from app.services.stream_manager import stream_manager
 from app.services import spreadsheet_service
+from app.services.llm_call_logger import tracked_invoke, record_ollama_call
 
 ALLOWED_FILTER_OPS = {"==", "!=", ">", "<", ">=", "<=", "in", "contains", "not_contains"}
 ALLOWED_AGG_FUNCS = {"sum", "mean", "count", "min", "max", "median", "nunique"}
@@ -89,11 +90,13 @@ def _build_metadata_answer(table_name: str, info: dict) -> str:
     return "\n".join(lines)
 
 
-def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_content: str) -> str:
+def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_content: str,
+                 purpose: str = "spreadsheet.query", session_id: str = None) -> str:
     """Same multi-provider dispatch pattern used throughout the other
     tracks (general_service.py, llm_service.py) - the api:// branch is
     shared via llm_providers.resolve_dynamic_llm(), kept local otherwise
     since the gpt-4o/ollama handling here differs from those modules."""
+    import time as _time
     from langchain_core.messages import SystemMessage, HumanMessage
     from app.services.llm_providers import resolve_dynamic_llm
 
@@ -102,7 +105,9 @@ def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_cont
     if model_name in ("gpt-4o", "gpt-4o-mini"):
         from langchain_openai import ChatOpenAI
         llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key or os.getenv("OPENAI_API_KEY"))
-        return llm.invoke(messages).content
+        return tracked_invoke(
+            llm, messages, purpose=purpose, model_name=model_name, provider="openai", session_id=session_id,
+        ).content
 
     if str(model_name).startswith("api://"):
         actual_model = model_name.replace("api://", "").lower()
@@ -113,26 +118,36 @@ def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_cont
             openai_fallback_key=custom_key or os.getenv("OPENAI_API_KEY"),
             strict=False,
         )
-        return llm.invoke(messages).content
+        return tracked_invoke(
+            llm, messages, purpose=purpose, model_name=actual_model, session_id=session_id,
+        ).content
 
     if str(model_name).startswith("ollama://") or model_name == "llama3":
         import requests
         actual_model = model_name.replace("ollama://", "") if str(model_name).startswith("ollama://") else "llama3"
         prompt = f"{system_content}\n\n{user_content}"
+        _t0 = _time.monotonic()
         response = requests.post(
             "http://ollama:11434/api/generate",
             json={"model": actual_model, "prompt": prompt, "stream": False, "options": {"temperature": 0}},
             timeout=120,
         )
         response.raise_for_status()
-        return response.json().get("response", "")
+        response_json = response.json()
+        record_ollama_call(
+            purpose=purpose, model_name=actual_model, prompt_text=prompt, response_json=response_json,
+            duration_ms=int((_time.monotonic() - _t0) * 1000), session_id=session_id,
+        )
+        return response_json.get("response", "")
 
     # Fallback: try OpenAI with whatever key is configured, same default
     # used elsewhere in the codebase when a model name doesn't match a
     # known pattern.
     from langchain_openai import ChatOpenAI
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, openai_api_key=custom_key or os.getenv("OPENAI_API_KEY"))
-    return llm.invoke(messages).content
+    return tracked_invoke(
+        llm, messages, purpose=purpose, model_name="gpt-4o-mini", provider="openai", session_id=session_id,
+    ).content
 
 
 def _extract_json(text: str) -> dict:
@@ -412,7 +427,8 @@ def answer_from_spreadsheets(
 
         push_event("start", "Building the Data Query", "Working out how to filter, group, and join the relevant tables.")
         plan_prompt = _build_plan_prompt(hinted_tables or available_tables, feedback_context)
-        raw_plan = _invoke_llm(model_name, custom_key, plan_prompt, user_query)
+        raw_plan = _invoke_llm(model_name, custom_key, plan_prompt, user_query,
+                               purpose="spreadsheet.plan", session_id=session_id)
 
         try:
             plan = _extract_json(raw_plan)
@@ -475,7 +491,8 @@ def answer_from_spreadsheets(
                 "whatever in the feedback doesn't apply to this question."
             )
         try:
-            final_answer = _invoke_llm(model_name, custom_key, system_content, answer_prompt).strip()
+            final_answer = _invoke_llm(model_name, custom_key, system_content, answer_prompt,
+                                       purpose="spreadsheet.answer", session_id=session_id).strip()
         except Exception as e:
             print(f"⚠️ [SPREADSHEET] Answer generation failed: {e}")
             final_answer = f"Found {len(result_df)} matching row(s) in your uploaded spreadsheets."
