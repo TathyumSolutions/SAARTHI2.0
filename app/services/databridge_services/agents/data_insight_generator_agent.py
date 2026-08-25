@@ -5,9 +5,11 @@ Generates insights and visualization suggestions from query results
 from typing import Dict, Any, List
 import requests
 import json
+import time
 import pandas as pd
 import os
 from langchain_openai import ChatOpenAI
+from app.services.llm_call_logger import tracked_invoke, record_llm_call
 
 class DataInsightGeneratorAgent:
     """
@@ -22,7 +24,7 @@ class DataInsightGeneratorAgent:
         self.openai_key = os.getenv("OPENAI_API_KEY")
         self.custom_key = ""
 
-    def generate_insights(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "",target_model: str = None,system_instructions: str = "") -> Dict[str, Any]:
+    def generate_insights(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "",target_model: str = None,system_instructions: str = "", user_id=None) -> Dict[str, Any]:
         """
         Analyze data and return insights and visualization suggestions.
         """
@@ -81,19 +83,25 @@ Return ONLY valid JSON.
                 temperature=0.3,
                 openai_api_key=self.openai_key
                 )
-                ai_response = llm.invoke(prompt)
+                ai_response = tracked_invoke(
+                    llm, prompt, purpose="data_insight.generate", model_name="gpt-4o",
+                    provider="openai", user_id=user_id,
+                )
                 response_text = ai_response.content.strip()
 
             elif model_to_use == "gpt-4o-mini":
                 print(f"🤖 [DataInsightGeneratorAgent] Routing insights to ChatOpenAI [gpt-4o-mini] Layer...")
-                
-                
+
+
                 llm = ChatOpenAI(
                 model="gpt-4o-mini",
                 temperature=0.3,
                 openai_api_key=self.openai_key
                 )
-                ai_response = llm.invoke(prompt)
+                ai_response = tracked_invoke(
+                    llm, prompt, purpose="data_insight.generate", model_name="gpt-4o-mini",
+                    provider="openai", user_id=user_id,
+                )
                 response_text = ai_response.content.strip()
 
             elif model_to_use == "llama3":
@@ -104,10 +112,17 @@ Return ONLY valid JSON.
                 "stream": False,
                 "format": "json"
                 }
+                _t0 = time.monotonic()
                 response = requests.post(self.llm_url, json=payload, timeout=600)
                 response.raise_for_status()
                 result = response.json()
                 response_text = result.get("response", "")
+                record_llm_call(
+                    purpose="data_insight.generate", model_name="llama3", provider="ollama",
+                    prompt_text=prompt, response_text=response_text,
+                    prompt_tokens=result.get("prompt_eval_count"), completion_tokens=result.get("eval_count"),
+                    duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                )
 
             elif str(model_to_use).startswith("api://"):
                 actual_model = model_to_use.replace("api://", "").lower()
@@ -121,7 +136,9 @@ Return ONLY valid JSON.
                     openai_fallback_key=self.openai_key,
                     strict=True,
                 )
-                ai_response = dynamic_llm.invoke(prompt)
+                ai_response = tracked_invoke(
+                    dynamic_llm, prompt, purpose="data_insight.generate", model_name=actual_model, user_id=user_id,
+                )
                 response_text = ai_response.content.strip()
 
             elif str(model_to_use).startswith("ollama://"):
@@ -133,10 +150,17 @@ Return ONLY valid JSON.
                     "stream": False,
                     "format": "json"
                 }
+                _t0 = time.monotonic()
                 response = requests.post(self.llm_url, json=payload, timeout=600)
                 response.raise_for_status()
                 result = response.json()
-                response_text = result.get("response", "")    
+                response_text = result.get("response", "")
+                record_llm_call(
+                    purpose="data_insight.generate", model_name=actual_model, provider="ollama",
+                    prompt_text=prompt, response_text=response_text,
+                    prompt_tokens=result.get("prompt_eval_count"), completion_tokens=result.get("eval_count"),
+                    duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                )
             else:
                 raise ValueError(f"Strict Execution Rule Violated: Unknown model parameter target '{model_to_use}'")
                 #print(f"🦙 [DataInsightGeneratorAgent] Routing insights to Local Ollama ({model_to_use})...")
@@ -186,7 +210,7 @@ Return ONLY valid JSON.
         custom_key = state.get("custom_key", "")
         self.custom_key = custom_key
 
-        insights_data = self.generate_insights(data, columns, user_query,target_model=chosen_model,system_instructions=system_instructions)
+        insights_data = self.generate_insights(data, columns, user_query,target_model=chosen_model,system_instructions=system_instructions,user_id=state.get("user_id"))
         state["insights"] = insights_data.get("insights", [])
         state["visualizations"] = insights_data.get("visualizations", [])
         state["current_step"] = "data_insight_generator"

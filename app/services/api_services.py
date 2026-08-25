@@ -11,6 +11,7 @@ from app.utils.network_guard import is_safe_url, build_full_api_url
 from app.utils.redaction import redact_secrets
 from app.utils.crypto import decrypt
 from app.models.api_connector import ApiConnector
+from app.services.llm_call_logger import tracked_invoke, record_ollama_call
 
 
 def _auth_headers_and_params(auth_type, encrypted_token):
@@ -168,7 +169,10 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         # --- ROUTE A: OPENAI ---
         if model_name in ["gpt-4o-mini", "gpt-4o"]:
             dynamic_llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
-            ai_response = _bind_tools(dynamic_llm).invoke(messages)
+            ai_response = tracked_invoke(
+                _bind_tools(dynamic_llm), messages,
+                purpose="api_tool.selection", model_name=model_name, provider="openai", session_id=session_id,
+            )
             has_tools = bool(ai_response.tool_calls)
             tool_payload = ai_response.tool_calls if has_tools else None
             generation_text = ai_response.content
@@ -185,12 +189,20 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                 "stream": False,
                 "options": {"temperature": 0}
             }
+            _t0 = time.monotonic()
             response = requests.post(ollama_config["url"], json=payload, timeout=300)
             response.raise_for_status()
-            ai_message = response.json().get("message", {})
+            response_json = response.json()
+            ai_message = response_json.get("message", {})
             has_tools = bool(ai_message.get("tool_calls"))
             tool_payload = ai_message.get("tool_calls") if has_tools else None
             generation_text = ai_message.get("content", "")
+            record_ollama_call(
+                purpose="api_tool.selection", model_name="llama3",
+                prompt_text=f"{system_prompt}\n\n{user_message}",
+                response_json={**response_json, "response": generation_text},
+                duration_ms=int((time.monotonic() - _t0) * 1000), session_id=session_id,
+            )
 
         # --- ROUTE C: DYNAMIC CLOUD PROVIDERS (api://) ---
         elif str(model_name).startswith("api://"):
@@ -204,7 +216,10 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                 strict=False,
             )
 
-            ai_response = _bind_tools(dynamic_llm).invoke(messages)
+            ai_response = tracked_invoke(
+                _bind_tools(dynamic_llm), messages,
+                purpose="api_tool.selection", model_name=actual_model, session_id=session_id,
+            )
             has_tools = bool(ai_response.tool_calls)
             tool_payload = ai_response.tool_calls if has_tools else None
             generation_text = ai_response.content
@@ -222,12 +237,20 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                 "stream": False,
                 "options": {"temperature": 0}
             }
+            _t0 = time.monotonic()
             response = requests.post(ollama_config["url"], json=payload, timeout=300)
             response.raise_for_status()
-            ai_message = response.json().get("message", {})
+            response_json = response.json()
+            ai_message = response_json.get("message", {})
             has_tools = bool(ai_message.get("tool_calls"))
             tool_payload = ai_message.get("tool_calls") if has_tools else None
             generation_text = ai_message.get("content", "")
+            record_ollama_call(
+                purpose="api_tool.selection", model_name=actual_model,
+                prompt_text=f"{system_prompt}\n\n{user_message}",
+                response_json={**response_json, "response": generation_text},
+                duration_ms=int((time.monotonic() - _t0) * 1000), session_id=session_id,
+            )
         else:
             raise ValueError(f"Target '{model_name}' has no active route handler.")
 
@@ -344,9 +367,17 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                             "stream": False,
                             "options": {"temperature": 0}
                         }
+                        _t0 = time.monotonic()
                         refine_res = requests.post(ollama_config["url"], json=refine_payload, timeout=300)
                         refine_res.raise_for_status()
-                        generation_text = refine_res.json().get("message", {}).get("content", "")
+                        refine_json = refine_res.json()
+                        generation_text = refine_json.get("message", {}).get("content", "")
+                        record_ollama_call(
+                            purpose="api_tool.answer_refinement", model_name=target_ollama_model,
+                            prompt_text=f"{refinement_sys_msg}\n\n{refinement_usr_msg}",
+                            response_json={**refine_json, "response": generation_text},
+                            duration_ms=int((time.monotonic() - _t0) * 1000), session_id=session_id,
+                        )
 
                     # Reuses selected cloud model type cleanly
                     else:
@@ -355,10 +386,14 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                             HumanMessage(content=refinement_usr_msg)
                         ]
 
+                        refinement_model_name = model_name
+                        refinement_provider = "openai"
                         if model_name in ["gpt-4o-mini", "gpt-4o"]:
                             refinement_llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
                         elif str(model_name).startswith("api://"):
                             actual_model = model_name.replace("api://", "").lower()
+                            refinement_model_name = actual_model
+                            refinement_provider = None
                             from app.services.llm_providers import resolve_dynamic_llm
                             refinement_llm = resolve_dynamic_llm(
                                 actual_model,
@@ -368,9 +403,14 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                                 strict=False,
                             )
                         else:
+                            refinement_model_name = "gpt-4o-mini"
                             refinement_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
 
-                        generation_text = refinement_llm.invoke(refinement_prompt).content
+                        generation_text = tracked_invoke(
+                            refinement_llm, refinement_prompt,
+                            purpose="api_tool.answer_refinement", model_name=refinement_model_name,
+                            provider=refinement_provider, session_id=session_id,
+                        ).content
 
                     push_tool_event("complete", "Putting Your Answer Together", "Your answer is ready.")
                 else:

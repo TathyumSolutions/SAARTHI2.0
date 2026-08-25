@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 import requests 
 import json
 from .rag_config import load_rag_config
+from .llm_call_logger import tracked_invoke, record_ollama_call
 #from .databridge_services import run_data_bridge_agent
 try:
     from .databridge_services.langgraph_agent import run_data_bridge_agent
@@ -344,7 +345,7 @@ class LLMService:
                 {"type": "text", "text": "Describe this image in 2-3 sentences, focusing on any data, numbers, chart values, or important details a business user would need to know."},
                 {"type": "image_url", "image_url": {"url": f"data:image/{image_ext};base64,{b64_image}"}}
             ])
-            response = vision_llm.invoke([message])
+            response = tracked_invoke(vision_llm, [message], purpose="rag.image_caption", model_name="gpt-4o-mini", provider="openai")
             return response.content.strip()
         except Exception as e:
             print(f"⚠️ [RAG] Could not caption image: {e}")
@@ -365,7 +366,10 @@ class LLMService:
                 "include any disclaimers, just write the paragraph.\n\n"
                 f"Question: {query}"
             )
-            response = hyde_llm.invoke([HumanMessage(content=prompt)])
+            response = tracked_invoke(
+                hyde_llm, [HumanMessage(content=prompt)],
+                purpose="rag.hyde", model_name=self.rag_config["retrieval"]["hyde"]["model"], provider="openai",
+            )
             return response.content.strip()
         except Exception as e:
             print(f"⚠️ [RAG] HyDE generation failed, using raw query instead: {e}")
@@ -385,7 +389,10 @@ class LLMService:
                 "the same meaning. Return only the numbered list, nothing else.\n\n"
                 f"Question: {query}"
             )
-            response = mq_llm.invoke([HumanMessage(content=prompt)])
+            response = tracked_invoke(
+                mq_llm, [HumanMessage(content=prompt)],
+                purpose="rag.multi_query", model_name=mq_cfg["model"], provider="openai",
+            )
             lines = [l.strip() for l in response.content.strip().split("\n") if l.strip()]
             cleaned = []
             for line in lines:
@@ -516,15 +523,19 @@ class LLMService:
             return None
         try:
             llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, openai_api_key=os.getenv("OPENAI_API_KEY"))
-            response = llm.invoke([
-                SystemMessage(content="You write short, plain-language summaries of business documents for a knowledge base index."),
-                HumanMessage(content=(
-                    "Summarize what this document covers in 2-4 sentences, focused on the key "
-                    "topics, sections, or subject matter someone would search for. Skip generic "
-                    "filler like \"This document discusses\" - just the substance.\n\n"
-                    f"Document content:\n{combined_text[:8000]}"
-                )),
-            ])
+            response = tracked_invoke(
+                llm,
+                [
+                    SystemMessage(content="You write short, plain-language summaries of business documents for a knowledge base index."),
+                    HumanMessage(content=(
+                        "Summarize what this document covers in 2-4 sentences, focused on the key "
+                        "topics, sections, or subject matter someone would search for. Skip generic "
+                        "filler like \"This document discusses\" - just the substance.\n\n"
+                        f"Document content:\n{combined_text[:8000]}"
+                    )),
+                ],
+                purpose="rag.document_summary", model_name="gpt-4o-mini", provider="openai",
+            )
             return (response.content or "").strip() or None
         except Exception as e:
             print(f"⚠️ [RAG] Could not generate content summary: {e}")
@@ -679,9 +690,13 @@ class LLMService:
                 # 1. CLOUD OPENAI INSTANCES FROM THE DICTIONARY
                 if model_name in self.models:
                     messages = [HumanMessage(content=analysis_prompt)]
-                    ai_response = self.models[model_name].invoke(messages)
+                    ai_response = tracked_invoke(
+                        self.models[model_name], messages,
+                        purpose="rag.intent_analysis", model_name=model_name, provider="openai",
+                        user_id=user_id, session_id=session_id,
+                    )
                     analysis_text = ai_response.content.strip()
-                
+
                 # 2. DYNAMIC CUSTOM API ROUTING (Claude, Gemini, DeepSeek, etc.)
                 elif str(model_name).startswith("api://"):
                     actual_model = model_name.replace("api://", "").lower()
@@ -696,7 +711,11 @@ class LLMService:
                         strict=False,
                     )
 
-                    ai_response = dynamic_llm.invoke(messages)
+                    ai_response = tracked_invoke(
+                        dynamic_llm, messages,
+                        purpose="rag.intent_analysis", model_name=actual_model,
+                        user_id=user_id, session_id=session_id,
+                    )
                     analysis_text = ai_response.content.strip()
 
                 # 3. DYNAMIC OLLAMA ROUTING
@@ -708,8 +727,16 @@ class LLMService:
                         "stream": False,
                         "options": {"temperature": self.ollama_config["temperature"]}
                     }
+                    _t0 = time.monotonic()
                     cot_res = requests.post(self.ollama_config["url"], json=cot_payload, timeout=60)
-                    analysis_text = cot_res.json().get("response", "").strip()
+                    cot_json = cot_res.json()
+                    analysis_text = cot_json.get("response", "").strip()
+                    record_ollama_call(
+                        purpose="rag.intent_analysis", model_name=actual_model,
+                        prompt_text=analysis_prompt, response_json=cot_json,
+                        duration_ms=int((time.monotonic() - _t0) * 1000),
+                        user_id=user_id, session_id=session_id,
+                    )
                 
                 else:
                     analysis_text = "Analyzing natural language inquiry for document matching modules."
@@ -813,6 +840,7 @@ class LLMService:
                 print("🦙 Routing payload to local Ollama [llama3] container layer...")
                 ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
                 
+                _t0 = time.monotonic()
                 response = requests.post(
                     self.ollama_config["url"],
                     json={
@@ -829,8 +857,15 @@ class LLMService:
                     timeout=self.ollama_config["timeout"]
                 )
                 response.raise_for_status()
-                final_answer = response.json().get("response", "").strip()
-                
+                response_json = response.json()
+                final_answer = response_json.get("response", "").strip()
+                record_ollama_call(
+                    purpose="rag.answer", model_name="llama3",
+                    prompt_text=ollama_prompt, response_json=response_json,
+                    duration_ms=int((time.monotonic() - _t0) * 1000),
+                    user_id=user_id, session_id=session_id,
+                )
+
             elif model_name == "gpt-4o":
                 print("🔥 Routing payload to cloud production instance: GPT-4o Premium...")
                 #self.llm.model_name = "gpt-4o"
@@ -844,9 +879,13 @@ class LLMService:
                     HumanMessage(content=user_query)
                 ]
                 #ai_response = self.llm.invoke(messages)
-                ai_response = self.models["gpt-4o"].invoke(messages)
+                ai_response = tracked_invoke(
+                    self.models["gpt-4o"], messages,
+                    purpose="rag.answer", model_name="gpt-4o", provider="openai",
+                    user_id=user_id, session_id=session_id,
+                )
                 final_answer = ai_response.content
-                
+
             elif model_name == "gpt-4o-mini":
                 print("🤖 Routing payload to cloud production instance: GPT-4o Mini...")
                 #self.llm.model_name = "gpt-4o-mini"
@@ -860,9 +899,13 @@ class LLMService:
                     HumanMessage(content=user_query)
                 ]
                 #ai_response = self.llm.invoke(messages)
-                ai_response = self.models["gpt-4o-mini"].invoke(messages)
+                ai_response = tracked_invoke(
+                    self.models["gpt-4o-mini"], messages,
+                    purpose="rag.answer", model_name="gpt-4o-mini", provider="openai",
+                    user_id=user_id, session_id=session_id,
+                )
                 final_answer = ai_response.content
-            
+
             elif str(model_name).startswith("api://"):
                 actual_model = model_name.replace("api://", "").lower()
                 print(f"🌐 Dynamic RAG Routing payload to Custom Cloud API model: {actual_model}")
@@ -880,7 +923,11 @@ class LLMService:
                     openai_fallback_key=self.openai_key,
                     strict=True,
                 )
-                ai_response = dynamic_llm.invoke(messages)
+                ai_response = tracked_invoke(
+                    dynamic_llm, messages,
+                    purpose="rag.answer", model_name=actual_model,
+                    user_id=user_id, session_id=session_id,
+                )
                 final_answer = ai_response.content
 
             elif str(model_name).startswith("ollama://"):
@@ -888,6 +935,7 @@ class LLMService:
                 print(f"📦 Dynamic RAG Routing payload to Custom Local Ollama model: {actual_model}")
                 ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
                 
+                _t0 = time.monotonic()
                 response = requests.post(
                     self.ollama_config["url"],
                     json={
@@ -904,8 +952,16 @@ class LLMService:
                     timeout=self.ollama_config["timeout"]
                 )
                 response.raise_for_status()
-                final_answer = response.json().get("response", "").strip()    
-                
+                response_json = response.json()
+                final_answer = response_json.get("response", "").strip()
+                record_ollama_call(
+                    purpose="rag.answer", model_name=actual_model,
+                    prompt_text=ollama_prompt, response_json=response_json,
+                    duration_ms=int((time.monotonic() - _t0) * 1000),
+                    user_id=user_id, session_id=session_id,
+                )
+
+
             else:
                 raise ValueError(f"Requested model '{model_name}' has no active route handler configuration.")
             # --- CODE CHANGE START ---

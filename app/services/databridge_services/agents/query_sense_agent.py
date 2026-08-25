@@ -4,12 +4,14 @@ Compatible with LangGraph DataBridgeState
 """
 import re
 import json
+import time
 from datetime import datetime
 from typing import Dict, Any, List
-#import ollama 
-import requests 
+#import ollama
+import requests
 import os
 from langchain_openai import ChatOpenAI
+from app.services.llm_call_logger import tracked_invoke, record_llm_call
 
 class QuerySenseAgent:
     """
@@ -78,7 +80,7 @@ class QuerySenseAgent:
        
             
 
-        def _call_llm_for_plan(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "") -> Dict[str, Any]:
+        def _call_llm_for_plan(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "", user_id=None) -> Dict[str, Any]:
             schema_tables = self._all_tables()
             schema_brief = "\n".join(
                 f"Table '{t}': [{', '.join(self.schema['tables'][t]['columns'].keys())}]"
@@ -228,7 +230,10 @@ USER QUESTION:
                         temperature=0,
                         openai_api_key=self.openai_key
                     )
-                    ai_response = llm.invoke(prompt)
+                    ai_response = tracked_invoke(
+                        llm, prompt, purpose="query_sense.plan", model_name="gpt-4o",
+                        provider="openai", user_id=user_id,
+                    )
                     text = ai_response.content.strip()
 
                 elif target_model == "gpt-4o-mini":
@@ -239,7 +244,10 @@ USER QUESTION:
                         temperature=0,
                         openai_api_key=self.openai_key
                     )
-                    ai_response = llm.invoke(prompt)
+                    ai_response = tracked_invoke(
+                        llm, prompt, purpose="query_sense.plan", model_name="gpt-4o-mini",
+                        provider="openai", user_id=user_id,
+                    )
                     text = ai_response.content.strip()
 
                 elif target_model == "llama3":
@@ -250,9 +258,17 @@ USER QUESTION:
                         "stream": False,
                         "options": {"temperature": 0.0}
                     }
+                    _t0 = time.monotonic()
                     resp = requests.post(self.url, json=payload, timeout=120)
                     resp.raise_for_status()
-                    text = resp.json().get("response", "").strip()
+                    resp_json = resp.json()
+                    text = resp_json.get("response", "").strip()
+                    record_llm_call(
+                        purpose="query_sense.plan", model_name="llama3", provider="ollama",
+                        prompt_text=prompt, response_text=text,
+                        prompt_tokens=resp_json.get("prompt_eval_count"), completion_tokens=resp_json.get("eval_count"),
+                        duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                    )
 
                 elif str(target_model).startswith("api://"):
                     actual_model = target_model.replace("api://", "").lower()
@@ -266,7 +282,9 @@ USER QUESTION:
                         openai_fallback_key=self.openai_key,
                         strict=True,
                     )
-                    ai_response = dynamic_llm.invoke(prompt)
+                    ai_response = tracked_invoke(
+                        dynamic_llm, prompt, purpose="query_sense.plan", model_name=actual_model, user_id=user_id,
+                    )
                     text = ai_response.content.strip()
 
                 elif str(target_model).startswith("ollama://"):
@@ -278,10 +296,19 @@ USER QUESTION:
                         "stream": False,
                         "options": {"temperature": 0.0}
                     }
+                    _t0 = time.monotonic()
                     resp = requests.post(self.url, json=payload, timeout=600)
                     resp.raise_for_status()
-                    text = resp.json().get("response", "").strip()
-                
+                    resp_json = resp.json()
+                    text = resp_json.get("response", "").strip()
+                    record_llm_call(
+                        purpose="query_sense.plan", model_name=actual_model, provider="ollama",
+                        prompt_text=prompt, response_text=text,
+                        prompt_tokens=resp_json.get("prompt_eval_count"), completion_tokens=resp_json.get("eval_count"),
+                        duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                    )
+
+
 
                 else:
                     raise ValueError(f"Requested model '{target_model}' has no active route configuration.")    
@@ -496,11 +523,11 @@ USER QUESTION:
                 "grouping_reasoning": str(plan["group_by"]),
             }
 
-        def analyze(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "") -> Dict[str, Any]:
+        def analyze(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "", user_id=None) -> Dict[str, Any]:
             self.state["timestamp"] = datetime.now().isoformat()
             self.state["user_query"] = user_query
 
-            plan = self._call_llm_for_plan(user_query,target_model,system_instructions,hint_tables=hint_tables,feedback_context=feedback_context)
+            plan = self._call_llm_for_plan(user_query,target_model,system_instructions,hint_tables=hint_tables,feedback_context=feedback_context,user_id=user_id)
             if not plan:
                 plan = self._fallback_simple(user_query)
 
@@ -572,7 +599,7 @@ USER QUESTION:
         if feedback_context:
             print(f"🧠 [FEEDBACK-DEBUG] [QuerySense] Using feedback context for table/column selection:\n{feedback_context}")
         analysis = self.query_sense.analyze(
-            simplified_query,chosen_model,system_instructions,hint_tables=hint_tables,feedback_context=feedback_context)
+            simplified_query,chosen_model,system_instructions,hint_tables=hint_tables,feedback_context=feedback_context,user_id=state.get("user_id"))
 
         state["query_sense_output"] = analysis
         state["current_step"] = "query_sense"

@@ -48,6 +48,12 @@ def query_logs_page():
     """Query log directory: every logged chat query with its strategy, sources, and feedback."""
     return render_template('query_logs.html')
 
+# LLM Calls - Every individual LLM invocation across the app, with token counts and cost
+@bp.route('/llm_calls')
+def llm_calls_page():
+    """LLM call log: every LLM invocation with tokens/cost, grouped by purpose."""
+    return render_template('llm_calls.html')
+
 # Data Sources - Unstructured Data
 @bp.route('/unstructured_data')
 def unstructured_data():

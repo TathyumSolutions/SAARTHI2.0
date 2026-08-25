@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block title %}Saarthi - LLM Calls{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .ds-page { max-width: 1200px; }
+    .ds-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; gap: 12px; }
+    .ds-subtitle { color: var(--text-secondary); font-size: 13px; margin: 0 0 18px; }
+    .ds-search { flex: 1; min-width: 220px; padding: 8px 10px; background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); }
+    .ds-filter-btn { background: var(--panel-bg); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+    .ds-filter-btn.active { background: var(--primary-blue); color: #fff; border-color: var(--primary-blue); }
+    .ds-empty { color: var(--text-secondary); font-size: 13px; padding: 40px 0; text-align: center; }
+    .ds-loading { color: var(--text-secondary); font-size: 13px; padding: 20px 0; }
+    .ds-meta-pre { background: var(--dark-bg, #10141c); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; font-size: 12px; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow-y: auto; }
+
+    .lc-banner { background: rgba(244, 135, 113, 0.12); border: 1px solid rgba(244, 135, 113, 0.4); color: #F48771; border-radius: 6px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; }
+
+    .lc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .lc-stat-card { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px; }
+    .lc-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 6px; }
+    .lc-stat-value { font-size: 22px; font-weight: 700; color: var(--text-primary); }
+    .lc-stat-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+    /* Sub-menu: one entry per call "purpose" - this is the "submenus for
+       all the calls" navigation, plus an "All" entry. */
+    .lc-submenu { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; }
+    .lc-submenu-item { background: var(--panel-bg); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 6px; padding: 8px 12px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .lc-submenu-item.active { background: var(--primary-blue); color: #fff; border-color: var(--primary-blue); }
+    .lc-submenu-count { background: rgba(255,255,255,0.12); border-radius: 10px; padding: 1px 7px; font-size: 10px; }
+    .lc-submenu-item.active .lc-submenu-count { background: rgba(255,255,255,0.25); }
+    .lc-submenu-cost { font-size: 10px; opacity: 0.85; }
+
+    .lc-controls { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .lc-filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .lc-card { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+    .lc-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+    .lc-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .lc-time { font-size: 11px; color: var(--text-secondary); }
+    .lc-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .lc-badge { font-size: 10px; padding: 3px 9px; border-radius: 10px; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+    .lc-badge-purpose { background: rgba(0, 120, 212, 0.18); color: #5AA9F0; }
+    .lc-badge-provider { background: rgba(197, 134, 192, 0.18); color: var(--accent-purple); }
+    .lc-badge-success { background: rgba(78, 201, 176, 0.18); color: var(--accent-green); }
+    .lc-badge-error { background: rgba(244, 135, 113, 0.18); color: #F48771; }
+
+    .lc-metrics { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); }
+    .lc-metrics strong { color: var(--text-primary); font-weight: 600; }
+    .lc-detail { margin-top: 2px; }
+    .lc-detail summary { cursor: pointer; color: #60A5FA; font-size: 12px; }
+    .lc-error-text { color: #F48771; font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ds-page">
+    <div class="ds-toolbar">
+        <h2 style="margin: 0;">LLM Calls</h2>
+    </div>
+
+    <p class="ds-subtitle">
+        Every individual LLM call made anywhere in the app - the model used, token counts, cost, and how long it took. Grouped below by what triggered the call.
+    </p>
+
+    <div id="lcBanner"></div>
+
+    <div class="lc-stats" id="lcStats">
+        <div class="ds-loading">Loading summary...</div>
+    </div>
+
+    <div class="lc-submenu" id="lcSubmenu">
+        <div class="ds-loading">Loading...</div>
+    </div>
+
+    <div class="lc-controls">
+        <input id="lcSearch" class="ds-search" type="text" placeholder="Search by call code, prompt, or response..." />
+        <input id="lcModelSearch" class="ds-search" type="text" style="flex: 0 0 200px; min-width: 160px;" placeholder="Filter by model name..." />
+    </div>
+    <div class="lc-controls">
+        <div class="lc-filter-group" id="lcStatusFilters">
+            <button type="button" class="ds-filter-btn active" data-status="all">All Status</button>
+            <button type="button" class="ds-filter-btn" data-status="success">Success</button>
+            <button type="button" class="ds-filter-btn" data-status="error">Errors</button>
+        </div>
+    </div>
+
+    <div id="lcList">
+        <div class="ds-loading">Loading calls...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let lcActivePurpose = 'all';
+
+    function lcEscapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function lcDebounce(fn, wait) {
+        let timer = null;
+        return function (...args) {
+            clearTimeout(timer);
+            timer = setTimeout(function () { fn.apply(null, args); }, wait);
+        };
+    }
+
+    function lcFormatCost(value) {
+        const n = Number(value || 0);
+        if (n === 0) return '$0.00';
+        if (n < 0.01) return '$' + n.toFixed(6);
+        return '$' + n.toFixed(4);
+    }
+
+    function lcFormatNumber(value) {
+        return Number(value || 0).toLocaleString();
+    }
+
+    function lcPurposeLabel(purpose) {
+        if (!purpose) return 'Unknown';
+        return purpose.split(/[._]/).map(function (w) {
+            return w.charAt(0).toUpperCase() + w.slice(1);
+        }).join(' ');
+    }
+
+    async function lcLoadSummary() {
+        try {
+            const res = await authFetch('/api/llm-calls/summary');
+            const data = await res.json();
+            lcRenderBanner(data.logging_enabled);
+            lcRenderStats(data.totals || {});
+            lcRenderSubmenu(data.by_purpose || [], data.totals || {});
+        } catch (err) {
+            console.error('Failed to load LLM call summary:', err);
+            document.getElementById('lcStats').innerHTML = '<div class="ds-empty">Could not load summary.</div>';
+            document.getElementById('lcSubmenu').innerHTML = '';
+        }
+    }
+
+    function lcRenderBanner(enabled) {
+        const banner = document.getElementById('lcBanner');
+        if (enabled === false) {
+            banner.innerHTML = '<div class="lc-banner">LLM call logging is currently disabled in Settings &gt; LLM Call Logging. New calls will not be recorded until it is re-enabled.</div>';
+        } else {
+            banner.innerHTML = '';
+        }
+    }
+
+    function lcRenderStats(totals) {
+        const stats = document.getElementById('lcStats');
+        stats.innerHTML = `
+            <div class="lc-stat-card">
+                <div class="lc-stat-label">Total Calls</div>
+                <div class="lc-stat-value">${lcFormatNumber(totals.calls)}</div>
+                <div class="lc-stat-sub">${lcFormatNumber(totals.errors)} error${totals.errors === 1 ? '' : 's'}</div>
+            </div>
+            <div class="lc-stat-card">
+                <div class="lc-stat-label">Total Cost</div>
+                <div class="lc-stat-value">${lcFormatCost(totals.cost)}</div>
+                <div class="lc-stat-sub">Based on Settings pricing</div>
+            </div>
+            <div class="lc-stat-card">
+                <div class="lc-stat-label">Total Tokens</div>
+                <div class="lc-stat-value">${lcFormatNumber(totals.total_tokens)}</div>
+                <div class="lc-stat-sub">${lcFormatNumber(totals.prompt_tokens)} in / ${lcFormatNumber(totals.completion_tokens)} out</div>
+            </div>
+        `;
+    }
+
+    function lcRenderSubmenu(byPurpose, totals) {
+        const submenu = document.getElementById('lcSubmenu');
+        const items = [{ purpose: 'all', calls: totals.calls || 0, cost: totals.cost || 0 }].concat(byPurpose);
+
+        submenu.innerHTML = items.map(function (item) {
+            const isAll = item.purpose === 'all';
+            const label = isAll ? 'All Calls' : lcPurposeLabel(item.purpose);
+            const active = item.purpose === lcActivePurpose ? 'active' : '';
+            return `
+                <div class="lc-submenu-item ${active}" data-purpose="${lcEscapeHtml(item.purpose)}">
+                    <span>${lcEscapeHtml(label)}</span>
+                    <span class="lc-submenu-count">${lcFormatNumber(item.calls)}</span>
+                    <span class="lc-submenu-cost">${lcFormatCost(item.cost)}</span>
+                </div>
+            `;
+        }).join('');
+
+        submenu.querySelectorAll('.lc-submenu-item').forEach(function (el) {
+            el.addEventListener('click', function () {
+                lcActivePurpose = el.dataset.purpose;
+                submenu.querySelectorAll('.lc-submenu-item').forEach(function (b) { b.classList.remove('active'); });
+                el.classList.add('active');
+                lcLoadCalls();
+            });
+        });
+    }
+
+    function lcActiveValue(groupId, dataAttr) {
+        const active = document.querySelector(`#${groupId} .ds-filter-btn.active`);
+        return active ? active.dataset[dataAttr] : 'all';
+    }
+
+    async function lcLoadCalls() {
+        const list = document.getElementById('lcList');
+        list.innerHTML = '<div class="ds-loading">Loading calls...</div>';
+
+        const params = new URLSearchParams();
+        const q = document.getElementById('lcSearch').value.trim();
+        const model = document.getElementById('lcModelSearch').value.trim();
+        if (q) params.set('q', q);
+        if (model) params.set('model', model);
+        params.set('status', lcActiveValue('lcStatusFilters', 'status'));
+        if (lcActivePurpose && lcActivePurpose !== 'all') params.set('purpose', lcActivePurpose);
+
+        try {
+            const res = await authFetch(`/api/llm-calls/?${params.toString()}`);
+            const data = await res.json();
+            lcRenderCalls(data.calls || []);
+        } catch (err) {
+            console.error('Failed to load LLM calls:', err);
+            list.innerHTML = '<div class="ds-empty">Could not load calls.</div>';
+        }
+    }
+
+    function lcRenderCalls(calls) {
+        const list = document.getElementById('lcList');
+        if (!calls.length) {
+            list.innerHTML = '<div class="ds-empty">No LLM calls match this filter.</div>';
+            return;
+        }
+
+        list.innerHTML = calls.map(function (item) {
+            const statusBadge = item.status === 'error'
+                ? '<span class="lc-badge lc-badge-error">Error</span>'
+                : '<span class="lc-badge lc-badge-success">Success</span>';
+            const providerBadge = item.provider
+                ? `<span class="lc-badge lc-badge-provider">${lcEscapeHtml(item.provider)}</span>`
+                : '';
+            const createdLabel = item.created_at ? new Date(item.created_at).toLocaleString() : '';
+
+            const promptHtml = item.prompt_preview
+                ? `<details class="lc-detail"><summary>Prompt</summary><pre class="ds-meta-pre">${lcEscapeHtml(item.prompt_preview)}</pre></details>`
+                : '';
+            const responseHtml = item.response_preview
+                ? `<details class="lc-detail"><summary>Response</summary><pre class="ds-meta-pre">${lcEscapeHtml(item.response_preview)}</pre></details>`
+                : '';
+            const errorHtml = item.error_message
+                ? `<div class="lc-error-text"><strong>Error:</strong> ${lcEscapeHtml(item.error_message)}</div>`
+                : '';
+
+            return `
+                <div class="lc-card">
+                    <div class="lc-card-header">
+                        <div class="lc-title">${lcEscapeHtml(item.call_code)} &middot; ${lcEscapeHtml(item.model)}</div>
+                        <div class="lc-badges">
+                            <span class="lc-badge lc-badge-purpose">${lcEscapeHtml(lcPurposeLabel(item.purpose))}</span>
+                            ${providerBadge}
+                            ${statusBadge}
+                        </div>
+                    </div>
+                    ${createdLabel ? `<div class="lc-time">${lcEscapeHtml(createdLabel)}${item.duration_ms != null ? ` &middot; ${lcFormatNumber(item.duration_ms)} ms` : ''}</div>` : ''}
+                    <div class="lc-metrics">
+                        <span><strong>${lcFormatNumber(item.prompt_tokens)}</strong> prompt tokens</span>
+                        <span><strong>${lcFormatNumber(item.completion_tokens)}</strong> completion tokens</span>
+                        <span><strong>${lcFormatNumber(item.total_tokens)}</strong> total tokens</span>
+                        <span><strong>${lcFormatCost(item.cost)}</strong> cost</span>
+                    </div>
+                    ${errorHtml}
+                    ${promptHtml}
+                    ${responseHtml}
+                </div>
+            `;
+        }).join('');
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('lcSearch').addEventListener('input', lcDebounce(lcLoadCalls, 300));
+        document.getElementById('lcModelSearch').addEventListener('input', lcDebounce(lcLoadCalls, 300));
+        document.querySelectorAll('#lcStatusFilters .ds-filter-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('#lcStatusFilters .ds-filter-btn').forEach(function (b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                lcLoadCalls();
+            });
+        });
+
+        lcLoadSummary();
+        lcLoadCalls();
+    });
+</script>
+{% endblock %}
