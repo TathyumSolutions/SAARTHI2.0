@@ -8,6 +8,33 @@ same as app/routes/database_routes.py's run_agentic_process() sets when
 it invokes this as a subprocess using a registered Database Connection's
 credentials. Run standalone (e.g. `python db.py`), those env vars must be
 set explicitly first - there is no default host to fall back to.
+
+MATERIAL DATA FIX (see material_lookup.xlsx / code_lookup.xlsx):
+Earlier runs of this script generated mara.material_id as "M00001" and
+descriptions as a single random dictionary word (fake.word().capitalize()
+-> "Fast", "Century", "Bring", ...) which is not a real-world material
+name and does not match material_lookup.xlsx (which ships alongside this
+script as the router's business-language lookup for material_id). That
+made every join between mara and material_lookup.xlsx fail, since
+material_id formats didn't line up and the "descriptions" were nonsense
+words rather than materials.
+
+Fixed here:
+  - material_id is now "MAT-00001" etc., matching material_lookup.xlsx.
+  - The first 30 materials are an EXACT match (id, name, group, unit) to
+    material_lookup.xlsx's material_lookup sheet, so lookups/joins against
+    that file resolve for real rows.
+  - Materials beyond the curated 30 (added for volume) get realistic
+    "<word> <Component/Part/Assembly/Fitting/Module>" names instead of a
+    bare random word, and are drawn from the same real material group /
+    base unit codes as the curated set (RM01-RM04, PLST, PKG1, ELEC /
+    KG, EA, MTR, L) instead of the old meaningless 'PC'/'1000'-'4000'
+    placeholders.
+
+Run standalone:
+    python db.py                 # build only if the DB is currently empty
+    python db.py --reset         # drop every table this script owns, then rebuild
+    RESET_DB=yes python db.py    # same as --reset, via env var
 """
 import sys
 import psycopg2
@@ -40,6 +67,50 @@ DB_CONFIG = {
 fake = Faker()
 Faker.seed(42)
 random.seed(42)
+
+# ---------------------------------------------------------------------
+# Curated materials 1-30 - EXACT match to material_lookup.xlsx's
+# material_lookup sheet (material_id, material_name, material_group_code,
+# base_unit_code), so real-world lookups/joins against that file resolve.
+# Tuple here = (material_id, name, material_group_code, base_unit_code).
+# ---------------------------------------------------------------------
+CURATED_MATERIALS = [
+    ("MAT-00001", "Steel Sheet 2mm", "RM01", "KG"),
+    ("MAT-00002", "Steel Rod 12mm", "RM01", "KG"),
+    ("MAT-00003", "Steel Casting - Housing", "RM01", "EA"),
+    ("MAT-00004", "Aluminum Sheet 1.5mm", "RM02", "KG"),
+    ("MAT-00005", "Aluminum Extrusion Profile", "RM02", "MTR"),
+    ("MAT-00006", "Aluminum Die Cast Bracket", "RM02", "EA"),
+    ("MAT-00007", "Copper Winding Wire", "RM03", "KG"),
+    ("MAT-00008", "Copper Busbar", "RM03", "KG"),
+    ("MAT-00009", "Copper Terminal Lug", "RM03", "EA"),
+    ("MAT-00010", "Zinc Alloy Fitting", "RM04", "EA"),
+    ("MAT-00011", "Galvanized Zinc Sheet", "RM04", "KG"),
+    ("MAT-00012", "ABS Polymer Housing Shell", "PLST", "EA"),
+    ("MAT-00013", "Nylon Gear Component", "PLST", "EA"),
+    ("MAT-00014", "Rubber Gasket Seal", "PLST", "EA"),
+    ("MAT-00015", "PVC Insulated Cable 2mm", "PLST", "MTR"),
+    ("MAT-00016", "Corrugated Carton - Medium", "PKG1", "EA"),
+    ("MAT-00017", "Wooden Pallet - Standard", "PKG1", "EA"),
+    ("MAT-00018", "Stretch Wrap Film", "PKG1", "MTR"),
+    ("MAT-00019", "Foam Packaging Insert", "PKG1", "EA"),
+    ("MAT-00020", "Control PCB Assembly", "ELEC", "EA"),
+    ("MAT-00021", "Motor Control Relay", "ELEC", "EA"),
+    ("MAT-00022", "Sensor Module - Temp/Pressure", "ELEC", "EA"),
+    ("MAT-00023", "Wiring Harness Assembly", "ELEC", "EA"),
+    ("MAT-00024", "Display Panel Unit", "ELEC", "EA"),
+    ("MAT-00025", "Industrial Pump Assembly", "FG01", "EA"),
+    ("MAT-00026", "Motor Drive Unit", "FG01", "EA"),
+    ("MAT-00027", "Control Panel Enclosure", "FG01", "EA"),
+    ("MAT-00028", "Conveyor Roller Assembly", "FG01", "EA"),
+    ("MAT-00029", "Hydraulic Valve Block", "FG01", "EA"),
+    ("MAT-00030", "Cooling Fan Assembly", "FG01", "EA"),
+]
+# Real group/unit codes only (matches material_lookup.xlsx / code_lookup.xlsx) -
+# no more meaningless 'PC' unit or fake '1000'-'4000' group placeholders.
+RANDOM_MATERIAL_GROUPS = ["RM01", "RM02", "RM03", "RM04", "PLST", "PKG1", "ELEC"]
+RANDOM_MATERIAL_UNITS = ["KG", "EA", "MTR", "L"]
+TOTAL_MATERIALS = 1000  # curated 30 + this many more, for volume/realism
 
 # ---------------------------------------------------------------------
 # UPDATED SCHEMA with proper composite primary keys (SAP-style)
@@ -192,6 +263,8 @@ schema = {
     }
 }
 
+TABLE_ORDER = list(schema["tables"].keys())
+
 # ---------------------------------------------------------------------
 # Function to create tables
 # ---------------------------------------------------------------------
@@ -228,6 +301,19 @@ def create_tables(cursor):
         print(f"✅ Created table: {table_name}")
 
 # ---------------------------------------------------------------------
+# Cleanup - drops every table this script owns, CASCADE so FK-dependent
+# rows/objects go with them. Gated behind --reset / RESET_DB=yes so a
+# bare `python db.py` never wipes an existing demo by accident. Run this
+# before re-seeding a database that still has the old M00001-style
+# materials/descriptions, since INSERTs below assume empty tables.
+# ---------------------------------------------------------------------
+def reset_database(cursor):
+    print("🗑️  Resetting: dropping all tables this script owns...")
+    for table_name in reversed(TABLE_ORDER):
+        cursor.execute(f'DROP TABLE IF EXISTS "{table_name}" CASCADE;')
+    print(f"✅ Dropped {len(TABLE_ORDER)} tables.")
+
+# ---------------------------------------------------------------------
 # Insert synthetic data
 # ---------------------------------------------------------------------
 def insert_data():
@@ -237,11 +323,11 @@ def insert_data():
 
     # Re-running this script against an already-seeded database used to
     # crash partway through with a primary-key UniqueViolation (no
-    # ON CONFLICT / truncate guard). Skip cleanly instead - this is a
-    # one-time seed, not something meant to accumulate duplicate rows.
+    # ON CONFLICT / truncate guard). Skip cleanly instead - use --reset
+    # (or RESET_DB=yes) if you want to rebuild with corrected data.
     cursor.execute("SELECT COUNT(*) FROM kna1;")
     if cursor.fetchone()[0] > 0:
-        print("⏭️  Demo data already present in this database - skipping seed (tables are non-empty).")
+        print("⏭️  Demo data already present in this database - skipping seed (tables are non-empty). Use --reset to rebuild.")
         cursor.close()
         conn.close()
         return
@@ -251,9 +337,21 @@ def insert_data():
     # --- Master data ---
     customers = [(f"C{str(i).zfill(4)}", fake.company(), fake.country_code(), fake.city(), fake.postcode()) for i in range(1, 501)]
     vendors = [(f"V{str(i).zfill(4)}", fake.company(), fake.country_code(), fake.city(), fake.postcode()) for i in range(1, 301)]
-    materials = [(f"M{str(i).zfill(5)}", fake.word().capitalize(), random.choice(['PC','KG','EA','L']),
-                  random.choice(['1000','2000','3000','4000'])) for i in range(1, 1001)]
-    gl_accounts = [(f"{i:010}", fake.bs().title(), random.choice(['1000','2000','3000'])) for i in range(100000, 100500)]
+
+    # Materials: first 30 are an exact match to material_lookup.xlsx (real
+    # material names, not random dictionary words). The rest are filled
+    # out with realistic "<word> <Component/Part/Assembly/...>" names
+    # drawn from the same real group/unit codes, for volume beyond the
+    # curated set.
+    materials = [(mid, name, unit, group) for mid, name, group, unit in CURATED_MATERIALS]
+    for i in range(len(CURATED_MATERIALS) + 1, TOTAL_MATERIALS + 1):
+        mid = f"MAT-{i:05d}"
+        group = random.choice(RANDOM_MATERIAL_GROUPS)
+        unit = random.choice(RANDOM_MATERIAL_UNITS)
+        name = f"{fake.word().capitalize()} {random.choice(['Component', 'Part', 'Assembly', 'Fitting', 'Module'])}"
+        materials.append((mid, name, unit, group))
+
+    gl_accounts = [(f"{i:010}", fake.bs().title(), random.choice(['A1','B2','C3'])) for i in range(100000, 100500)]
     skb1 = [(gl, random.choice(['1000','2000','3000','4000']), random.choice(['USD','EUR','GBP'])) for gl,_,_ in gl_accounts]
 
     print("📦 Inserting master data...")
@@ -348,9 +446,15 @@ def insert_data():
 # Main
 # ---------------------------------------------------------------------
 if __name__ == "__main__":
+    reset_requested = os.getenv("RESET_DB", "").strip().lower() in ("1", "true", "yes") or "--reset" in sys.argv
+
     conn = psycopg2.connect(**DB_CONFIG)
     conn.autocommit = True
     cur = conn.cursor()
+
+    if reset_requested:
+        reset_database(cur)
+
     create_tables(cur)
     cur.close()
     conn.close()
