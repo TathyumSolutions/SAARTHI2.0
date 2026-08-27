@@ -61,9 +61,14 @@ class QuerySenseAgent:
             for t, meta in self.schema["tables"].items():
                 for fk in meta.get("foreign_keys", []) or []:
                     if fk.get("column") and fk.get("references"):
-                        parts.append(f"{t}.{fk['column']} -> {fk['references']}")
+                        parts.append(f"{t}.{fk['column']} -> {fk['references']} (declared)")
             for rel in self.schema.get("relations", []):
-                parts.append(f"{rel['from_table']}.{rel['from_column']} -> {rel['to_table']}.{rel['to_column']}")
+                confidence = rel.get("confidence", "inferred")
+                parts.append(
+                    f"{rel['from_table']}.{rel['from_column']} -> {rel['to_table']}.{rel['to_column']} "
+                    f"(inferred from {confidence.replace('_', ' ')} - not a declared constraint, verify it "
+                    f"makes sense for this question before joining on it)"
+                )
             return "\n".join(parts) or "(none)"
 
         def _schema_context_text(self) -> str:

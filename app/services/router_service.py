@@ -31,6 +31,8 @@ import json
 import os
 import math
 import re
+import logging
+import datetime
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Literal, Optional
 
@@ -81,6 +83,40 @@ def _count_tokens(text: str) -> int:
 _SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
 _GENERAL_CONFIG_PATH = os.path.join(_SERVICE_DIR, "general_knowledge_config.json")
 _ANSWER_GUIDELINES_PATH = os.path.join(_SERVICE_DIR, "answer_guidelines.md")
+
+# ============================================================
+# STRATEGY DECISION LOG
+# ============================================================
+# One JSON line per stage of a routing decision, written to
+# logs/router_strategy.jsonl - answers "how/why did the router build this
+# strategy" (what metadata it actually saw after trimming, which
+# tool(s)/sub-questions it chose and with what args, and how the merge
+# step resolved or failed to resolve a cross-source join) without having
+# to reconstruct it from scattered print() debug output or the
+# already-truncated LLMCallLog prompt/response previews. Purely
+# observational - never affects routing behavior itself.
+_strategy_logger = logging.getLogger("saarthi.router.strategy")
+_strategy_logger.setLevel(logging.INFO)
+_strategy_logger.propagate = False
+if not _strategy_logger.handlers:
+    try:
+        _log_dir = os.path.join(os.getcwd(), "logs")
+        os.makedirs(_log_dir, exist_ok=True)
+        _handler = logging.FileHandler(os.path.join(_log_dir, "router_strategy.jsonl"))
+    except Exception:
+        _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    _strategy_logger.addHandler(_handler)
+
+
+def _log_strategy_event(stage: str, **fields) -> None:
+    """Appends one structured record: {"ts", "stage", ...fields}. Never
+    raises into the caller - a broken log write must not break routing."""
+    try:
+        record = {"ts": datetime.datetime.utcnow().isoformat() + "Z", "stage": stage, **fields}
+        _strategy_logger.info(json.dumps(record, default=str))
+    except Exception as e:
+        print(f"⚠️ [STRATEGY-LOG] Failed to write strategy log: {e}")
 
 # Router-context token budget. gpt-4o-mini's real window is much larger than
 # this — this cap exists to keep every routing call cheap and fast, not
@@ -184,25 +220,102 @@ def _load_router_config(user_id: int) -> dict:
     return menu
 
 
+def _query_relevance_words(user_query: str) -> set:
+    return set(re.findall(r"[a-zA-Z][a-zA-Z0-9_]{2,}", (user_query or "").lower())) - _ROUTING_HINT_STOPWORDS
+
+
+def _table_relevance_score(table_name: str, columns: list, query_words: set) -> int:
+    """Higher means keep this table first when the schema has to be cut
+    down to max_tables - a direct name/value match with the question, not
+    dict insertion order, decides what survives truncation."""
+    if not query_words:
+        return 0
+    name_tokens = set(re.findall(r"[a-z0-9]+", (table_name or "").lower()))
+    score = 3 if _column_name_matches_question(query_words, name_tokens) else 0
+    for col in columns or []:
+        if not isinstance(col, dict):
+            continue
+        col_tokens = set(re.findall(r"[a-z0-9]+", str(col.get("name") or "").lower()))
+        if _column_name_matches_question(query_words, col_tokens):
+            score += 1
+        sample_values = [str(v).strip().lower() for v in (col.get("sample_values") or [])]
+        if any(v in query_words for v in sample_values):
+            score += 1
+    return score
+
+
+def _column_relevance_score(col: dict, query_words: set) -> int:
+    """Higher means keep this column first when a table's columns have to
+    be cut down to max_cols. A column matched by name or sample value, or
+    one already flagged with a lookup_hint (a real cross-table
+    relationship _attach_lookup_hints found), is worth more than an
+    arbitrary column that merely appears earlier in the schema."""
+    if not isinstance(col, dict):
+        return 0
+    score = 1 if col.get("lookup_hint") else 0
+    if not query_words:
+        return score
+    tokens = set(re.findall(r"[a-z0-9]+", str(col.get("name") or "").lower()))
+    if _column_name_matches_question(query_words, tokens):
+        score += 3
+    sample_values = [str(v).strip().lower() for v in (col.get("sample_values") or [])]
+    if any(v in query_words for v in sample_values):
+        score += 3
+    return score
+
+
+def _rank_tables_by_relevance(tables: dict, query_words: set) -> list:
+    """Returns [(table_name, table_info), ...] most-relevant-to-the-
+    question first. Falls back to original (insertion) order when the
+    question yields no usable keywords, so behavior is unchanged for a
+    query too short/generic to score against."""
+    items = list(tables.items())
+    if not query_words:
+        return items
+    return sorted(
+        items,
+        key=lambda kv: _table_relevance_score(kv[0], kv[1].get("columns", []), query_words),
+        reverse=True,
+    )
+
+
+def _rank_columns_by_relevance(columns: list, query_words: set) -> list:
+    if not query_words:
+        return columns or []
+    return sorted(columns or [], key=lambda c: _column_relevance_score(c, query_words), reverse=True)
+
+
 def _trim_router_config(config: dict, max_tables: int, max_cols: int,
-                         max_tools: int, max_examples: int) -> dict:
+                         max_tools: int, max_examples: int, user_query: str = "") -> dict:
     """Returns a shallow, trimmed copy for prompt display only — never
     written back to disk. Caps list/dict sizes so the config can't blow the
-    token budget on a schema with hundreds of tables or tools."""
+    token budget on a schema with hundreds of tables or tools.
+
+    When a schema doesn't fit, which tables/columns survive matters as
+    much as how many do — silently keeping whichever ones happen to come
+    first in dict order can drop the exact table/column the question is
+    actually asking about. `user_query` (when given) is used to rank
+    tables and columns by relevance — name or sample-value match against
+    the question — before applying the max_tables/max_cols caps, so the
+    metadata that actually reaches the router LLM is the metadata most
+    likely to matter for this question, not just the first N declared."""
+    query_words = _query_relevance_words(user_query)
     menu = config.get("routing_menu", {})
     ds = menu.get("datasources", {})
     trimmed_ds = {}
 
     db = ds.get("DB", {})
     tables = db.get("tables", {})
+    ranked_tables = _rank_tables_by_relevance(tables, query_words)
     trimmed_tables = {}
-    for i, (tname, tinfo) in enumerate(tables.items()):
+    for i, (tname, tinfo) in enumerate(ranked_tables):
         if i >= max_tables:
             trimmed_tables["__truncated__"] = f"...and {len(tables) - max_tables} more tables not shown"
             break
+        cols = _rank_columns_by_relevance(tinfo.get("columns", []) or [], query_words)
         trimmed_tables[tname] = {
             "description": tinfo.get("description", ""),
-            "columns": (tinfo.get("columns", []) or [])[:max_cols],
+            "columns": cols[:max_cols],
         }
     trimmed_ds["DB"] = {
         "description": db.get("description", ""),
@@ -227,14 +340,16 @@ def _trim_router_config(config: dict, max_tables: int, max_cols: int,
 
     spreadsheet = ds.get("SPREADSHEET", {})
     spreadsheet_tables = spreadsheet.get("tables", {})
+    ranked_spreadsheet_tables = _rank_tables_by_relevance(spreadsheet_tables, query_words)
     trimmed_spreadsheet_tables = {}
-    for i, (tname, tinfo) in enumerate(spreadsheet_tables.items()):
+    for i, (tname, tinfo) in enumerate(ranked_spreadsheet_tables):
         if i >= max_tables:
             trimmed_spreadsheet_tables["__truncated__"] = f"...and {len(spreadsheet_tables) - max_tables} more tables not shown"
             break
+        cols = _rank_columns_by_relevance(tinfo.get("columns", []) or [], query_words)
         trimmed_spreadsheet_tables[tname] = {
             "description": tinfo.get("description", ""),
-            "columns": (tinfo.get("columns", []) or [])[:max_cols],
+            "columns": cols[:max_cols],
         }
     trimmed_ds["SPREADSHEET"] = {
         "description": spreadsheet.get("description", ""),
@@ -245,20 +360,24 @@ def _trim_router_config(config: dict, max_tables: int, max_cols: int,
     return {"routing_menu": {"instructions": menu.get("instructions", ""), "datasources": trimmed_ds}}
 
 
-def _fit_router_config_to_budget(config: dict, token_budget: int) -> str:
+def _fit_router_config_to_budget(config: dict, token_budget: int, user_query: str = "") -> tuple:
     """Tries progressively smaller caps until the JSON fits the budget;
-    falls back to a hard character truncate as an absolute last resort."""
+    falls back to a hard character truncate as an absolute last resort.
+    Returns (json_str, trim_level_label) — the label records which cap
+    level was actually used (or "hard_truncate"/"untrimmed") so callers
+    can log how much of the real schema the router LLM actually saw."""
     attempts = [(25, 12, 25, 3), (10, 8, 10, 2), (5, 5, 5, 1), (2, 3, 2, 1)]
     last_str = "{}"
     for max_tables, max_cols, max_tools, max_examples in attempts:
-        trimmed = _trim_router_config(config, max_tables, max_cols, max_tools, max_examples)
+        trimmed = _trim_router_config(config, max_tables, max_cols, max_tools, max_examples, user_query=user_query)
         s = json.dumps(trimmed, indent=2)
         last_str = s
         if _count_tokens(s) <= token_budget:
-            return s
+            label = f"tables<={max_tables},cols<={max_cols},tools<={max_tools},examples<={max_examples}"
+            return s, label
     # Still too big — hard truncate.
     approx_chars = max(token_budget * 4, 200)
-    return last_str[:approx_chars] + "\n...(truncated to fit context budget)"
+    return last_str[:approx_chars] + "\n...(truncated to fit context budget)", "hard_truncate"
 
 
 def _normalize_chat_history(chat_history) -> list[dict]:
@@ -733,7 +852,7 @@ def _log_build_router_messages_params(
 
 def _build_router_messages(user_query: str, chat_history, router_config: dict,
                             live_tools_summary: str, system_instructions: str,
-                            feedback_context: str = "") -> list:
+                            feedback_context: str = "", session_id: str = None) -> list:
     """
     Assembles the message list for the routing LLM call under a fixed token
     budget. Priority order when something has to be cut:
@@ -769,13 +888,25 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
 
     # Whatever history didn't use, the config gets to keep.
     config_budget += (history_budget - running)
-    config_str = _fit_router_config_to_budget(router_config, config_budget)
+    config_str, trim_level = _fit_router_config_to_budget(router_config, config_budget, user_query=user_query)
     known_tables = list(router_config.get("routing_menu", {}).get("datasources", {}).get("DB", {}).get("tables", {}).keys())
     known_tables_str = ", ".join(known_tables) if known_tables else "(no database tables configured)"
     known_spreadsheet_tables = list(router_config.get("routing_menu", {}).get("datasources", {}).get("SPREADSHEET", {}).get("tables", {}).keys())
     known_spreadsheet_tables_str = ", ".join(known_spreadsheet_tables) if known_spreadsheet_tables else "(no spreadsheet tables uploaded)"
 
     static_data_hints = _find_static_data_hints(user_query, router_config)
+
+    _log_strategy_event(
+        "metadata_prepared",
+        session_id=session_id,
+        user_query=user_query,
+        config_token_budget=config_budget,
+        trim_level=trim_level,
+        db_tables_total=len(known_tables),
+        spreadsheet_tables_total=len(known_spreadsheet_tables),
+        static_data_hints=static_data_hints,
+        inferred_relations=router_config.get("routing_menu", {}).get("inferred_relations", []),
+    )
     static_data_hints_block = (
         "\n\nSTATIC DATA ALREADY IN YOUR CONNECTED SOURCES (matches words in the question):\n"
         + "\n".join(static_data_hints)
@@ -1429,14 +1560,24 @@ def _merge_tabular_results(ok_results: list):
         if not new_columns:
             continue  # nothing this track adds that the base doesn't already have
 
-        shared_key = next((col for col in known_columns & other_columns), None)
+        # Two tracks can share more than one same-named column (e.g. both
+        # "material_id" and "description") where only one is a genuine
+        # join key for this pair of tables - so every shared name is tried
+        # and the one that actually matches the most rows by real value
+        # overlap wins, rather than an arbitrary first pick out of a
+        # Python set (undefined iteration order, and blind to whether the
+        # values themselves ever line up).
+        shared_key, matched_rows, match_index = None, -1, None
+        for candidate in sorted(known_columns & other_columns):
+            index = {str(row.get(candidate)): row for row in other_table}
+            matches = sum(1 for row in merged_table if str(row.get(candidate)) in index)
+            if matches > matched_rows:
+                shared_key, matched_rows, match_index = candidate, matches, index
+
         if shared_key:
-            index = {str(row.get(shared_key)): row for row in other_table}
-            matched_rows = 0
             for row in merged_table:
-                match = index.get(str(row.get(shared_key)))
+                match = match_index.get(str(row.get(shared_key)))
                 if match:
-                    matched_rows += 1
                     for col in new_columns:
                         row[col] = match.get(col)
             if matched_rows == 0:
@@ -1775,6 +1916,7 @@ class RouterService:
                 live_tools_summary,
                 system_instructions,
                 feedback_context,
+                session_id=session_id,
             )
 
             # ------------------------------------------------
@@ -1819,6 +1961,14 @@ class RouterService:
                 tool_calls.append(call)
 
             print(f"🧠 Router selected tools: {[c['name'] for c in tool_calls]}")
+            _log_strategy_event(
+                "tools_selected",
+                session_id=session_id,
+                user_query=user_query,
+                tool_count=len(tool_calls),
+                tool_calls=[{"name": c["name"], "args": c.get("args", {})} for c in tool_calls],
+                raw_tool_call_count=len(raw_tool_calls),
+            )
 
             # No tool needed — model judged it answerable directly.
             if not tool_calls:
@@ -2005,6 +2155,17 @@ class RouterService:
                 "\n\n[Data alignment note - could NOT be cross-referenced]:\n"
                 + "\n".join(merge_notes)
                 if merge_notes else ""
+            )
+
+            _log_strategy_event(
+                "results_merged",
+                session_id=session_id,
+                user_query=user_query,
+                tracks=[name for name, _ in ok_results],
+                failed_tracks=[name for name, _ in failed_results],
+                merged_row_count=len(merged_table),
+                merged_columns=sorted({k for row in merged_table[:1] for k in row.keys()}) if merged_table else [],
+                merge_notes=merge_notes,
             )
 
             accumulated_context = "\n".join(

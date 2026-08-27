@@ -435,7 +435,8 @@ def _build_schema_for_user(user_id: int, router_config: dict = None) -> dict:
         if not menu:
             return dict(EMPTY_SCHEMA)
         db_tables = menu.get("routing_menu", {}).get("datasources", {}).get("DB", {}).get("tables", {})
-        return to_sql_agent_schema(db_tables)
+        relations = menu.get("routing_menu", {}).get("inferred_relations", [])
+        return to_sql_agent_schema(db_tables, relations=relations)
     except Exception as e:
         print(f"⚠️ [SCHEMA] Could not load schema for user {user_id}: {e}")
         return dict(EMPTY_SCHEMA)

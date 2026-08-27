@@ -17,6 +17,7 @@ Features:
 """
 
 import os
+import re
 import json
 import datetime
 
@@ -453,15 +454,23 @@ def enrich_table_descriptions_with_llm(db_config, connection_description=None):
     return enriched
 
 
-def to_sql_agent_schema(db_tables: dict) -> dict:
+def to_sql_agent_schema(db_tables: dict, relations: list = None) -> dict:
     """
     Converts introspect_databridge_db()'s output shape into the
-    {"tables": {name: {"description", "columns": {col: {...}}, "foreign_keys"}}}
+    {"tables": {name: {"description", "columns": {col: {...}}, "foreign_keys"}},
+     "relations": [...]}
     shape the LangGraph SQL agents (databridge_services/agents/*) expect -
     columns keyed by name rather than a list, and foreign keys flattened to
     "table.column" references. Used to feed those agents this specific
     user's own live-introspected schema instead of a static, global
     schema file.
+
+    `relations` carries join keys inferred by _infer_db_relations() (see
+    below) - relationships this database never declared as a real FK
+    constraint but that column-name and/or sample-value evidence points
+    to. QuerySenseAgent._foreign_keys_text() reads this alongside each
+    table's declared `foreign_keys` so its SQL planner can find a join
+    even when the schema itself was never annotated with one.
     """
     tables = {}
     for table_name, table_data in (db_tables or {}).items():
@@ -483,7 +492,127 @@ def to_sql_agent_schema(db_tables: dict) -> dict:
             "columns": columns,
             "foreign_keys": foreign_keys,
         }
-    return {"tables": tables}
+    return {"tables": tables, "relations": relations or []}
+
+
+# ============================================================
+# STEP 3.5: INFER JOIN KEYS THAT WERE NEVER DECLARED AS REAL FKs
+# ============================================================
+
+# Column names too generic to count as a cross-table relationship signal
+# on their own - nearly every table has its own "id"/"code"/"name", so
+# treating those as a match without sample-value confirmation would flag
+# unrelated tables as joinable just because they both have a PK called
+# "id". A compound name like "material_id" is specific enough to stand on
+# its own.
+_GENERIC_JOIN_COLUMN_NAMES = {
+    "id", "code", "key", "name", "description", "value", "amount",
+    "status", "type", "date", "createdat", "updatedat", "notes", "no",
+}
+
+
+def _normalize_join_column_name(name: str) -> str:
+    """Lowercases and strips separators so 'Material_ID', 'material id',
+    and 'MaterialId' all compare equal."""
+    return re.sub(r"[^a-z0-9]", "", (name or "").lower())
+
+
+def _looks_like_join_key(col_name: str) -> bool:
+    """Cheap prefilter so relation inference only compares columns that
+    plausibly hold an id/code/key - not every column in the schema -
+    keeping the pairwise comparison below fast on real schemas."""
+    lowered = (col_name or "").lower()
+    return any(token in lowered for token in ("id", "code", "key", "num", "no"))
+
+
+def _sample_value_overlap(a: list, b: list):
+    """Ratio of the smaller sample set that also appears in the other,
+    case/whitespace-insensitive. None when either side has no samples to
+    compare - kept distinct from a confirmed 0.0 overlap so callers don't
+    treat "nothing to compare" as "confirmed unrelated"."""
+    if not a or not b:
+        return None
+    set_a = {str(v).strip().lower() for v in a}
+    set_b = {str(v).strip().lower() for v in b}
+    if not set_a or not set_b:
+        return None
+    return len(set_a & set_b) / min(len(set_a), len(set_b))
+
+
+def _infer_db_relations(db_tables: dict) -> list:
+    """
+    Finds likely join keys between DB tables that are NOT already declared
+    as real foreign-key constraints. Many production databases (including
+    ones this app connects to) don't enforce every logical relationship
+    with a formal Postgres FK, so relying on _get_table_constraints() alone
+    misses joins the SQL planner genuinely needs (e.g. an undeclared
+    materials-to-valuation relationship joined only by convention, never by
+    constraint) - QuerySenseAgent's "NAME THE METRIC" rule can only chase a
+    foreign key it's actually told about.
+
+    A candidate pair is accepted when EITHER:
+      - the two column names match once normalized, and the name is
+        specific enough to mean something on its own (e.g. "material_id",
+        not bare "id") - confidence "name_only"; or
+      - their actual sample values overlap strongly (>= 80% of the
+        smaller column's samples also appear in the other), regardless of
+        naming - confidence "value_only".
+    A name match is upgraded to "name+value" when sample values also
+    overlap (>= 50%) - the strongest signal, name and data both agreeing.
+
+    Returns a list of {"from_table", "from_column", "to_table",
+    "to_column", "confidence", "inferred": True} dicts - kept structurally
+    identical to a declared foreign_keys entry (see to_sql_agent_schema)
+    but tagged `inferred` so downstream prompts/UI can tell a guessed join
+    apart from a real constraint. Read-only: never mutates db_tables.
+    """
+    declared_pairs = set()
+    for table_name, table_data in (db_tables or {}).items():
+        for fk in (table_data.get("constraints") or {}).get("foreign_keys", []) or []:
+            if fk.get("column") and fk.get("references_table") and fk.get("references_column"):
+                declared_pairs.add(frozenset({
+                    (table_name, fk["column"]),
+                    (fk["references_table"], fk["references_column"]),
+                }))
+
+    join_columns = []  # [(table_name, column_dict), ...]
+    for table_name, table_data in (db_tables or {}).items():
+        for col in table_data.get("columns", []) or []:
+            if _looks_like_join_key(col.get("name", "")) or col.get("sample_values"):
+                join_columns.append((table_name, col))
+
+    relations = []
+    seen_pairs = set()
+    for i, (t1, c1) in enumerate(join_columns):
+        for t2, c2 in join_columns[i + 1:]:
+            if t1 == t2:
+                continue
+            pair_key = frozenset({(t1, c1["name"]), (t2, c2["name"])})
+            if pair_key in declared_pairs or pair_key in seen_pairs:
+                continue
+
+            n1 = _normalize_join_column_name(c1.get("name", ""))
+            n2 = _normalize_join_column_name(c2.get("name", ""))
+            name_match = bool(n1) and n1 == n2 and n1 not in _GENERIC_JOIN_COLUMN_NAMES
+            overlap = _sample_value_overlap(c1.get("sample_values"), c2.get("sample_values"))
+
+            if name_match and overlap is not None and overlap >= 0.5:
+                confidence = "name+value"
+            elif name_match:
+                confidence = "name_only"
+            elif overlap is not None and overlap >= 0.8:
+                confidence = "value_only"
+            else:
+                continue
+
+            seen_pairs.add(pair_key)
+            relations.append({
+                "from_table": t1, "from_column": c1["name"],
+                "to_table": t2, "to_column": c2["name"],
+                "confidence": confidence, "inferred": True,
+            })
+
+    return relations
 
 
 def _get_table_constraints(cur, conn, table_name):
@@ -1223,12 +1352,20 @@ def generate_router_config(user_id, sap_db_config=None):
     files_info = introspect_qdrant(user_id)
     spreadsheet_tables = introspect_spreadsheets(user_id)
     _attach_lookup_hints(db_tables, spreadsheet_tables)
+    inferred_relations = _infer_db_relations(db_tables)
+    if inferred_relations:
+        print(f"🔗 [DB] Inferred {len(inferred_relations)} undeclared join relation(s) "
+              f"from column names/sample values: "
+              + ", ".join(f"{r['from_table']}.{r['from_column']}<->{r['to_table']}.{r['to_column']} ({r['confidence']})"
+                           for r in inferred_relations))
 
     if not db_tables and not api_tools and not files_info and not spreadsheet_tables:
         print(f"❌ No datasources visible to user {user_id}. Nothing to generate.")
         return None
 
     menu = build_routing_menu(db_tables, api_tools, files_info, spreadsheet_tables)
+    if inferred_relations:
+        menu["routing_menu"]["inferred_relations"] = inferred_relations
 
     print(f"✅ Router config computed for user {user_id}")
     print(f"   Active datasources: {list(menu['routing_menu']['datasources'].keys())}")
