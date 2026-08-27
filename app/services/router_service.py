@@ -831,20 +831,40 @@ TOOLS AVAILABLE:
   anything not covered by the company's own data sources.
 
 If none of the tools fit, just answer directly in plain text.
-If you are not confident which single source has the answer, call more than
-one tool rather than guessing - for example call both query_database and
-search_documents if the question could reasonably be answered by either.
-It is better to check two sources and combine the answer than to pick the
-wrong one.
 
-When you call more than one tool for the same question, give EACH tool call
-its own focused `question` argument, rewritten for what that specific
+First check whether a SINGLE source can answer the whole question on its
+own - a database table can usually reach related data through its own
+foreign-key joins (e.g. a materials table joined to a valuation/pricing
+table to get both the material list and its value in one query_database
+call), and a spreadsheet table may already contain every column the
+question needs. Prefer that one well-formed call over splitting the
+question apart. Only call more than one tool when the question genuinely
+needs data that no single source has all of, or when you are not
+confident which single source has the answer.
+
+There is no fixed number of sub-queries to aim for - use exactly as many
+tool calls as this specific question actually needs: could be one, two,
+three, or more. Never split a question into multiple sources just because
+that is a familiar pattern; and never assume a compound question needs
+exactly two - check what data each source genuinely holds first.
+
+When a question asks for an entity together with a derived value or
+metric about it (a price, cost, total, net value, rate, etc.), do not
+strip that metric out of one sub-question and hand it to a different
+source on the assumption that source has it - only assign a named metric
+to a source you have actual evidence holds it (from its schema/columns in
+the metadata below), otherwise keep it in the same sub-question as the
+entity it describes so the source's own join logic can try to resolve it.
+
+When you do call more than one tool for the same question, give EACH tool
+call its own focused `question` argument, rewritten for what that specific
 source should answer - never just resend the original question unmodified
-to every tool. For example, for "price of major metal commodities" split
+to every tool. For example, for "price of major metal commodities" (where
+the price genuinely only exists in a live API, not the spreadsheet) split
 into a query_spreadsheet_data call asking "what are the major metal
 commodities?" and a call_external_api call asking "what is the latest price
-of each major metal?" - two independent sub-queries that get executed in
-parallel and merged, not one vague question repeated twice.
+of each major metal?" - independent sub-queries that get executed in
+parallel and merged, not one vague question repeated to every tool.
 
 DO NOT just pick a data source type and stop there. query_database and
 query_spreadsheet_data also require a `tables` argument, search_documents
