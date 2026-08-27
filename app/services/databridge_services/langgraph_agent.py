@@ -219,9 +219,15 @@ def _compose_final_answer(state: DataBridgeState) -> str:
     request actually retrieved, instead of a generic template like "I have
     gathered data from multiple sources, yielding a total of N entries" that
     ignores what was actually found. Combines the real row/column shape of
-    the result, the chart-worthiness note from DataVisualizerAgent (e.g.
-    "this is a lookup mapping, here's the data as a table"), and 1-2 of the
-    concrete insights already computed by DataInsightGeneratorAgent.
+    the result and 1-2 of the concrete insights already computed by
+    DataInsightGeneratorAgent.
+
+    Deliberately leaves out DataVisualizerAgent's chart-worthiness note
+    (e.g. "this is a lookup mapping, here's the data as a table") - that's
+    reasoning about how the result was formatted, not part of the answer
+    to the user's actual question, and it's already recorded in
+    state["steps"] (surfaced as chain-of-thought, not main-answer text).
+    Putting it in both places doubled it up in the response the user reads.
     """
     base_message = (state.get("message") or "").strip()
     fmt = state.get("format")
@@ -252,10 +258,6 @@ def _compose_final_answer(state: DataBridgeState) -> str:
         )
     elif base_message:
         parts.append(base_message)
-
-    chart_note = (state.get("chart_configs") or {}).get("note")
-    if chart_note:
-        parts.append(chart_note)
 
     concrete_insights = [i.strip() for i in (state.get("insights") or []) if isinstance(i, str) and i.strip()]
     if concrete_insights:
