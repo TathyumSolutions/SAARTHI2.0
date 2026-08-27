@@ -163,7 +163,12 @@ def _extract_json(text: str) -> dict:
 def _build_plan_prompt(available_tables: dict, feedback_context: str = "") -> str:
     tables_desc = []
     for table_name, info in available_tables.items():
-        cols = ", ".join(f"{c['name']} ({c['type']})" for c in info.get("columns", []))
+        col_lines = []
+        for c in info.get("columns", []):
+            samples = [str(v) for v in (c.get("sample_values") or [])][:5]
+            sample_note = f" e.g. {', '.join(samples)}" if samples else ""
+            col_lines.append(f"{c['name']} ({c['type']}){sample_note}")
+        cols = "; ".join(col_lines)
         tables_desc.append(f"- {table_name}: {info.get('description', '')}\n  columns: {cols}")
     tables_block = "\n".join(tables_desc) if tables_desc else "(no tables available)"
 
@@ -216,6 +221,11 @@ Rules:
 - "func" must be one of: sum mean count min max median nunique
 - "how" must be one of: inner left right outer
 - Use "join" only when the question needs data from two tables together.
+- When choosing "left_on"/"right_on", prefer a column pair whose sample
+  values above actually look like the same kind of value (e.g. both show
+  codes like "MAT-00001") over one that merely has a similar name - a
+  matching name with clearly different-looking sample values (different
+  formats/prefixes) is not a real join key.
 - If the question doesn't need grouping/aggregation, omit those fields and use "select_columns" instead.
 - Output ONLY the JSON object, nothing else.
 """
