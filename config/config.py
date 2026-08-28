@@ -57,6 +57,12 @@ class Config:
         'core': _derive_db_url(_BASE_DATABASE_URL, 'saarthi_core_db'),
         'resources': _derive_db_url(_BASE_DATABASE_URL, 'saarthi_resources_db'),
         'workspace': _derive_db_url(_BASE_DATABASE_URL, 'saarthi_workspace_db'),
+        # Dedicated warehouse for spreadsheet data pushed from the Excel/CSV
+        # upload flow (see app/services/spreadsheet_warehouse_service.py) -
+        # separate from the 3 logical databases above because it holds
+        # dynamically-created, user-shaped tables (one per uploaded sheet),
+        # not app-owned declarative models.
+        'spreadsheet_db': _derive_db_url(_BASE_DATABASE_URL, 'saarthi_spreadsheet_db'),
     }
 
     # Superadmin emails (comma-separated) allowed to provision new
@@ -97,6 +103,7 @@ class TestingConfig(Config):
         'core': _derive_db_url('sqlite:///test_saarthi.db', 'test_saarthi_core'),
         'resources': _derive_db_url('sqlite:///test_saarthi.db', 'test_saarthi_resources'),
         'workspace': _derive_db_url('sqlite:///test_saarthi.db', 'test_saarthi_workspace'),
+        'spreadsheet_db': _derive_db_url('sqlite:///test_saarthi.db', 'test_saarthi_spreadsheet'),
     }
 
 config = {
