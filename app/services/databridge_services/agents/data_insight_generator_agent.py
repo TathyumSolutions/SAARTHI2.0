@@ -210,7 +210,16 @@ Return ONLY valid JSON.
         custom_key = state.get("custom_key", "")
         self.custom_key = custom_key
 
-        insights_data = self.generate_insights(data, columns, user_query,target_model=chosen_model,system_instructions=system_instructions,user_id=state.get("user_id"))
+        # A single-row result (KPI format) has no distribution for
+        # df.describe() to summarize - mean/min/max all collapse to the one
+        # value and std is NaN, so this call would just ask the LLM to spin
+        # that degenerate summary into "insights", producing filler like
+        # "there is no variation in the data" instead of anything concrete.
+        # The KPI card already states the one fact directly; skip it here.
+        if len(data) <= 1:
+            insights_data = {"insights": [], "visualizations": []}
+        else:
+            insights_data = self.generate_insights(data, columns, user_query,target_model=chosen_model,system_instructions=system_instructions,user_id=state.get("user_id"))
         state["insights"] = insights_data.get("insights", [])
         state["visualizations"] = insights_data.get("visualizations", [])
         state["current_step"] = "data_insight_generator"

@@ -291,7 +291,7 @@ def response_builder_node(state: DataBridgeState) -> DataBridgeState:
         "data": state.get("data", []),
         "insights": state.get("insights", []),
         "visualizations": state.get("visualizations", []),
-        "chart_configs": state.get("chart_configs", {"bar": {}, "line": {}, "pie": {}, "recommended": "bar"}),
+        "chart_configs": state.get("chart_configs", {"bar": {}, "line": {}, "pie": {}, "recommended": None}),
         "steps": execution_steps
     }
 

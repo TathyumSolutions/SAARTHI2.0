@@ -225,6 +225,17 @@ class DataVisualizerAgent:
             return {**not_chart_worthy, "note": "No data was returned to visualize."}
 
         row_count = len(data)
+
+        # A single row is already shown as a KPI/summary card - charting
+        # one data point (one bar, one slice, one line with a single dot)
+        # adds a near-empty-looking panel that duplicates the same number
+        # instead of adding information. Let the KPI card own that case.
+        if row_count <= 1:
+            return {
+                **not_chart_worthy,
+                "note": "Single-value result - shown as a summary card instead of a chart.",
+            }
+
         columns_info = self._classify_columns(data, columns)
         measure_col = self._pick_measure_column(columns_info)
 

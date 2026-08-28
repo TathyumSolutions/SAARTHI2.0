@@ -1684,7 +1684,23 @@
                     const isNaValue = (value) => typeof value === 'string' && /^n\/a\b/i.test(value.trim());
                     const visibleRows = (ui.table || []).filter(row => !Object.values(row).every(isNaValue));
 
-                    if (ui.chart && ui.chart.recommended && ui.chart[ui.chart.recommended]) {
+                    // A "recommended" chart type with no actual plottable data
+                    // (e.g. an empty {} placeholder, or a config with no
+                    // labels/datasets) is not a chart - it's a blank box. Only
+                    // render the canvas when there's real data to draw, so a
+                    // result with nothing chartable falls through to the table
+                    // or KPI card below instead of leaving an empty panel.
+                    const recommendedChart = ui.chart && ui.chart.recommended ? ui.chart[ui.chart.recommended] : null;
+                    const hasChartData = !!(
+                        recommendedChart &&
+                        recommendedChart.type &&
+                        recommendedChart.data &&
+                        Array.isArray(recommendedChart.data.labels) && recommendedChart.data.labels.length > 0 &&
+                        Array.isArray(recommendedChart.data.datasets) && recommendedChart.data.datasets.length > 0 &&
+                        recommendedChart.data.datasets.some(ds => Array.isArray(ds.data) && ds.data.length > 0)
+                    );
+
+                    if (hasChartData) {
                         const chartId = 'chart-' + Date.now();
                         extraOutput += `
                             <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; border-top:3px solid #7c3aed; box-shadow:0 4px 15px rgba(124, 58, 237, 0.15);">
@@ -1694,7 +1710,7 @@
                         setTimeout(() => {
                             const canvasEl = document.getElementById(chartId);
                             if (canvasEl) {
-                                new Chart(canvasEl.getContext('2d'), ui.chart[ui.chart.recommended]);
+                                new Chart(canvasEl.getContext('2d'), recommendedChart);
                             }
                         }, 350);
                     }
@@ -1725,12 +1741,21 @@
                             const keys = Object.keys(primaryRecord);
                             const kpiLabel = keys[1] || keys[0];
                             const kpiValue = primaryRecord[kpiLabel];
+                            // Any other columns on this single row (e.g. the
+                            // filter/dimension the number was computed for,
+                            // like a DPD bucket or a date range) are real
+                            // context, not filler - show them as a subline
+                            // instead of a generic static caption.
+                            const contextParts = keys
+                                .filter(k => k !== kpiLabel)
+                                .map(k => primaryRecord[k])
+                                .filter(v => v !== null && v !== undefined && String(v).trim() !== '' && !isNaValue(v));
 
                             extraOutput += `
                                 <div style="padding: 20px; border-radius: 14px; background: linear-gradient(135deg, #7c3aed, #2563eb); border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35); display: inline-block; min-width: 220px; margin-top: 15px;">
                                     <div style="font-size: 11px; color: rgba(255,255,255,0.8); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${escapeAttr(kpiLabel.replace(/_/g, ' '))}</div>
                                     <div style="font-size: 32px; font-weight: 700; color: #ffffff; margin-top: 5px;">${escapeAttr(kpiValue)}</div>
-                                    <div style="font-size: 12px; color: #d1fae5; margin-top: 5px;">✅ Single summary entry</div>
+                                    ${contextParts.length > 0 ? `<div style="font-size: 12px; color: rgba(255,255,255,0.75); margin-top: 5px;">${escapeAttr(contextParts.join(' · '))}</div>` : ''}
                                 </div>`;
                         }
                     }

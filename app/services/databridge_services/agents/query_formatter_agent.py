@@ -560,32 +560,28 @@ class QueryFormatterAgent:
             f"{col}_{i}" if list(df.columns).count(col) > 1 else col
             for i, col in enumerate(df.columns)]
         insights_data = {}
-        chart_configs = {"bar": {}, "line": {}, "pie": {}, "recommended": "bar"}
+        # No chart type is actually recommended until one of the branches
+        # below computes real, non-empty chart data. Defaulting this to
+        # "bar" (pointing at the still-empty {} placeholder) used to make
+        # the frontend render a blank chart canvas for every single-row/KPI
+        # result, since `recommended` alone is truthy even with nothing to
+        # plot.
+        chart_configs = {"bar": {}, "line": {}, "pie": {}, "recommended": None}
 
         if row_count <= 1 and col_count <= 3:
             format_type = "kpi"
             case_type = "single_output"
             message = f"✅ {row_count} record(s) fetched. Display as KPI or summary."
-            data_records = df.to_dict(orient="records")
-            columns_list = list(df.columns)
-            
-            raw_insights = self.insight_generator.generate_insights(
-                data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions
-            )
-            
-            # FIX: Ensure it always builds a dict with BOTH keys so the bottom code doesn't break
-            if isinstance(raw_insights, dict):
-                insights_data = {
-                    "insights": raw_insights.get("insights", []),
-                    "visualizations": raw_insights.get("visualizations", [])
-                }
-            else:
-                insights_data = {
-                    "insights": raw_insights if isinstance(raw_insights, list) else ["Data fetched successfully."],
-                    "visualizations": []
-                }
-            
-            
+
+            # A single row has no distribution to describe - df.describe()
+            # on one row always yields mean == min == max == the one value
+            # and std = NaN, so asking an LLM to find "3-5 key insights" in
+            # that is guaranteed to produce vacuous statements like "there is
+            # no variation in the data" dressed up as an insight. The KPI
+            # card already states the one concrete fact; skip the LLM call
+            # instead of manufacturing filler around it.
+            insights_data = {"insights": [], "visualizations": []}
+
         elif row_count < 4:
             format_type = "table"
             #case_type = "single_output"
