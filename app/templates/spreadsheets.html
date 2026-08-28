@@ -320,6 +320,23 @@
         <div id="previewModalBody"></div>
     </div>
 </div>
+
+<!-- "Use existing table" match modal, shown before Process when this
+     upload looks like it might be the same table as one already pushed
+     into the database - see /api/databases/<id>/match-candidates. -->
+<div id="matchModalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center;">
+    <div style="background: var(--panel-bg, #1e1e1e); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px; max-width: 520px; width: 90vw; max-height: 85vh; overflow: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="margin: 0; color: var(--text-primary);">Push to Database</h3>
+            <button type="button" class="btn btn-secondary" onclick="closeMatchModal()">Close</button>
+        </div>
+        <div id="matchModalBody"></div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+            <button type="button" class="btn btn-secondary" onclick="closeMatchModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="confirmMatchChoice()">Continue</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -666,14 +683,100 @@
         return div.innerHTML;
     }
 
+    let pendingMatch = null; // { id, btn, tableName, candidates }
+
     async function runAgenticPipeline(id, btn) {
+        btn.disabled = true;
+        btn.innerText = "Checking...";
+        try {
+            const matchRes = await authFetch(`/api/databases/${id}/match-candidates`);
+            const matchData = await matchRes.json();
+            const candidatesByTable = (matchRes.ok && matchData.status === 'success') ? (matchData.candidates || {}) : {};
+            const tableNames = Object.keys(candidatesByTable);
+            const tableName = tableNames[0];
+            const candidates = tableName ? (candidatesByTable[tableName] || []) : [];
+
+            btn.disabled = false;
+            btn.innerText = "Process";
+
+            if (candidates.length > 0) {
+                openMatchModal(id, btn, tableName, candidates);
+                return;
+            }
+        } catch (err) {
+            // Matching is a courtesy check, not a precondition - if it fails
+            // for any reason, fall straight through to a normal Process.
+            console.error('Match-candidates check failed:', err);
+            btn.disabled = false;
+            btn.innerText = "Process";
+        }
+
+        await processConnection(id, btn, null);
+    }
+
+    function openMatchModal(id, btn, tableName, candidates) {
+        pendingMatch = { id, btn, tableName, candidates };
+
+        const options = candidates.map((c, i) => `
+            <label style="display: flex; align-items: flex-start; gap: 8px; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 8px; cursor: pointer;">
+                <input type="radio" name="matchChoice" value="${i}" ${i === 0 && c.is_match ? 'checked' : ''} style="margin-top: 3px;">
+                <span>
+                    <strong>${escapeHtml(c.display_name)}</strong> (${c.row_count} existing row${c.row_count === 1 ? '' : 's'}) - ${c.confidence}% match<br>
+                    <span style="color: var(--text-secondary); font-size: 12px;">${c.is_match ? 'Looks like the same table.' : 'Some columns overlap, but this may be a different table.'}</span>
+                </span>
+            </label>
+        `).join('');
+        const defaultToNew = candidates.every(c => !c.is_match);
+
+        document.getElementById('matchModalBody').innerHTML = `
+            <p style="color: var(--text-secondary); margin-top: 0;">This looks similar to a table you've already pushed to the database. Use the existing table instead of creating a new one?</p>
+            ${options}
+            <label style="display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer;">
+                <input type="radio" name="matchChoice" value="new" ${defaultToNew ? 'checked' : ''}>
+                <span>Create a new table for this upload</span>
+            </label>
+        `;
+        document.getElementById('matchModalOverlay').style.display = 'flex';
+    }
+
+    function closeMatchModal() {
+        document.getElementById('matchModalOverlay').style.display = 'none';
+        pendingMatch = null;
+    }
+
+    async function confirmMatchChoice() {
+        if (!pendingMatch) return;
+        const { id, btn, tableName, candidates } = pendingMatch;
+        const selectedInput = document.querySelector('input[name="matchChoice"]:checked');
+
+        let tableSelections = null;
+        if (selectedInput && selectedInput.value !== 'new') {
+            const candidate = candidates[parseInt(selectedInput.value, 10)];
+            tableSelections = {
+                [tableName]: {
+                    use_existing_table_id: candidate.spreadsheet_table_id,
+                    column_mapping: candidate.column_mapping || {},
+                },
+            };
+        }
+
+        closeMatchModal();
+        await processConnection(id, btn, tableSelections);
+    }
+
+    async function processConnection(id, btn, tableSelections) {
         btn.disabled = true;
         btn.innerText = "Processing...";
         try {
-            const response = await authFetch(`/api/databases/${id}/process`, { method: 'POST' });
+            const options = { method: 'POST' };
+            if (tableSelections) {
+                options.headers = { 'Content-Type': 'application/json' };
+                options.body = JSON.stringify({ table_selections: tableSelections });
+            }
+            const response = await authFetch(`/api/databases/${id}/process`, options);
             const result = await response.json();
-            if (response.ok && result.status === 'success') {
-                showAlert(result.message || 'This spreadsheet is now ready for queries.', 'success');
+            if (response.ok && (result.status === 'success' || result.status === 'partial_error')) {
+                showAlert(result.message || 'This spreadsheet is now ready for queries.', result.status === 'success' ? 'success' : 'error');
             } else {
                 throw new Error(result.message || result.error || 'Something went wrong. Please try again.');
             }

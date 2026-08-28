@@ -213,13 +213,43 @@ def bulk_insert_rows(table: SpreadsheetTable, df: pd.DataFrame, *, connection_id
 
 
 def push_table_to_warehouse(*, connection_id: int, table_name: str, sheet_name, display_name: str,
-                             df: pd.DataFrame, company_code, created_by_user_id: int) -> SpreadsheetIngestionRun:
+                             df: pd.DataFrame, company_code, created_by_user_id: int,
+                             use_existing_table_id=None, column_mapping=None) -> SpreadsheetIngestionRun:
     """Entry point used by the Process button: pushes one spreadsheet-
-    service table's current data into its Postgres warehouse table,
-    creating that table the first time this connection is processed and
-    appending into the same one on every re-process after that (e.g. after
-    the underlying file is replaced via the Edit flow) - so clicking
-    Process repeatedly never errors on "table already exists"."""
+    service table's current data into a Postgres warehouse table.
+
+    - use_existing_table_id (from the "use existing table" checkbox, after
+      spreadsheet_matching_service suggested it): appends into that exact
+      table, renaming incoming columns per column_mapping first. Both are
+      client-supplied, so re-validated here rather than trusted - the
+      target table must belong to the same tenant, and every mapping
+      entry must reference real column names on both sides.
+    - otherwise: creates the table the first time this connection is
+      processed and appends into that same one on every re-process after
+      that (e.g. after the underlying file is replaced via the Edit flow)
+      - so clicking Process repeatedly never errors on "table already
+      exists".
+    """
+    if use_existing_table_id:
+        target = SpreadsheetTable.query.get(use_existing_table_id)
+        if not target:
+            raise ValueError(f"No warehouse table with id {use_existing_table_id}.")
+        if company_code:
+            if target.company_code != company_code:
+                raise ValueError("That table does not belong to your company.")
+        elif target.company_code is not None or target.created_by_user_id != created_by_user_id:
+            raise ValueError("That table is not visible to you.")
+
+        prepared = _prepare_columns(df)
+        if column_mapping:
+            valid_targets = {c['pg_name'] for c in (target.column_schema or [])}
+            safe_mapping = {
+                k: v for k, v in column_mapping.items()
+                if k in prepared.columns and v in valid_targets
+            }
+            prepared = prepared.rename(columns=safe_mapping)
+        return bulk_insert_rows(target, prepared, connection_id=connection_id, mode='append_existing')
+
     existing = (
         SpreadsheetTable.query
         .filter_by(connection_id=connection_id, sheet_name=sheet_name)

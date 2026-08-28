@@ -19,6 +19,7 @@ import psycopg2
 from flask_jwt_extended import jwt_required
 from app.services import spreadsheet_service
 from app.services import spreadsheet_warehouse_service
+from app.services import spreadsheet_matching_service
 from app.utils.auth_helpers import get_current_user
 from app.utils.identifiers import sanitize_identifier as _sanitize_identifier, dedupe_identifiers as _dedupe_identifiers
 from app.services.audit_service import log_event
@@ -714,6 +715,44 @@ def _summarize_spreadsheet_table_for_metamind(table_name: str) -> str:
     return description
 
 
+@bp.route('/<int:db_id>/match-candidates', methods=['GET'])
+@jwt_required()
+def get_match_candidates(db_id):
+    """
+    Returns existing warehouse tables that might be the same logical
+    table as this connection's data - powers the "use existing table"
+    checkbox shown before Process. See spreadsheet_matching_service.py
+    for the matching pipeline; nothing here writes anything.
+    Response: { "status": "success", "candidates": {"<table>": [ {...}, ... ]} }
+    """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    connection = DatabaseConnection.query.get(db_id)
+    if not connection or not _can_view_connection(current_user, connection):
+        return jsonify({"status": "error", "message": "Connection not found"}), 404
+    if (connection.type or '').lower() != 'excel':
+        return jsonify({"status": "error", "message": "Matching is only available for spreadsheet connections"}), 400
+
+    table_records = spreadsheet_service.get_tables_for_connection(connection.id)
+    if not table_records:
+        return jsonify({"status": "error", "message": "No data found for this connection."}), 404
+
+    try:
+        candidates_by_table = {
+            record['table']: spreadsheet_matching_service.match_candidates_for_table(
+                record.get('columns', []), connection.name, connection,
+            )
+            for record in table_records
+        }
+        return jsonify({"status": "success", "candidates": candidates_by_table}), 200
+    except Exception as e:
+        print(f"Match candidates error: {e}")
+        print(traceback.format_exc())
+        return jsonify({"status": "error", "message": "Could not compute match candidates. Please try again."}), 500
+
+
 @bp.route('/<int:db_id>/process', methods=['POST'])
 @jwt_required()
 def process_database_connection(db_id):
@@ -755,6 +794,14 @@ def process_database_connection(db_id):
                 db.session.commit()
                 return jsonify({"status": "error", "message": message}), 404
 
+            # Optional per-table "use existing table" selections from the
+            # checkbox shown after /match-candidates - {"<table>": {
+            # "use_existing_table_id": <id>, "column_mapping": {...}}}.
+            # Absent/empty means "create or append to this connection's
+            # own table", the existing behavior.
+            payload = request.get_json(silent=True) or {}
+            table_selections = payload.get('table_selections') or {}
+
             # Push each table into the dedicated Postgres warehouse first -
             # this is the actual "Process" action now. A hard failure here
             # (e.g. the spreadsheet_db bind is unreachable) fails the whole
@@ -764,6 +811,7 @@ def process_database_connection(db_id):
                 push_runs = []
                 for record in table_records:
                     df = spreadsheet_service.get_table_df(record['table'])
+                    selection = table_selections.get(record['table']) or {}
                     run = spreadsheet_warehouse_service.push_table_to_warehouse(
                         connection_id=connection.id,
                         table_name=record['table'],
@@ -772,8 +820,15 @@ def process_database_connection(db_id):
                         df=df,
                         company_code=connection.company_code,
                         created_by_user_id=connection.created_by_user_id,
+                        use_existing_table_id=selection.get('use_existing_table_id'),
+                        column_mapping=selection.get('column_mapping'),
                     )
                     push_runs.append(run)
+            except ValueError as e:
+                connection.status = 'error'
+                connection.error_message = str(e)
+                db.session.commit()
+                return jsonify({"status": "error", "message": str(e)}), 400
             except Exception as e:
                 print(f"Warehouse push error: {e}")
                 print(traceback.format_exc())
