@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required
 import requests
 from app import db, limiter
 from app.models.api_connector import ApiConnector
+from app.models.resource_mapping import ResourceMapping
 from app.utils.crypto import encrypt, decrypt
 from app.utils.network_guard import is_safe_url, build_full_api_url
 from app.utils.auth_helpers import get_current_user
@@ -160,6 +161,7 @@ def delete_tool(integration_name):
             return jsonify({"status": "error", "message": "Only the creator or a company admin can delete this tool"}), 403
 
         tool_id = tool.id
+        ResourceMapping.query.filter_by(resource_type='api', resource_id=tool_id).delete()
         db.session.delete(tool)
         db.session.commit()
 

@@ -9,8 +9,10 @@ from datetime import datetime
 from flask_jwt_extended import jwt_required
 from app import db, limiter
 from app.models.file_resource import FileResource
+from app.models.resource_mapping import ResourceMapping
 from app.utils.auth_helpers import get_current_user
 from app.services.audit_service import log_event
+from app.services.llm_service import delete_document_vectors
 
 try:
     import magic
@@ -240,12 +242,18 @@ def delete_file(document_code):
     if resource.created_by_user_id != current_user.id and current_user.role != 'admin':
         return jsonify({'error': 'Only the uploader or a company admin can delete this file'}), 403
 
+    try:
+        delete_document_vectors(document_code)
+    except Exception as e:
+        return jsonify({'error': f'Failed to delete vector embeddings: {str(e)}'}), 500
+
     if resource.file_path and os.path.exists(resource.file_path):
         try:
             os.remove(resource.file_path)
         except Exception as e:
             return jsonify({'error': f'Failed to delete file: {str(e)}'}), 500
 
+    ResourceMapping.query.filter_by(resource_type='file', resource_id=resource.id).delete()
     db.session.delete(resource)
     db.session.commit()
 

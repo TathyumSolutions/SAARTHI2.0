@@ -9,6 +9,7 @@ import io
 from flask import Blueprint, request, jsonify, send_file
 from app import db
 from app.models.database_connection import DatabaseConnection
+from app.models.resource_mapping import ResourceMapping
 import subprocess
 import sys  
 import os
@@ -419,6 +420,7 @@ def delete_database_connection(db_id):
 
         is_excel = (connection.type or '').lower() == 'excel'
         connection_id = connection.id
+        ResourceMapping.query.filter_by(resource_type='database', resource_id=connection_id).delete()
         db.session.delete(connection)
         db.session.commit()
 

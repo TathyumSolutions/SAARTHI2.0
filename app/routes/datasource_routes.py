@@ -14,8 +14,6 @@ from app.models.resource_mapping import ResourceMapping
 from app.models.user import User
 from app.utils.auth_helpers import get_current_user
 from app.services.audit_service import log_event
-from qdrant_client import QdrantClient
-from qdrant_client.http import models
 
 bp = Blueprint('datasource', __name__, url_prefix='/api/datasources')
 
@@ -438,26 +436,14 @@ def delete_datasource(document_code):
         if resource.created_by_user_id != current_user.id and current_user.role != 'admin':
             return jsonify({"status": "error", "message": "Only the uploader or a company admin can delete this file"}), 403
 
-        qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
-        qdrant_client.delete(
-            collection_name=os.getenv("QDRANT_COLLECTION", "saarthi_unstructured"),
-            points_selector=models.FilterSelector(
-                filter=models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key="metadata.document_code",
-                            match=models.MatchValue(value=document_code),
-                        )
-                    ]
-                )
-            ),
-        )
+        llm_service.delete_document_vectors(document_code)
 
         if resource.file_path and os.path.exists(resource.file_path):
             os.remove(resource.file_path)
 
         file_name = resource.file_name
         resource_id = resource.id
+        ResourceMapping.query.filter_by(resource_type='file', resource_id=resource_id).delete()
         db.session.delete(resource)
         db.session.commit()
 

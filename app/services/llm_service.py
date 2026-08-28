@@ -510,6 +510,28 @@ class LLMService:
         except Exception as e:
             return {"error": f"Processing failed: {str(e)}"}
 
+    def delete_document_vectors(self, document_code):
+        """Remove every chunk tagged with this document_code from Qdrant -
+        the single source of truth for purging a file's embeddings, so any
+        code path that deletes a FileResource can call this instead of
+        re-implementing the filter."""
+        from qdrant_client.http import models as qmodels
+
+        client = QdrantClient(url=self.qdrant_url)
+        client.delete(
+            collection_name=self.collection_name,
+            points_selector=qmodels.FilterSelector(
+                filter=qmodels.Filter(
+                    must=[
+                        qmodels.FieldCondition(
+                            key="metadata.document_code",
+                            match=qmodels.MatchValue(value=document_code),
+                        )
+                    ]
+                )
+            ),
+        )
+
     def _summarize_document_topics(self, documents):
         """
         Short, plain-language summary of what a document actually covers -
@@ -1012,7 +1034,14 @@ def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system
         feedback_context=feedback_context,
         hint_document_codes=hint_document_codes,
     )
-       
+
+
+def delete_document_vectors(document_code):
+    """Module-level wrapper so route code can purge a file's Qdrant chunks
+    without instantiating its own LLMService (which eagerly loads the
+    embeddings model)."""
+    return _shared_llm_service.delete_document_vectors(document_code)
+
 
 #     def get_smart_response(self, user_query,model_name, session_id=1,custom_key=''):
 #         """
