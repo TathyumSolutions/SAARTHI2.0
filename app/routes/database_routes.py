@@ -18,31 +18,12 @@ import pandas as pd
 import psycopg2
 from flask_jwt_extended import jwt_required
 from app.services import spreadsheet_service
+from app.services import spreadsheet_warehouse_service
 from app.utils.auth_helpers import get_current_user
+from app.utils.identifiers import sanitize_identifier as _sanitize_identifier, dedupe_identifiers as _dedupe_identifiers
 from app.services.audit_service import log_event
 
 bp = Blueprint('database', __name__, url_prefix='/api/databases')
-
-
-def _sanitize_identifier(name: str) -> str:
-    """Turns a messy file/column name into a safe SQL table/column name."""
-    name = re.sub(r'[^a-zA-Z0-9_]', '_', (name or '').strip().lower())
-    name = re.sub(r'_+', '_', name).strip('_')
-    if not name or name[0].isdigit():
-        name = f"col_{name}"
-    return name
-
-
-def _dedupe_identifiers(names):
-    """Ensures identifiers are unique after sanitization."""
-    seen = {}
-    out = []
-    for raw in names:
-        base = _sanitize_identifier(str(raw))
-        count = seen.get(base, 0)
-        seen[base] = count + 1
-        out.append(base if count == 0 else f"{base}_{count + 1}")
-    return out
 
 
 def serialize_connection(conn):
@@ -758,7 +739,8 @@ def process_database_connection(db_id):
         }
 
         if (connection.type or '').lower() == 'excel':
-            tables = [t['table'] for t in spreadsheet_service.get_tables_for_connection(connection.id)]
+            table_records = spreadsheet_service.get_tables_for_connection(connection.id)
+            tables = [t['table'] for t in table_records]
 
             if not tables:
                 # The most common cause: this connection's row survived in
@@ -773,26 +755,60 @@ def process_database_connection(db_id):
                 db.session.commit()
                 return jsonify({"status": "error", "message": message}), 404
 
+            # Push each table into the dedicated Postgres warehouse first -
+            # this is the actual "Process" action now. A hard failure here
+            # (e.g. the spreadsheet_db bind is unreachable) fails the whole
+            # request; a bad row within an otherwise-good upload does not -
+            # see spreadsheet_warehouse_service.bulk_insert_rows.
+            try:
+                push_runs = []
+                for record in table_records:
+                    df = spreadsheet_service.get_table_df(record['table'])
+                    run = spreadsheet_warehouse_service.push_table_to_warehouse(
+                        connection_id=connection.id,
+                        table_name=record['table'],
+                        sheet_name=record.get('sheet'),
+                        display_name=connection.name,
+                        df=df,
+                        company_code=connection.company_code,
+                        created_by_user_id=connection.created_by_user_id,
+                    )
+                    push_runs.append(run)
+            except Exception as e:
+                print(f"Warehouse push error: {e}")
+                print(traceback.format_exc())
+                connection.status = 'error'
+                connection.error_message = 'Could not push this data into the database. Please try again.'
+                db.session.commit()
+                return jsonify({"status": "error", "message": connection.error_message}), 500
+
+            # Best-effort content summarization for the AI router - doesn't
+            # block success now that the warehouse push above is the
+            # primary outcome of clicking Process.
             try:
                 for table_name in tables:
                     _summarize_spreadsheet_table_for_metamind(table_name)
             except Exception as e:
                 print(f"Table summarization error: {e}")
                 print(traceback.format_exc())
-                connection.status = 'error'
-                connection.error_message = 'Something went wrong while summarizing these tables. Please try again.'
-                db.session.commit()
-                return jsonify({"status": "error", "message": "Something went wrong while summarizing these tables. Please try again."}), 500
 
             for uid in affected_user_ids:
                 generate_router_config(user_id=uid)
+
+            total_success = sum(r.success_rows for r in push_runs)
+            total_errors = sum(r.error_rows for r in push_runs)
             connection.status = 'processed'
             connection.error_message = None
             db.session.commit()
+
             described = ", ".join(f'"{t}"' for t in tables)
+            message = f"Pushed {total_success} row(s) into the database"
+            message += f", {total_errors} row(s) failed - see run details." if total_errors else "."
+            message += f" Tables ready for queries: {described}."
             return jsonify({
-                "status": "success",
-                "message": f"Tables ready for queries: {described}."
+                "status": "success" if not total_errors else "partial_error",
+                "message": message,
+                "runs": [r.to_dict() for r in push_runs],
             })
 
         try:
