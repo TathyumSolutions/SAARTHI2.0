@@ -36,7 +36,7 @@ def chat():
             model:
               type: string
               description: Optional model alias to use for the response.
-              example: gpt-4o-mini
+              example: ollama://llama3
             session_id:
               type: string
               description: Optional session ID for conversation context.
@@ -52,7 +52,7 @@ def chat():
         examples:
           application/json:
             query: "Show revenue by region for last quarter."
-            model: "gpt-4o-mini"
+            model: "ollama://llama3"
             session_id: "external-123"
             chat_history:
               - role: "user"
@@ -115,7 +115,7 @@ def chat():
     if not query:
         return jsonify({"error": "query is required"}), 400
 
-    model = data.get('model', 'gpt-4o-mini')
+    model = data.get('model', 'ollama://llama3')
     session_id = data.get('session_id', 1)
     chat_history = data.get('chat_history')
     system_instructions = data.get('system_instructions', '')

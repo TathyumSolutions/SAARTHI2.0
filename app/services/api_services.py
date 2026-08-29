@@ -7,6 +7,7 @@ import json
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.services.stream_manager import stream_manager
+from app.models.model_config import ModelConfiguration
 from app.utils.network_guard import is_safe_url, build_full_api_url
 from app.utils.redaction import redact_secrets
 from app.utils.crypto import decrypt
@@ -77,7 +78,16 @@ def fetch_and_translate_tools():
     ]
 
 
-def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', ollama_config=None,display_query=None,system_instructions='',feedback_context='',hint_tool_name=''):
+def _resolve_model_runtime_settings(model_name: str):
+    cfg = ModelConfiguration.query.filter_by(model=model_name).order_by(ModelConfiguration.id.desc()).first()
+    settings = cfg.settings if cfg and isinstance(cfg.settings, dict) else {}
+    return {
+        "custom_key": settings.get("custom_key") or "",
+        "base_url": settings.get("base_url") or "",
+    }
+
+
+def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', model_base_url='', ollama_config=None,display_query=None,system_instructions=''):
     """
     Dynamically routes queries to models, strictly enforcing tool execution,
     performs the actual API execution, and returns a fully parsed response context.
@@ -134,24 +144,16 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         "3. If the user's request does NOT match any available tool, you must output exactly this text: "
         "'ERROR: No matching workflow tool found to execute this request.' Do not write anything else."
     )
-    if forced_tool_name:
-        system_prompt += (
-            f"\n\nTOOL SELECTED BY THE ROUTER (from live tool metadata): '{forced_tool_name}'. "
-            "Call exactly this tool for this request."
-        )
     if system_instructions.strip():
         system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
-    if feedback_context:
-        print(f"🧠 [FEEDBACK-DEBUG] [API] Using feedback context:\n{feedback_context}")
-        system_prompt += (
-            f"\n\n{feedback_context}\n\n"
-            "That is feedback on how PAST similar requests were handled, not part of this "
-            "request. It can be about anything - wrong tool picked, wrong parameter value, "
-            "wrong endpoint, a formatting problem. If any of it is still relevant here, adjust "
-            "which tool or arguments you pick accordingly; ignore whatever doesn't apply."
-        )
 
     try:
+        runtime_settings = _resolve_model_runtime_settings(model_name)
+        if not custom_key and runtime_settings.get("custom_key"):
+            custom_key = runtime_settings.get("custom_key")
+        if not model_base_url and runtime_settings.get("base_url"):
+            model_base_url = runtime_settings.get("base_url")
+
         push_tool_event("start", "Your Question", f"\"{user_message}\"")
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_message)]
         push_tool_event("complete", "Your Question", f"\"{user_message}\"")
@@ -207,19 +209,25 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         # --- ROUTE C: DYNAMIC CLOUD PROVIDERS (api://) ---
         elif str(model_name).startswith("api://"):
             actual_model = model_name.replace("api://", "").lower()
-            from app.services.llm_providers import resolve_dynamic_llm
-            dynamic_llm = resolve_dynamic_llm(
-                actual_model,
-                custom_key,
-                temperature=0,
-                openai_fallback_key=os.getenv("OPENAI_API_KEY"),
-                strict=False,
-            )
+            if model_base_url:
+                dynamic_llm = ChatOpenAI(
+                    model=actual_model,
+                    temperature=0,
+                    openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY", "placeholder-key"),
+                    openai_api_base=model_base_url,
+                )
+            elif "claude" in actual_model:
+                from langchain_anthropic import ChatAnthropic
+                dynamic_llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY"))
+            elif "gemini" in actual_model:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                dynamic_llm = ChatGoogleGenerativeAI(model=actual_model, temperature=0, google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY"))
+            elif "deepseek" in actual_model:
+                dynamic_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"), openai_api_base="https://api.deepseek.com/v1")
+            else:
+                dynamic_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
 
-            ai_response = tracked_invoke(
-                _bind_tools(dynamic_llm), messages,
-                purpose="api_tool.selection", model_name=actual_model, session_id=session_id,
-            )
+            ai_response = dynamic_llm.bind_tools(llm_tools_list).invoke(messages)
             has_tools = bool(ai_response.tool_calls)
             tool_payload = ai_response.tool_calls if has_tools else None
             generation_text = ai_response.content
@@ -230,6 +238,8 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
             actual_model = model_name.replace("ollama://", "")
             if not ollama_config:
                 ollama_config = {"url": "http://localhost:11434/api/chat", "temperature": 0}
+            if model_base_url:
+                ollama_config["url"] = model_base_url
             payload = {
                 "model": actual_model,
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
@@ -392,16 +402,23 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                             refinement_llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
                         elif str(model_name).startswith("api://"):
                             actual_model = model_name.replace("api://", "").lower()
-                            refinement_model_name = actual_model
-                            refinement_provider = None
-                            from app.services.llm_providers import resolve_dynamic_llm
-                            refinement_llm = resolve_dynamic_llm(
-                                actual_model,
-                                custom_key,
-                                temperature=0,
-                                openai_fallback_key=os.getenv("OPENAI_API_KEY"),
-                                strict=False,
-                            )
+                            if model_base_url:
+                                refinement_llm = ChatOpenAI(
+                                    model=actual_model,
+                                    temperature=0,
+                                    openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY", "placeholder-key"),
+                                    openai_api_base=model_base_url,
+                                )
+                            elif "claude" in actual_model:
+                                from langchain_anthropic import ChatAnthropic
+                                refinement_llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key if custom_key else os.getenv("ANTHROPIC_API_KEY"))
+                            elif "gemini" in actual_model:
+                                from langchain_google_genai import ChatGoogleGenerativeAI
+                                refinement_llm = ChatGoogleGenerativeAI(model=actual_model, temperature=0, google_api_key=custom_key if custom_key else os.getenv("GOOGLE_API_KEY"))
+                            elif "deepseek" in actual_model:
+                                refinement_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("DEEPSEEK_API_KEY"), openai_api_base="https://api.deepseek.com/v1")
+                            else:
+                                refinement_llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))
                         else:
                             refinement_model_name = "gpt-4o-mini"
                             refinement_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, openai_api_key=custom_key if custom_key else os.getenv("OPENAI_API_KEY"))

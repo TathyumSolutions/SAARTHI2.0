@@ -17,6 +17,7 @@ from app.models.query_log import QueryLog
 from app.models.user import User
 from app.models.chat import ChatSession
 from app.services.router_service import RouterService
+from app.routes.model_config_routes import _resolve_company_context
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
@@ -398,6 +399,7 @@ def send_message():
     stream_manager.start_new_query(session_id)
 
     custom_key = data.get('custom_key', '')
+    model_base_url = data.get('model_base_url', '')
     system_instructions = data.get('system_instructions', '')
 
     if not user_query:
@@ -406,15 +408,28 @@ def send_message():
     if not model_name:
         return jsonify({"error": "No valid LLM model selected. Please select a model from the dropdown."}), 400
     
+    company_ctx = _resolve_company_context()
+
     if model_name.startswith('api://') or model_name.startswith('ollama://'):
         # Querying the record to fetch credentials securely on the server
-        config = ModelConfiguration.query.filter_by(model=model_name).first()
-        if config:
-            db_settings = config.settings or {}
+        config_rows = ModelConfiguration.query.filter_by(model=model_name).all()
+        selected_config = None
+        for row in config_rows:
+            row_settings = row.settings if isinstance(row.settings, dict) else {}
+            if str(row_settings.get('company_code') or '').strip() == company_ctx['company_code']:
+                selected_config = row
+                break
+        if not selected_config and config_rows:
+            selected_config = config_rows[0]
+
+        if selected_config:
+            db_settings = selected_config.settings or {}
             # If a custom key was saved, use it to override the default credentials pipeline
-            if db_settings.get('custom_key'):
+            if not custom_key and db_settings.get('custom_key'):
                 custom_key = db_settings.get('custom_key')
                 print(f"DEBUG: Successfully intercepted database router '{model_name}'. Injecting secure custom credentials token.")
+            if not model_base_url and db_settings.get('base_url'):
+                model_base_url = db_settings.get('base_url')
 
     try:
         # STEP 1: Get the answer from your RAG logic in LLMService

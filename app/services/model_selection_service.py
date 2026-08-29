@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 from app.models.model_config import ModelConfiguration
+from app.models.user_model_pipeline import UserModelPipeline
+from app.services.model_registry_service import MODELS_REGISTRY
 
 
 PIPELINE_STEPS = [
@@ -53,8 +55,17 @@ def _is_paid_api_model(model_name: str, provider: str) -> bool:
     )
 
 
-def get_available_models(user_id: int = 1) -> List[Dict[str, str]]:
-    rows = ModelConfiguration.query.filter_by(user_id=user_id).all()
+def _row_company_code(row: ModelConfiguration) -> str:
+    settings = row.settings if isinstance(row.settings, dict) else {}
+    return str(settings.get("company_code") or "").strip()
+
+
+def get_available_models(user_id: int = 1, company_code: Optional[str] = None) -> List[Dict[str, str]]:
+    rows = ModelConfiguration.query.all()
+    if company_code:
+        rows = [row for row in rows if _row_company_code(row) == company_code]
+    else:
+        rows = [row for row in rows if row.user_id == user_id]
 
     seen = set()
     options: List[Dict[str, str]] = []
@@ -85,7 +96,46 @@ def get_global_default_config(user_id: int = 1) -> Optional[ModelConfiguration]:
     return ModelConfiguration.query.filter_by(name="global_default").first()
 
 
+def _bare_model_name(model_name: Optional[str]) -> str:
+    """Compare UI model values with registry values without provider prefixes."""
+    value = str(model_name or "").strip()
+    for prefix in ("ollama://", "api://"):
+        if value.startswith(prefix):
+            return value[len(prefix):]
+    return value
+
+
+def _runtime_model_name(model_name: Optional[str]) -> Optional[str]:
+    value = str(model_name or "").strip()
+    if value in MODELS_REGISTRY and MODELS_REGISTRY[value].get("type") == "open_source":
+        return f"ollama://{value}"
+    return value or None
+
+
 def get_model_for_step(step_name: str, requested_main_model: Optional[str] = None, user_id: int = 1) -> Optional[str]:
+    user_pipeline = UserModelPipeline.query.filter_by(user_id=user_id).first()
+
+    # A model selected directly in the chat bar is an explicit per-request
+    # override. It takes precedence over both the saved main model and its
+    # recommended per-step models.
+    if (
+        requested_main_model
+        and user_pipeline
+        and _bare_model_name(requested_main_model) != _bare_model_name(user_pipeline.main_model)
+    ):
+        return _runtime_model_name(requested_main_model)
+
+    if user_pipeline:
+        step_models = user_pipeline.step_models if isinstance(user_pipeline.step_models, dict) else {}
+        override_model = step_models.get(step_name)
+        if not override_model:
+            label_by_key = {step["key"]: step["label"] for step in PIPELINE_STEPS}
+            override_model = step_models.get(label_by_key.get(step_name, ""))
+        if override_model:
+            return _runtime_model_name(override_model)
+        if user_pipeline.main_model:
+            return _runtime_model_name(user_pipeline.main_model)
+
     config = get_global_default_config(user_id=user_id)
 
     selected_model = requested_main_model
@@ -97,13 +147,13 @@ def get_model_for_step(step_name: str, requested_main_model: Optional[str] = Non
         if isinstance(overrides, dict):
             override_model = overrides.get(step_name)
             if override_model:
-                return override_model
+                return _runtime_model_name(override_model)
 
-    return selected_model
+    return _runtime_model_name(selected_model)
 
 
-def get_recommended_preset_payload(preset_key: str, user_id: int = 1) -> Dict[str, object]:
-    available = get_available_models(user_id=user_id)
+def get_recommended_preset_payload(preset_key: str, user_id: int = 1, company_code: Optional[str] = None) -> Dict[str, object]:
+    available = get_available_models(user_id=user_id, company_code=company_code)
     if not available:
         return {
             "key": preset_key,

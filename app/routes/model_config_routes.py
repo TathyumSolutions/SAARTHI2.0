@@ -2,6 +2,9 @@
 Model Configuration API Routes
 Handles LLM model settings, fine-tuning, and custom model management
 """
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from app import db                                       # CODE CHANGE: Imported database instance
@@ -33,18 +36,152 @@ def _resolve_user_id() -> int:
         return 1
 
 
+def _get_auth_db_connection():
+    base_uri = os.environ.get('ENVIRONMENT_DATABASE_URL') or "postgresql://saarthi:password@db:5432/saarthi_db"
+    if "saarthi_db" in base_uri:
+        auth_db_uri = base_uri.replace("saarthi_db", "saarthi_auth_db")
+    else:
+        auth_db_uri = "postgresql://saarthi:password@db:5432/saarthi_auth_db"
+    return psycopg2.connect(auth_db_uri)
+
+
+def _resolve_company_context():
+    user_id = _resolve_user_id()
+    fallback_company = "default_company"
+    fallback_name = "Default Company"
+    fallback_role = "user"
+
+    try:
+        conn = _get_auth_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT company_code, role, name FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone() or {}
+        cur.close()
+        conn.close()
+
+        company_code = str(row.get("company_code") or fallback_company).strip() or fallback_company
+        company_name = str(row.get("name") or fallback_name).strip() or fallback_name
+        role = str(row.get("role") or fallback_role).strip().lower() or fallback_role
+        return {
+            "user_id": user_id,
+            "company_code": company_code,
+            "company_name": company_name,
+            "role": role,
+        }
+    except Exception:
+        return {
+            "user_id": user_id,
+            "company_code": fallback_company,
+            "company_name": fallback_name,
+            "role": fallback_role,
+        }
+
+
+def _settings_company_code(settings):
+    if not isinstance(settings, dict):
+        return ""
+    return str(settings.get("company_code") or "").strip()
+
+
+def _list_company_configs(company_code: str):
+    rows = ModelConfiguration.query.all()
+    scoped = []
+    for row in rows:
+        row_company_code = str(row.company_code or "").strip()
+        row_settings_company = _settings_company_code(row.settings)
+        if row_company_code == company_code or row_settings_company == company_code:
+            scoped.append(row)
+    return scoped
+
+
+def _seed_default_open_source_models(company_ctx: dict):
+    company_code = company_ctx["company_code"]
+    existing = _list_company_configs(company_code=company_code)
+    existing_models = {row.model for row in existing if row.name != "global_default"}
+
+    defaults = [
+        {
+            "name": "Llama 3",
+            "model": "ollama://llama3",
+            "provider": "ollama",
+        },
+        {
+            "name": "Qwen 2.5 3B",
+            "model": "ollama://qwen2.5:3b",
+            "provider": "ollama",
+        },
+    ]
+
+    created_any = False
+    for item in defaults:
+        if item["model"] in existing_models:
+            continue
+        cfg = ModelConfiguration(
+            name=item["name"],
+            model=item["model"],
+            provider=item["provider"],
+            user_id=company_ctx["user_id"],
+            company_code=company_code,
+            settings={
+                "company_code": company_code,
+                "company_name": company_ctx.get("company_name", ""),
+                "model_engine": "ollama",
+                "base_url": "http://ollama:11434/api/generate",
+                "seeded_default": True,
+            },
+        )
+        db.session.add(cfg)
+        created_any = True
+
+    if created_any:
+        db.session.commit()
+
+
+def _ensure_default_model_setup(company_ctx: dict):
+    _seed_default_open_source_models(company_ctx)
+
+    user_id = company_ctx["user_id"]
+    existing_default = ModelConfiguration.query.filter_by(name='global_default', user_id=user_id).first()
+    if existing_default:
+        return
+
+    scoped_models = _list_company_configs(company_ctx["company_code"])
+    llama_cfg = next((row for row in scoped_models if (row.model or "").strip() == "ollama://llama3"), None)
+
+    default_model = llama_cfg.model if llama_cfg else "ollama://llama3"
+    default_provider = llama_cfg.provider if llama_cfg else "ollama"
+
+    seeded_default = ModelConfiguration(
+        name='global_default',
+        user_id=user_id,
+        company_code=company_ctx["company_code"],
+        model=default_model,
+        provider=default_provider,
+        settings={
+            "step_overrides": {},
+            "company_code": company_ctx["company_code"],
+            "company_name": company_ctx.get("company_name", ""),
+            "seeded_default": True,
+        },
+    )
+    db.session.add(seeded_default)
+    db.session.commit()
+
+
 @bp.route('/global-selection', methods=['GET'])
 @jwt_required()
 def get_global_model_selection():
-    user_id = _resolve_user_id()
-    config = get_global_default_config(user_id=user_id)
+    ctx = _resolve_company_context()
+    _ensure_default_model_setup(ctx)
+    config = get_global_default_config(user_id=ctx['user_id'])
     return jsonify(config.to_dict() if config else {}), 200
 
 
 @bp.route('/global-selection', methods=['POST'])
 @jwt_required()
 def save_global_model_selection():
-    user_id = _resolve_user_id()
+    ctx = _resolve_company_context()
+    user_id = ctx['user_id']
     data = request.get_json() or {}
 
     main_model = data.get('main_model')
@@ -55,19 +192,31 @@ def save_global_model_selection():
     if not isinstance(step_overrides, dict):
         return jsonify({'error': 'step_overrides must be an object'}), 400
 
+    provider = str(data.get('provider') or '').strip()
+    if not provider and str(main_model).startswith('ollama://'):
+        provider = 'ollama'
+
     config = ModelConfiguration.query.filter_by(name='global_default', user_id=user_id).first()
     if not config:
         config = ModelConfiguration(
             name='global_default',
             user_id=user_id,
+            company_code=ctx['company_code'],
             model=main_model,
-            provider=data.get('provider', ''),
+            provider=provider,
             settings={},
         )
 
     config.model = main_model
-    config.provider = data.get('provider', config.provider or '')
-    config.settings = {'step_overrides': step_overrides}
+    config.company_code = ctx['company_code']
+    config.provider = provider or (config.provider or '')
+    existing_settings = config.settings if isinstance(config.settings, dict) else {}
+    config.settings = {
+        **existing_settings,
+        'step_overrides': step_overrides,
+        'company_code': ctx['company_code'],
+        'company_name': ctx.get('company_name', ''),
+    }
 
     db.session.add(config)
     db.session.commit()
@@ -77,10 +226,11 @@ def save_global_model_selection():
 @bp.route('/global-selection/options', methods=['GET'])
 @jwt_required()
 def get_global_selection_options():
-    user_id = _resolve_user_id()
+    ctx = _resolve_company_context()
+    _ensure_default_model_setup(ctx)
     return jsonify(
         {
-            'models': get_available_models(user_id=user_id),
+            'models': get_available_models(user_id=ctx['user_id'], company_code=ctx['company_code']),
             'steps': PIPELINE_STEPS,
             'presets': [
                 {
@@ -96,8 +246,13 @@ def get_global_selection_options():
 @bp.route('/global-selection/preset/<string:preset_key>', methods=['GET'])
 @jwt_required()
 def get_global_selection_preset(preset_key):
-    user_id = _resolve_user_id()
-    payload = get_recommended_preset_payload(preset_key=preset_key, user_id=user_id)
+    ctx = _resolve_company_context()
+    _ensure_default_model_setup(ctx)
+    payload = get_recommended_preset_payload(
+        preset_key=preset_key,
+        user_id=ctx['user_id'],
+        company_code=ctx['company_code'],
+    )
     return jsonify(payload), 200
 
 @bp.route('/configurations', methods=['GET'])
@@ -111,7 +266,14 @@ def get_configurations():
     if not current_user:
         return jsonify({"error": "Authentication required"}), 401
 
-    configs = ModelConfiguration.query.filter_by(user_id=current_user.id).all()
+    ctx = _resolve_company_context()
+    _ensure_default_model_setup(ctx)
+
+    configs = (
+        ModelConfiguration.query
+        .filter(ModelConfiguration.user_id == current_user.id, ModelConfiguration.name != 'global_default')
+        .all()
+    )
     return jsonify({"configurations": [c.to_dict() for c in configs]}), 200
 
 
@@ -133,11 +295,18 @@ def create_configuration():
     if not data.get('name') or not data.get('model') or not data.get('provider'):
         return jsonify({"error": "Missing required fields: name, model, and provider are mandatory."}), 400
 
+    settings = data.get('settings', {}) or {}
+    if not isinstance(settings, dict):
+        return jsonify({"error": "settings must be an object"}), 400
+
+    settings.setdefault('company_code', current_user.company_code or 'default_company')
+    settings.setdefault('company_name', getattr(current_user, 'name', '') or '')
+
     new_config = ModelConfiguration(
         name=data.get('name'),
         model=data.get('model'),
         provider=data.get('provider'),
-        settings=data.get('settings', {}),
+        settings=settings,
         company_code=current_user.company_code,
         user_id=current_user.id
     )
@@ -189,8 +358,11 @@ def update_configuration(config_id):
     if 'provider' in data:
         config.provider = data['provider']
     if 'settings' in data:
+        if not isinstance(data['settings'], dict):
+            return jsonify({"error": "settings must be an object"}), 400
         # Merge incoming settings into existing configuration JSON field
-        config.settings = {**config.settings, **data['settings']}
+        existing_settings = config.settings if isinstance(config.settings, dict) else {}
+        config.settings = {**existing_settings, **data['settings']}
 
     db.session.commit()
     return jsonify({

@@ -20,7 +20,7 @@ import pandas as pd
 
 from app.services.stream_manager import stream_manager
 from app.services import spreadsheet_service
-from app.services.llm_call_logger import tracked_invoke, record_ollama_call
+from app.models.model_config import ModelConfiguration
 
 ALLOWED_FILTER_OPS = {"==", "!=", ">", "<", ">=", "<=", "in", "contains", "not_contains"}
 ALLOWED_AGG_FUNCS = {"sum", "mean", "count", "min", "max", "median", "nunique"}
@@ -102,6 +102,12 @@ def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_cont
 
     messages = [SystemMessage(content=system_content), HumanMessage(content=user_content)]
 
+    cfg = ModelConfiguration.query.filter_by(model=model_name).order_by(ModelConfiguration.id.desc()).first()
+    cfg_settings = cfg.settings if cfg and isinstance(cfg.settings, dict) else {}
+    model_base_url = cfg_settings.get("base_url") or ""
+    if not custom_key and cfg_settings.get("custom_key"):
+        custom_key = cfg_settings.get("custom_key")
+
     if model_name in ("gpt-4o", "gpt-4o-mini"):
         from langchain_openai import ChatOpenAI
         llm = ChatOpenAI(model=model_name, temperature=0, openai_api_key=custom_key or os.getenv("OPENAI_API_KEY"))
@@ -111,24 +117,35 @@ def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_cont
 
     if str(model_name).startswith("api://"):
         actual_model = model_name.replace("api://", "").lower()
-        llm = resolve_dynamic_llm(
-            actual_model,
-            custom_key,
-            temperature=0,
-            openai_fallback_key=custom_key or os.getenv("OPENAI_API_KEY"),
-            strict=False,
-        )
-        return tracked_invoke(
-            llm, messages, purpose=purpose, model_name=actual_model, session_id=session_id,
-        ).content
+        if model_base_url:
+            from langchain_openai import ChatOpenAI
+            llm = ChatOpenAI(
+                model=actual_model,
+                temperature=0,
+                openai_api_key=custom_key or os.getenv("OPENAI_API_KEY", "placeholder-key"),
+                openai_api_base=model_base_url,
+            )
+        elif "claude" in actual_model:
+            from langchain_anthropic import ChatAnthropic
+            llm = ChatAnthropic(model=actual_model, temperature=0, anthropic_api_key=custom_key or os.getenv("ANTHROPIC_API_KEY"))
+        elif "gemini" in actual_model:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            llm = ChatGoogleGenerativeAI(model=actual_model, temperature=0, google_api_key=custom_key or os.getenv("GOOGLE_API_KEY"))
+        elif "deepseek" in actual_model:
+            from langchain_openai import ChatOpenAI
+            llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key or os.getenv("DEEPSEEK_API_KEY"), openai_api_base="https://api.deepseek.com/v1")
+        else:
+            from langchain_openai import ChatOpenAI
+            llm = ChatOpenAI(model=actual_model, temperature=0, openai_api_key=custom_key or os.getenv("OPENAI_API_KEY"))
+        return llm.invoke(messages).content
 
     if str(model_name).startswith("ollama://") or model_name == "llama3":
         import requests
         actual_model = model_name.replace("ollama://", "") if str(model_name).startswith("ollama://") else "llama3"
         prompt = f"{system_content}\n\n{user_content}"
-        _t0 = _time.monotonic()
+        ollama_url = model_base_url or "http://ollama:11434/api/generate"
         response = requests.post(
-            "http://ollama:11434/api/generate",
+            ollama_url,
             json={"model": actual_model, "prompt": prompt, "stream": False, "options": {"temperature": 0}},
             timeout=120,
         )

@@ -404,22 +404,9 @@
                     <span>Configured Models</span>
                     <span class="expand-icon">▼</span>
                 </div>
-                <div class="sub-items">
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Claude 4.5 Sonnet
-                        <span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>GPT-4 Turbo
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Llama 3.3 70B
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Gemini Pro
-                    </div>
-                    <div class="sub-item">
-                        <span style="margin-right: 8px;">✓</span>Mixtral 8x7B
+                <div class="sub-items" id="configuredModelsList">
+                    <div class="sub-item" style="color: #64748b; font-style: italic; pointer-events: none;">
+                        Loading configured models...
                     </div>
                     <div id="plusModelBtn" class="sub-item" style="color: var(--primary-blue); font-weight: 500; cursor: pointer;">
                         <span style="margin-right: 8px;">➕</span>Configure New Model
@@ -643,6 +630,86 @@
                 const shouldBeActive = isApiButton ? (path === '/api_mode') : (path !== '/api_mode');
                 btn.classList.toggle('active', shouldBeActive);
             });
+        });
+
+        function renderConfiguredModelsSidebar(configurations, registryModels) {
+            const wrapper = document.getElementById('configuredModelsList');
+            if (!wrapper) return;
+
+            const plusBtn = document.getElementById('plusModelBtn');
+            wrapper.innerHTML = '';
+            const seenModels = new Set();
+            const addModel = function (modelName, label, marker) {
+                const normalizedName = String(modelName || '').replace(/^(ollama|api):\/\//, '');
+                if (!normalizedName || seenModels.has(normalizedName)) return;
+                seenModels.add(normalizedName);
+                const modelItem = document.createElement('div');
+                modelItem.className = 'sub-item';
+                modelItem.title = modelName;
+                modelItem.textContent = `${marker} ${label || modelName}`;
+                wrapper.appendChild(modelItem);
+            };
+
+            (registryModels || []).forEach(function (model) {
+                if (model.type === 'open_source') {
+                    addModel(model.name, model.display_name || model.name, '•');
+                }
+            });
+            (configurations || []).forEach(function (config) {
+                addModel(config.model, config.name || config.model, '✓');
+            });
+
+            if (seenModels.size === 0) {
+                const emptyItem = document.createElement('div');
+                emptyItem.className = 'sub-item';
+                emptyItem.style.color = '#64748b';
+                emptyItem.style.fontStyle = 'italic';
+                emptyItem.style.pointerEvents = 'none';
+                emptyItem.textContent = 'No configured models found';
+                wrapper.appendChild(emptyItem);
+            }
+
+            if (plusBtn) {
+                wrapper.appendChild(plusBtn);
+            }
+        }
+
+        function loadConfiguredModelsSidebar() {
+            Promise.all([
+                authFetch('/api/model-config/configurations'),
+                authFetch('/api/models/registry')
+            ])
+                .then(function (responses) {
+                    if (!responses[0].ok || !responses[1].ok) throw new Error('Could not load models');
+                    return Promise.all([responses[0].json(), responses[1].json()]);
+                })
+                .then(function (data) {
+                    renderConfiguredModelsSidebar(
+                        (data[0] && data[0].configurations) || [],
+                        (data[1] && data[1].models) || []
+                    );
+                })
+                .catch(function () {
+                    renderConfiguredModelsSidebar([], []);
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const plusModelBtn = document.getElementById('plusModelBtn');
+            if (plusModelBtn) {
+                plusModelBtn.addEventListener('click', function () {
+                    if (window.location.pathname !== '/index') {
+                        window.location.href = '/index?configure_model=1';
+                        return;
+                    }
+                    const modal = document.getElementById('modelModal');
+                    if (modal) {
+                        modal.classList.add('active');
+                        modal.style.display = 'flex';
+                    }
+                });
+            }
+            loadConfiguredModelsSidebar();
         });
 
         // ==========================================

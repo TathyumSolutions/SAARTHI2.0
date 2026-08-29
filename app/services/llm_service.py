@@ -20,6 +20,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from dotenv import load_dotenv
 import requests 
 import json
+from app.models.model_config import ModelConfiguration
 from .rag_config import load_rag_config
 from .llm_call_logger import tracked_invoke, record_ollama_call
 #from .databridge_services import run_data_bridge_agent
@@ -31,6 +32,27 @@ except Exception as e:
 from app.services.stream_manager import stream_manager
 
 load_dotenv()
+
+
+def _ollama_model_name(model_name: str):
+    value = str(model_name or "")
+    if value.startswith("ollama://"):
+        return value.replace("ollama://", "", 1)
+    try:
+        from app.services.model_registry_service import MODELS_REGISTRY
+        if MODELS_REGISTRY.get(value, {}).get("type") == "open_source":
+            return value
+    except Exception:
+        pass
+    return None
+
+
+def _resolve_runtime_overrides(model_name: str, custom_key: str):
+    cfg = ModelConfiguration.query.filter_by(model=model_name).order_by(ModelConfiguration.id.desc()).first()
+    settings = cfg.settings if cfg and isinstance(cfg.settings, dict) else {}
+    effective_key = custom_key or settings.get("custom_key") or ""
+    base_url = settings.get("base_url") or ""
+    return effective_key, base_url
 
 class LLMService:
     """Service for LLM provider interactions and RAG pipeline"""
@@ -46,10 +68,15 @@ class LLMService:
         else:
             ssl._create_default_https_context = _create_unverified_https_context
 
-        # Initialize NLTK - forcing the download of both required pieces
+        # Initialize NLTK - only download the tokenizer data when it isn't
+        # already present (baked into the image / persisted in the nltk_data
+        # volume), so app startup doesn't hit the network every time.
         try:
-            nltk.download('punkt')
-            nltk.download('punkt_tab')
+            for resource in ('tokenizers/punkt', 'tokenizers/punkt_tab'):
+                try:
+                    nltk.data.find(resource)
+                except LookupError:
+                    nltk.download(resource.split('/')[-1])
         except Exception as e:
             print(f"NLTK Download Warning: {e}")
         # --- FIX ENDS HERE ---
@@ -723,42 +750,59 @@ class LLMService:
                 elif str(model_name).startswith("api://"):
                     actual_model = model_name.replace("api://", "").lower()
                     messages = [HumanMessage(content=analysis_prompt)]
-
-                    from app.services.llm_providers import resolve_dynamic_llm
-                    dynamic_llm = resolve_dynamic_llm(
-                        actual_model,
-                        custom_key,
-                        temperature=self.rag_config["generation"]["temperature"],
-                        openai_fallback_key=self.openai_key,
-                        strict=False,
-                    )
-
-                    ai_response = tracked_invoke(
-                        dynamic_llm, messages,
-                        purpose="rag.intent_analysis", model_name=actual_model,
-                        user_id=user_id, session_id=session_id,
-                    )
+                    runtime_key, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
+                    
+                    if runtime_base_url:
+                        dynamic_llm = ChatOpenAI(
+                            model=actual_model,
+                            temperature=self.rag_config["generation"]["temperature"],
+                            openai_api_key=runtime_key if runtime_key else os.getenv("OPENAI_API_KEY", "placeholder-key"),
+                            openai_api_base=runtime_base_url,
+                        )
+                    elif "claude" in actual_model:
+                        from langchain_anthropic import ChatAnthropic
+                        dynamic_llm = ChatAnthropic(
+                            model=actual_model,
+                            temperature=self.rag_config["generation"]["temperature"],
+                            anthropic_api_key=runtime_key if runtime_key else os.getenv("ANTHROPIC_API_KEY")
+                        )
+                    elif "gemini" in actual_model:
+                        from langchain_google_genai import ChatGoogleGenerativeAI
+                        dynamic_llm = ChatGoogleGenerativeAI(
+                            model=actual_model,
+                            temperature=self.rag_config["generation"]["temperature"],
+                            google_api_key=runtime_key if runtime_key else os.getenv("GOOGLE_API_KEY")
+                        )
+                    elif "deepseek" in actual_model:
+                        dynamic_llm = ChatOpenAI(
+                            model=actual_model,
+                            temperature=self.rag_config["generation"]["temperature"],
+                            openai_api_key=runtime_key if runtime_key else os.getenv("DEEPSEEK_API_KEY"),
+                            openai_api_base="https://api.deepseek.com/v1"
+                        )
+                    else:  # Custom GPT models
+                        dynamic_llm = ChatOpenAI(
+                            model=actual_model,
+                            temperature=self.rag_config["generation"]["temperature"],
+                            openai_api_key=runtime_key if runtime_key else self.openai_key
+                        )
+                    
+                    ai_response = dynamic_llm.invoke(messages)
                     analysis_text = ai_response.content.strip()
 
                 # 3. DYNAMIC OLLAMA ROUTING
-                elif str(model_name).startswith("ollama://") or model_name == "llama3":
-                    actual_model = model_name.replace("ollama://", "") if str(model_name).startswith("ollama://") else "llama3"
+                elif _ollama_model_name(model_name) or model_name == "llama3":
+                    actual_model = _ollama_model_name(model_name) or "llama3"
+                    _, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
+                    ollama_url = runtime_base_url or self.ollama_config["url"]
                     cot_payload = {
                         "model": actual_model,
                         "prompt": analysis_prompt,
                         "stream": False,
                         "options": {"temperature": self.ollama_config["temperature"]}
                     }
-                    _t0 = time.monotonic()
-                    cot_res = requests.post(self.ollama_config["url"], json=cot_payload, timeout=60)
-                    cot_json = cot_res.json()
-                    analysis_text = cot_json.get("response", "").strip()
-                    record_ollama_call(
-                        purpose="rag.intent_analysis", model_name=actual_model,
-                        prompt_text=analysis_prompt, response_json=cot_json,
-                        duration_ms=int((time.monotonic() - _t0) * 1000),
-                        user_id=user_id, session_id=session_id,
-                    )
+                    cot_res = requests.post(ollama_url, json=cot_payload, timeout=60)
+                    analysis_text = cot_res.json().get("response", "").strip()
                 
                 else:
                     analysis_text = "Analyzing natural language inquiry for document matching modules."
@@ -858,15 +902,16 @@ class LLMService:
                     "relevant here, apply it; ignore whatever doesn't apply to this question."
                 )
 
-            if model_name == "llama3":
-                print("🦙 Routing payload to local Ollama [llama3] container layer...")
+            if _ollama_model_name(model_name) or model_name == "llama3":
+                actual_model = _ollama_model_name(model_name) or "llama3"
+                print(f"🦙 Routing payload to local Ollama [{actual_model}] container layer...")
                 ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
                 
                 _t0 = time.monotonic()
                 response = requests.post(
                     self.ollama_config["url"],
                     json={
-                        "model": "llama3",  # Forces local container system instance call
+                        "model": actual_model,
                         "prompt": ollama_prompt,
                         "stream": False,
                         "keep_alive": "30m",
@@ -930,6 +975,7 @@ class LLMService:
 
             elif str(model_name).startswith("api://"):
                 actual_model = model_name.replace("api://", "").lower()
+                runtime_key, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
                 print(f"🌐 Dynamic RAG Routing payload to Custom Cloud API model: {actual_model}")
                 
                 messages = [
@@ -937,29 +983,74 @@ class LLMService:
                     HumanMessage(content=user_query)
                 ]
 
-                from app.services.llm_providers import resolve_dynamic_llm
-                dynamic_llm = resolve_dynamic_llm(
-                    actual_model,
-                    custom_key,
-                    temperature=self.rag_config["generation"]["temperature"],
-                    openai_fallback_key=self.openai_key,
-                    strict=True,
-                )
-                ai_response = tracked_invoke(
-                    dynamic_llm, messages,
-                    purpose="rag.answer", model_name=actual_model,
-                    user_id=user_id, session_id=session_id,
-                )
-                final_answer = ai_response.content
+                # 1. ANTHROPIC CLAUDE MODELS
+                if runtime_base_url:
+                    dynamic_llm = ChatOpenAI(
+                        model=actual_model,
+                        temperature=self.rag_config["generation"]["temperature"],
+                        openai_api_key=runtime_key if runtime_key else os.getenv("OPENAI_API_KEY", "placeholder-key"),
+                        openai_api_base=runtime_base_url,
+                    )
+                    ai_response = dynamic_llm.invoke(messages)
+                    final_answer = ai_response.content
 
-            elif str(model_name).startswith("ollama://"):
-                actual_model = model_name.replace("ollama://", "")
+                elif "claude" in actual_model:
+                    from langchain_anthropic import ChatAnthropic
+                    dynamic_llm = ChatAnthropic(
+                        model=actual_model,
+                        temperature=self.rag_config["generation"]["temperature"],
+                        anthropic_api_key=runtime_key if runtime_key else os.getenv("ANTHROPIC_API_KEY")
+                    )
+                    ai_response = dynamic_llm.invoke(messages)
+                    final_answer = ai_response.content
+
+                # 2. GOOGLE GEMINI MODELS
+                elif "gemini" in actual_model:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    dynamic_llm = ChatGoogleGenerativeAI(
+                        model=actual_model,
+                        temperature=self.rag_config["generation"]["temperature"],
+                        google_api_key=runtime_key if runtime_key else os.getenv("GOOGLE_API_KEY")
+                    )
+                    ai_response = dynamic_llm.invoke(messages)
+                    final_answer = ai_response.content
+
+                # 3. DEEPSEEK MODELS
+                elif "deepseek" in actual_model:
+                    dynamic_llm = ChatOpenAI(
+                        model=actual_model,
+                        temperature=self.rag_config["generation"]["temperature"],
+                        openai_api_key=runtime_key if runtime_key else os.getenv("DEEPSEEK_API_KEY"),
+                        openai_api_base="https://api.deepseek.com/v1"
+                    )
+                    ai_response = dynamic_llm.invoke(messages)
+                    final_answer = ai_response.content
+
+                # 4. EXPLICIT CUSTOM OPENAI MODELS
+                elif "gpt" in actual_model or "openai" in actual_model:
+                    dynamic_llm = ChatOpenAI(
+                        model=actual_model,
+                        temperature=self.rag_config["generation"]["temperature"],
+                        openai_api_key=runtime_key if runtime_key else self.openai_key
+                    )
+                    ai_response = dynamic_llm.invoke(messages)
+                    final_answer = ai_response.content
+                else:
+                    raise ValueError(
+                        f"Custom cloud provider mapping failed: Identifier '{actual_model}' "
+                        f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
+                    )
+
+            elif _ollama_model_name(model_name):
+                actual_model = _ollama_model_name(model_name)
+                _, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
+                ollama_url = runtime_base_url or self.ollama_config["url"]
                 print(f"📦 Dynamic RAG Routing payload to Custom Local Ollama model: {actual_model}")
                 ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
                 
                 _t0 = time.monotonic()
                 response = requests.post(
-                    self.ollama_config["url"],
+                    ollama_url,
                     json={
                         "model": actual_model,  # Directly maps raw string to local runtime container target
                         "prompt": ollama_prompt,
