@@ -844,8 +844,7 @@
         // back to whichever option is marked `selected` in the Standard API
         // dropdown so a model is always active without the user having to
         // touch the dropdown first.
-        const savedActiveModel = localStorage.getItem('saarthi_active_model');
-        window.activeBackendModelName = savedActiveModel || (standardDropdown ? standardDropdown.value : "");
+        window.activeBackendModelName = standardDropdown ? standardDropdown.value : "";
         if (window.activeBackendModelName) {
             localStorage.setItem('saarthi_active_model', window.activeBackendModelName);
         }
@@ -877,7 +876,7 @@
         }
 
         if (typeof loadSavedDatabaseModels === "function") {
-            loadSavedDatabaseModels();
+            window.modelSelectionReady = loadSavedDatabaseModels();
         }
 
         const qs = new URLSearchParams(window.location.search);
@@ -1040,18 +1039,28 @@
     function loadSavedDatabaseModels() {
         console.log("🔄 Fetching saved configurations from backend database...");
 
-        authFetch('/api/model-config/configurations')
-            .then(response => {
+        return Promise.all([
+            authFetch('/api/model-config/configurations').then(response => {
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return response.json();
+            }),
+            authFetch('/api/models/registry').then(response => {
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return response.json();
+            }),
+            authFetch('/api/user/model-pipeline').then(response => {
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 return response.json();
             })
-            .then(data => {
+        ])
+            .then(([data, registryData, pipelineData]) => {
                 if (!data || !data.configurations) {
                     console.warn("⚠️ No configurations returned from database matrix.");
-                    return;
                 }
 
-                console.log(`📋 Found ${data.configurations.length} models in DB. Syncing to UI dropdowns...`);
+                const configurations = data.configurations || [];
+                const registryModels = (registryData && registryData.models) || [];
+                console.log(`📋 Found ${configurations.length} configured models and ${registryModels.length} registry models.`);
 
                 const standardDropdown = document.getElementById('standard-llm-dropdown');
                 const opensourceDropdown = document.getElementById('opensource-llm-dropdown');
@@ -1071,7 +1080,36 @@
 
                 window.modelConfigMap = {};
 
-                data.configurations.forEach(config => {
+                const addOption = (dropdown, value, label) => {
+                    if (!dropdown || !value || dropdown.querySelector(`option[value="${CSS.escape(value)}"]`)) return;
+                    const newOption = document.createElement('option');
+                    newOption.value = value;
+                    newOption.textContent = label || value;
+                    dropdown.appendChild(newOption);
+                };
+
+                const sidebarModels = new Set();
+                const addSidebarModel = (modelName, label, source) => {
+                    if (!sidebarList || !modelName || sidebarModels.has(modelName)) return;
+                    sidebarModels.add(modelName);
+                    const item = document.createElement('div');
+                    item.className = 'sub-item';
+                    item.title = modelName;
+                    const marker = source === 'registry' ? '•' : '✓';
+                    item.textContent = `${marker} ${label || modelName}`;
+                    sidebarList.appendChild(item);
+                };
+
+                registryModels.forEach(model => {
+                    const value = model.type === 'open_source' ? model.name : model.name;
+                    const targetDropdown = model.type === 'open_source' ? opensourceDropdown : standardDropdown;
+                    addOption(targetDropdown, value, model.display_name || model.name);
+                    if (model.type === 'open_source') {
+                        addSidebarModel(model.name, model.display_name || model.name, 'registry');
+                    }
+                });
+
+                configurations.forEach(config => {
                     const settings = config.settings || {};
                     window.modelConfigMap[config.model] = {
                         custom_key: settings.custom_key || '',
@@ -1083,36 +1121,40 @@
 
                     if (targetDropdown) {
                         if (!targetDropdown.querySelector(`option[value="${config.model}"]`)) {
-                            const newOption = document.createElement('option');
-                            newOption.value = config.model;
-                            newOption.innerHTML = config.name;
-                            targetDropdown.appendChild(newOption);
+                            addOption(targetDropdown, config.model, config.name);
                             console.log(`✅ Restored model option: ${config.name} -> ${targetDropdown.id}`);
                         }
                     }
 
-                    if (sidebarList) {
-                        const newSidebarItem = document.createElement('div');
-                        newSidebarItem.className = 'sub-item';
-                        newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${config.name}`;
-                        sidebarList.appendChild(newSidebarItem);
-                    }
+                    addSidebarModel(config.model, config.name, 'configured');
                 });
 
                 if (sidebarList && plusBtnElement) {
                     sidebarList.appendChild(plusBtnElement);
                 }
 
-                if (opensourceDropdown && opensourceDropdown.options.length > 1) {
-                    opensourceDropdown.selectedIndex = 1;
-                    window.activeBackendModelName = opensourceDropdown.value;
-                } else if (standardDropdown && standardDropdown.options.length > 1) {
-                    standardDropdown.selectedIndex = 1;
-                    window.activeBackendModelName = standardDropdown.value;
+                const configuredModel = pipelineData && pipelineData.config && pipelineData.config.main_model;
+                const savedModel = localStorage.getItem('saarthi_active_model');
+                const bareModel = value => String(value || '').replace(/^(ollama|api):\/\//, '');
+                const option = Array.from(document.querySelectorAll(
+                    '#standard-llm-dropdown option, #opensource-llm-dropdown option'
+                )).find(item => bareModel(item.value) === bareModel(configuredModel || savedModel));
+
+                standardDropdown.selectedIndex = 0;
+                opensourceDropdown.selectedIndex = 0;
+                if (option) {
+                    option.selected = true;
+                    window.activeBackendModelName = option.value;
+                    localStorage.setItem('saarthi_active_model', option.value);
+                    console.log(`🎯 Active model restored: ${option.value}`);
+                } else {
+                    window.activeBackendModelName = '';
+                    localStorage.removeItem('saarthi_active_model');
                 }
             })
             .catch(error => {
                 console.error("❌ Failed to parse data stream or populate dropdown elements:", error);
+                window.activeBackendModelName = '';
             });
     }
 
@@ -1653,6 +1695,10 @@
     async function handleChat() {
         const message = chatInput.value.trim();
         if (!message) return;
+
+        if (window.modelSelectionReady) {
+            await window.modelSelectionReady;
+        }
 
         if (!window.activeBackendModelName) {
             alert("Please select the model before proceeding.");

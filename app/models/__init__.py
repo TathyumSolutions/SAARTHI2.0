@@ -25,6 +25,7 @@ from .file_resource import FileResource
 
 from .chat import ChatSession
 from .model_config import ModelConfiguration
+from .user_model_pipeline import UserModelPipeline
 from .feedback import ResponseFeedback
 from .query_log import QueryLog
 from .bi_semantics_config import BiSemanticsConfig

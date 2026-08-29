@@ -28,6 +28,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install premsql==0.1.0 --no-deps || true
 
+# Download NLTK tokenizer data at image build time so containers don't
+# re-download punkt/punkt_tab on every startup (llm_service.py downloads
+# them at LLMService init; the runtime check there only downloads if missing).
+RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
+
 # Copy application code
 COPY . .
 

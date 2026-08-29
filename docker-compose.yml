@@ -13,43 +13,38 @@ services:
     # request pipeline aren't gevent-patched, so they stall gevent's
     # cooperative event loop - and the parallel SSE /stream_steps
     # connection with it - until the blocking call returns.
-    command: sh -c "pip install --no-cache-dir -r /app/requirements.txt && gunicorn --worker-class gthread --threads 4 --bind 0.0.0.0:5000 --workers 2 --timeout 5000 run:app"
-    #command: gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 5000 run:app
+    # --preload runs create_app() once in the master before forking workers,
+    # so DB bootstrap/schema sync runs once instead of once per worker.
+    command: gunicorn --worker-class gthread --threads 4 --bind 0.0.0.0:5000 --workers 2 --timeout 5000 --preload run:app
     depends_on:
       db:
-        condition: service_healthy  # Changed: Forces web to wait for DB to be READY
+        condition: service_healthy
       redis:
         condition: service_started
+      ollama-init:
+        condition: service_completed_successfully  # Wait for models to be ready
 
     volumes:
       - ./app:/app/app
       - ./requirements.txt:/app/requirements.txt:ro
-      # Uploaded documents (upload_routes.py) and spreadsheet-backed tables
-      # (spreadsheet_service.py: parquet files + the JSON manifest tracking
-      # them) both live under /app/uploads, created at runtime - not part of
-      # the ./app bind mount above, so without this volume every container
-      # rebuild wiped them while the DatabaseConnection/FileResource rows
-      # describing them stayed behind in Postgres (a real persisted volume),
-      # leaving orphaned rows pointing at files that no longer exist (e.g.
-      # an Excel connection's Process button failing with "No tables found
-      # for this connection").
+      
       - uploads_data:/app/uploads
-    #command: gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 120 run:app
+      # Persist NLTK data and the HuggingFace cache so container recreation
+      # doesn't re-download punkt/punkt_tab and the sentence-transformers
+      # embedding model on every `docker compose up`.
+      - nltk_data:/root/nltk_data
+      - hf_cache:/root/.cache/huggingface
 
   db:
     image: postgres:15
     environment:
       - POSTGRES_USER=saarthi
       - POSTGRES_PASSWORD=password
-      # No POSTGRES_DB - the app creates its own logical databases
-      # (saarthi_core_db, saarthi_resources_db, saarthi_workspace_db, see
-      # app/services/db_bootstrap.py) against the server's always-present
-      # 'postgres' maintenance database on startup.
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck: # Added: This checks if the DB is actually awake
+    healthcheck: 
       test: ["CMD-SHELL", "pg_isready -U saarthi -d postgres"]
       interval: 5s
       timeout: 5s
@@ -82,13 +77,44 @@ services:
        - OLLAMA_KEEP_ALIVE=-1
        - OLLAMA_NUM_THREADS=6
     cpus: 6.0
-    mem_limit: 5120m
+    mem_limit: 8192m
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-
+  # One-time model initialization - runs once, then exits
+  ollama-init:
+    image: ollama/ollama
+    container_name: ollama-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_KEEP_ALIVE=-1
+    entrypoint: >
+      sh -c "
+        echo 'Waiting for Ollama to be ready...' &&
+        sleep 2 &&
+        for model in llama2:7b llama3:8b mistral:7b codellama:7b; do
+          echo \"Pulling $$model...\" &&
+          ollama pull $$model || exit 1 &&
+          echo \"Warming $$model...\" &&
+          ollama run $$model \"\" || exit 1;
+        done &&
+        echo 'All OSS models pulled and warmed!'
+      "
+    restart: "no"
 
 volumes:
   postgres_data:
   redis_data:
-  qdrant_data:
+  qdrant_data: 
   ollama_data:
   uploads_data:
+  nltk_data:
+  hf_cache:

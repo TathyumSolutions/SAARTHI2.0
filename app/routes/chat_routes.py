@@ -17,6 +17,7 @@ from app.models.query_log import QueryLog
 from app.models.user import User
 from app.models.chat import ChatSession
 from app.services.router_service import RouterService
+from app.routes.model_config_routes import _resolve_company_context
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
@@ -445,7 +446,6 @@ def send_message():
             session_id=session_id,
             model_name=model_name,
             custom_key=custom_key,
-            model_base_url=model_base_url,
             system_instructions=system_instructions,
             company_code=company_code,
             user_id=user_id,

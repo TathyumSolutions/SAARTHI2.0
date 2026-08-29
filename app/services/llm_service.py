@@ -33,6 +33,19 @@ from app.services.stream_manager import stream_manager
 load_dotenv()
 
 
+def _ollama_model_name(model_name: str):
+    value = str(model_name or "")
+    if value.startswith("ollama://"):
+        return value.replace("ollama://", "", 1)
+    try:
+        from app.services.model_registry_service import MODELS_REGISTRY
+        if MODELS_REGISTRY.get(value, {}).get("type") == "open_source":
+            return value
+    except Exception:
+        pass
+    return None
+
+
 def _resolve_runtime_overrides(model_name: str, custom_key: str):
     cfg = ModelConfiguration.query.filter_by(model=model_name).order_by(ModelConfiguration.id.desc()).first()
     settings = cfg.settings if cfg and isinstance(cfg.settings, dict) else {}
@@ -54,10 +67,15 @@ class LLMService:
         else:
             ssl._create_default_https_context = _create_unverified_https_context
 
-        # Initialize NLTK - forcing the download of both required pieces
+        # Initialize NLTK - only download the tokenizer data when it isn't
+        # already present (baked into the image / persisted in the nltk_data
+        # volume), so app startup doesn't hit the network every time.
         try:
-            nltk.download('punkt')
-            nltk.download('punkt_tab')
+            for resource in ('tokenizers/punkt', 'tokenizers/punkt_tab'):
+                try:
+                    nltk.data.find(resource)
+                except LookupError:
+                    nltk.download(resource.split('/')[-1])
         except Exception as e:
             print(f"NLTK Download Warning: {e}")
         # --- FIX ENDS HERE ---
@@ -724,8 +742,8 @@ class LLMService:
                     analysis_text = ai_response.content.strip()
 
                 # 3. DYNAMIC OLLAMA ROUTING
-                elif str(model_name).startswith("ollama://") or model_name == "llama3":
-                    actual_model = model_name.replace("ollama://", "") if str(model_name).startswith("ollama://") else "llama3"
+                elif _ollama_model_name(model_name) or model_name == "llama3":
+                    actual_model = _ollama_model_name(model_name) or "llama3"
                     _, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
                     ollama_url = runtime_base_url or self.ollama_config["url"]
                     cot_payload = {
@@ -835,14 +853,15 @@ class LLMService:
                     "relevant here, apply it; ignore whatever doesn't apply to this question."
                 )
 
-            if model_name == "llama3":
-                print("🦙 Routing payload to local Ollama [llama3] container layer...")
+            if _ollama_model_name(model_name) or model_name == "llama3":
+                actual_model = _ollama_model_name(model_name) or "llama3"
+                print(f"🦙 Routing payload to local Ollama [{actual_model}] container layer...")
                 ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
                 
                 response = requests.post(
                     self.ollama_config["url"],
                     json={
-                        "model": "llama3",  # Forces local container system instance call
+                        "model": actual_model,
                         "prompt": ollama_prompt,
                         "stream": False,
                         "keep_alive": "30m",
@@ -957,8 +976,8 @@ class LLMService:
                         f"does not match any recognized provider keyword (claude, gemini, deepseek, gpt)."
                     )
 
-            elif str(model_name).startswith("ollama://"):
-                actual_model = model_name.replace("ollama://", "")
+            elif _ollama_model_name(model_name):
+                actual_model = _ollama_model_name(model_name)
                 _, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
                 ollama_url = runtime_base_url or self.ollama_config["url"]
                 print(f"📦 Dynamic RAG Routing payload to Custom Local Ollama model: {actual_model}")

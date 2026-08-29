@@ -628,14 +628,34 @@
             });
         });
 
-        function renderConfiguredModelsSidebar(configurations) {
+        function renderConfiguredModelsSidebar(configurations, registryModels) {
             const wrapper = document.getElementById('configuredModelsList');
             if (!wrapper) return;
 
             const plusBtn = document.getElementById('plusModelBtn');
             wrapper.innerHTML = '';
+            const seenModels = new Set();
+            const addModel = function (modelName, label, marker) {
+                const normalizedName = String(modelName || '').replace(/^(ollama|api):\/\//, '');
+                if (!normalizedName || seenModels.has(normalizedName)) return;
+                seenModels.add(normalizedName);
+                const modelItem = document.createElement('div');
+                modelItem.className = 'sub-item';
+                modelItem.title = modelName;
+                modelItem.textContent = `${marker} ${label || modelName}`;
+                wrapper.appendChild(modelItem);
+            };
 
-            if (!configurations || configurations.length === 0) {
+            (registryModels || []).forEach(function (model) {
+                if (model.type === 'open_source') {
+                    addModel(model.name, model.display_name || model.name, '•');
+                }
+            });
+            (configurations || []).forEach(function (config) {
+                addModel(config.model, config.name || config.model, '✓');
+            });
+
+            if (seenModels.size === 0) {
                 const emptyItem = document.createElement('div');
                 emptyItem.className = 'sub-item';
                 emptyItem.style.color = '#64748b';
@@ -643,14 +663,6 @@
                 emptyItem.style.pointerEvents = 'none';
                 emptyItem.textContent = 'No configured models found';
                 wrapper.appendChild(emptyItem);
-            } else {
-                configurations.forEach(function (config, idx) {
-                    const modelItem = document.createElement('div');
-                    modelItem.className = 'sub-item';
-                    const activeBadge = idx === 0 ? '<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>' : '';
-                    modelItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${config.name || config.model}${activeBadge}`;
-                    wrapper.appendChild(modelItem);
-                });
             }
 
             if (plusBtn) {
@@ -659,16 +671,22 @@
         }
 
         function loadConfiguredModelsSidebar() {
-            authFetch('/api/model-config/configurations')
-                .then(function (response) {
-                    if (!response.ok) throw new Error('Could not load model configs');
-                    return response.json();
+            Promise.all([
+                authFetch('/api/model-config/configurations'),
+                authFetch('/api/models/registry')
+            ])
+                .then(function (responses) {
+                    if (!responses[0].ok || !responses[1].ok) throw new Error('Could not load models');
+                    return Promise.all([responses[0].json(), responses[1].json()]);
                 })
                 .then(function (data) {
-                    renderConfiguredModelsSidebar((data && data.configurations) || []);
+                    renderConfiguredModelsSidebar(
+                        (data[0] && data[0].configurations) || [],
+                        (data[1] && data[1].models) || []
+                    );
                 })
                 .catch(function () {
-                    renderConfiguredModelsSidebar([]);
+                    renderConfiguredModelsSidebar([], []);
                 });
         }
 
