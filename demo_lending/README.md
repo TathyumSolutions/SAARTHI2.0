@@ -93,6 +93,41 @@ re-running with a different `--scale` fully replaces the previous data set
 (same fixed random seed, so a given `--scale` always regenerates the exact
 same data).
 
+### Docker quick start (Windows / PowerShell)
+
+Spin up a disposable Postgres server in Docker just for this data set,
+instead of pointing at a shared/dev Postgres instance. Run these from the
+repo root, in order:
+
+```powershell
+# 1. First time only: create + start a Postgres 15 container, publishing it
+#    on host port 5434 (so it doesn't clash with a Postgres already on 5432)
+docker run -d --name lending-sample-db `
+  -e POSTGRES_USER=saarthi -e POSTGRES_PASSWORD=password -e POSTGRES_DB=postgres `
+  -p 5434:5432 -v lending_sample_data:/var/lib/postgresql/data postgres:15
+
+# 2. Point db_lending.py at it and load the data (creates the
+#    lending_demo_db database inside the container automatically)
+$env:LENDING_DATABASE_URL="postgresql://saarthi:password@localhost:5434/postgres"
+python demo_lending\db_lending.py --scale full --db-url $env:LENDING_DATABASE_URL --db-name lending_demo_db
+```
+
+Once the container exists, you don't repeat step 1 - reuse it:
+
+```powershell
+docker start lending-sample-db   # resume the existing container (data persists)
+docker stop lending-sample-db    # pause it when you're done for the day
+```
+
+To tear it down completely, remove the container and, only if you also want
+to discard the loaded data, its volume:
+
+```powershell
+docker rm -f lending-sample-db          # deletes the container; the
+                                          # lending_sample_data volume survives
+docker volume rm lending_sample_data     # optional: also wipe the data
+```
+
 ### Registering it in Saarthi
 
 Add it like any other Postgres data source from the Saarthi UI
@@ -100,6 +135,17 @@ Add it like any other Postgres data source from the Saarthi UI
 page): host/port/credentials of the Postgres server, database name
 `lending_demo_db`. Saarthi's Metamind schema discovery will pick up all 13
 tables and their columns automatically.
+
+For the Docker quick-start container above, that's:
+
+| Field    | Value                                                                 |
+|----------|------------------------------------------------------------------------|
+| Name     | Lending Demo                                                          |
+| Host     | `host.docker.internal` (if the Saarthi web app itself runs in Docker), or `localhost` (if it runs directly on your machine) |
+| Port     | `5434`                                                                 |
+| Database | `lending_demo_db`                                                     |
+| Username | `saarthi`                                                              |
+| Password | `password`                                                             |
 
 ## 2. Excel reference tables (`generate_excel_reference.py`)
 
