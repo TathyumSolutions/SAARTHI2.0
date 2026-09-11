@@ -83,11 +83,31 @@ def column_stats(series: pd.Series, sample_limit: int = 20) -> dict:
     }
 
 
+def _sanitize_for_parquet(df: pd.DataFrame) -> pd.DataFrame:
+    """Excel cells can leave pandas with an object-dtype column that mixes
+    Python types (e.g. bytes from one cell, int from another) - pyarrow
+    requires a single arrow type per column, so to_parquet raises
+    ArrowTypeError on those. Bytes are decoded to text first, and any
+    column that still mixes types afterwards is coerced to text, since
+    text is the one type every value can losslessly become."""
+    df = df.copy()
+    for col in df.columns:
+        if df[col].dtype != object:
+            continue
+        series = df[col].map(lambda v: v.decode('utf-8', errors='replace') if isinstance(v, bytes) else v)
+        non_null_types = {type(v) for v in series if pd.notna(v)}
+        if len(non_null_types) > 1:
+            series = series.map(lambda v: v if pd.isna(v) else str(v))
+        df[col] = series
+    return df
+
+
 def save_table(connection_id: int, table_name: str, sheet_name, df: pd.DataFrame) -> dict:
     """Writes one sheet/CSV as a Parquet file and records it in the
     manifest under the given connection. Returns the table's manifest
     record (without a description yet - that's added by summarization)."""
     _ensure_folder()
+    df = _sanitize_for_parquet(df)
     conn_dir = os.path.join(SPREADSHEET_FOLDER, str(connection_id))
     os.makedirs(conn_dir, exist_ok=True)
     parquet_path = os.path.join(conn_dir, f"{table_name}.parquet")
