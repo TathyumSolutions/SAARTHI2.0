@@ -173,6 +173,57 @@
         font-weight: 600;
     }
 
+    .source-badge {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 600;
+        padding: 2px 6px;
+        border-radius: 3px;
+        margin-left: 6px;
+        background: var(--hover-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        vertical-align: middle;
+    }
+
+    .table-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .table-item {
+        justify-content: space-between;
+    }
+
+    .table-item-main {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+    }
+
+    .link-btn {
+        font-size: 12px;
+        color: var(--primary-blue);
+        text-decoration: none;
+        white-space: nowrap;
+    }
+
+    .run-results-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+
+    .run-results-table th,
+    .run-results-table td {
+        border-bottom: 1px solid var(--border-color);
+        padding: 8px;
+        text-align: left;
+        font-size: 13px;
+    }
+
     @media (max-width: 900px) {
         .form-row {
             grid-template-columns: 1fr;
@@ -274,15 +325,54 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>4. Generate Script</h3>
+        <h3>4. Generate or Run</h3>
+        <div class="section-help">"Generate Script" downloads a standalone .py file for external/cron use (database-sourced tables only). "Run Now" executes the same job immediately inside the app - it supports spreadsheet-sourced tables and any saved column mapping/transforms too.</div>
         <div class="toolbar">
             <button class="btn btn-primary" id="generateScriptBtn" type="button" disabled>Generate Script</button>
+            <button class="btn btn-primary" id="runNowBtn" type="button" disabled>Run Now</button>
             <span class="status" id="generateStatus">Select at least one mode to enable generation.</span>
+        </div>
+        <div style="overflow-x: auto;">
+            <table class="run-results-table" id="runResultsTable" hidden>
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Load Type</th>
+                        <th>Rows Loaded</th>
+                        <th>Status</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody id="runResultsBody"></tbody>
+            </table>
         </div>
     </div>
 
     <div class="warehouse-section">
-        <h3>5. Run History</h3>
+        <h3>5. Warehouse Health</h3>
+        <div class="section-help">Checks that the target is reachable, whether it has run history yet, and the current row count per table with logged runs.</div>
+        <div class="toolbar">
+            <button class="btn" id="checkHealthBtn" type="button">Test Warehouse</button>
+            <button class="btn" id="downloadHealthScriptBtn" type="button">Download Health Script</button>
+            <span class="status" id="healthStatus"></span>
+        </div>
+        <div style="overflow-x: auto;">
+            <table class="run-results-table" id="healthTable" hidden>
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Last Run</th>
+                        <th>Last Status</th>
+                        <th>Target Row Count</th>
+                    </tr>
+                </thead>
+                <tbody id="healthBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="warehouse-section">
+        <h3>6. Run History</h3>
         <div class="section-help">History from warehouse_sync_log on the selected warehouse target connection.</div>
         <div style="overflow-x: auto;">
             <table class="history-table" id="historyTable">
@@ -323,9 +413,11 @@
         const modes = getSelectedModes();
         const hasMode = modes.schema_generator || modes.incremental_load || modes.full_load;
         const btn = document.getElementById('generateScriptBtn');
+        const runBtn = document.getElementById('runNowBtn');
         const status = document.getElementById('generateStatus');
 
         btn.disabled = !hasMode;
+        runBtn.disabled = !hasMode;
         status.textContent = hasMode
             ? 'Ready to generate. Select target connection and tables.'
             : 'Select at least one mode to enable generation.';
@@ -371,16 +463,35 @@
             const cols = (table.columns || []).length;
             const rowCount = table.row_count === null || table.row_count === undefined ? 'n/a' : table.row_count;
 
+            const sourceType = table.source_type || 'DB';
             item.innerHTML = `
-                <input class="table-select" type="checkbox" value="${table.name}">
-                <div>
-                    <div class="table-title">${table.name}</div>
-                    <div class="table-meta">Columns: ${cols} | Rows: ${rowCount}</div>
+                <div class="table-item-main">
+                    <input class="table-select" type="checkbox" value="${table.name}">
+                    <div>
+                        <div class="table-title">${table.name}<span class="source-badge">${sourceType}</span></div>
+                        <div class="table-meta">Columns: ${cols} | Rows: ${rowCount}</div>
+                    </div>
+                </div>
+                <div class="table-actions">
+                    <a class="link-btn" href="#" data-table="${table.name}">Configure Mapping</a>
                 </div>
             `;
 
             const checkbox = item.querySelector('.table-select');
             checkbox.addEventListener('change', updateTableSelectionLabel);
+
+            const mapLink = item.querySelector('.link-btn');
+            mapLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetId = state.selectedTargetId;
+                if (!targetId) {
+                    alert('Select or create a target connection first (step 1) before configuring a mapping.');
+                    return;
+                }
+                const url = `/warehouse/mapping?table=${encodeURIComponent(table.name)}&target_connection_id=${encodeURIComponent(targetId)}`;
+                window.open(url, '_blank');
+            });
+
             wrap.appendChild(item);
         });
 
@@ -560,6 +671,147 @@
         await loadHistory();
     }
 
+    async function runNow() {
+        const targetId = Number(document.getElementById('existingTargetSelect').value);
+        const tables = selectedTables();
+        const modes = getSelectedModes();
+
+        const status = document.getElementById('generateStatus');
+        const resultsTable = document.getElementById('runResultsTable');
+        const resultsBody = document.getElementById('runResultsBody');
+
+        if (!targetId) {
+            status.textContent = 'Select or create a target connection first.';
+            return;
+        }
+        if (!tables.length) {
+            status.textContent = 'Select at least one table.';
+            return;
+        }
+
+        status.textContent = 'Running job...';
+        document.getElementById('runNowBtn').disabled = true;
+
+        try {
+            const res = await authFetch('/api/warehouse/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target_connection_id: targetId,
+                    selected_tables: tables,
+                    ...modes
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+
+            resultsBody.innerHTML = '';
+            (data.results || []).forEach(item => {
+                const tr = document.createElement('tr');
+                const statusClass = item.status === 'success' ? 'status-success' : 'status-failed';
+                tr.innerHTML = `
+                    <td>${item.table || ''}</td>
+                    <td>${item.load_type || ''}</td>
+                    <td>${item.rows_loaded || 0}</td>
+                    <td class="${statusClass}">${item.status || ''}</td>
+                    <td>${item.error_message || ''}</td>
+                `;
+                resultsBody.appendChild(tr);
+            });
+            resultsTable.hidden = false;
+
+            status.textContent = 'Run complete.';
+            await loadHistory();
+        } catch (err) {
+            status.textContent = `Run failed: ${err.message}`;
+        } finally {
+            document.getElementById('runNowBtn').disabled = false;
+        }
+    }
+
+    async function checkHealth() {
+        const status = document.getElementById('healthStatus');
+        const targetId = state.selectedTargetId;
+        const table = document.getElementById('healthTable');
+        const body = document.getElementById('healthBody');
+
+        if (!targetId) {
+            status.textContent = 'Select or create a target connection first.';
+            return;
+        }
+
+        status.textContent = 'Checking...';
+        try {
+            const res = await authFetch(`/api/warehouse/health?target_connection_id=${targetId}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+            if (!data.target_reachable) {
+                status.textContent = `Target unreachable: ${data.error || 'unknown error'}`;
+                table.hidden = true;
+                return;
+            }
+
+            body.innerHTML = '';
+            if (!data.tables || !data.tables.length) {
+                body.innerHTML = '<tr><td colspan="4" class="status">Target reachable. No run history yet.</td></tr>';
+            } else {
+                data.tables.forEach(t => {
+                    const tr = document.createElement('tr');
+                    const statusClass = t.last_status === 'success' ? 'status-success' : 'status-failed';
+                    tr.innerHTML = `
+                        <td>${t.table}</td>
+                        <td>${t.last_run || 'never'}</td>
+                        <td class="${statusClass}">${t.last_status || 'n/a'}</td>
+                        <td>${t.target_row_count === null || t.target_row_count === undefined ? 'n/a' : t.target_row_count}</td>
+                    `;
+                    body.appendChild(tr);
+                });
+            }
+            table.hidden = false;
+            status.textContent = `Target reachable${data.sync_log_exists ? '' : ' (no runs executed yet)'}.`;
+        } catch (err) {
+            status.textContent = `Health check failed: ${err.message}`;
+        }
+    }
+
+    async function downloadHealthScript() {
+        const status = document.getElementById('healthStatus');
+        const targetId = state.selectedTargetId;
+        if (!targetId) {
+            status.textContent = 'Select or create a target connection first.';
+            return;
+        }
+
+        status.textContent = 'Downloading health script...';
+        try {
+            const res = await authFetch(`/api/warehouse/health/script?target_connection_id=${targetId}`);
+            if (!res.ok) {
+                const errJson = await res.json().catch(() => ({}));
+                throw new Error(errJson.error || `HTTP ${res.status}`);
+            }
+            const blob = await res.blob();
+            const contentDisposition = res.headers.get('Content-Disposition') || '';
+            const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+            const filename = match ? match[1] : 'warehouse_health.py';
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+
+            status.textContent = 'Health script downloaded.';
+        } catch (err) {
+            status.textContent = `Download failed: ${err.message}`;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('targetConnectionForm').addEventListener('submit', saveTargetConnection);
 
@@ -587,6 +839,9 @@
         });
 
         document.getElementById('generateScriptBtn').addEventListener('click', generateScript);
+        document.getElementById('runNowBtn').addEventListener('click', runNow);
+        document.getElementById('checkHealthBtn').addEventListener('click', checkHealth);
+        document.getElementById('downloadHealthScriptBtn').addEventListener('click', downloadHealthScript);
 
         updateGenerateButtonState();
         await loadTables();
