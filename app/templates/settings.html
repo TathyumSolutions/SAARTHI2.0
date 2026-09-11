@@ -43,6 +43,7 @@
     #queryInstructions { width: 100%; min-height: 110px; padding: 10px; margin-top: 10px; box-sizing: border-box; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical; }
     .instructions-save-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; }
     .instructions-save-status { font-size: 12px; }
+    .page-title { font-size: 28px; margin-bottom: 8px; color: var(--text-primary); }
 
     /* Self-Learning > Feedback & Queries */
     .ds-search { flex: 1; min-width: 220px; padding: 8px 10px; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); }
@@ -72,28 +73,22 @@
     .sl-remarks-input { width: 100%; min-height: 60px; padding: 8px; box-sizing: border-box; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-family: inherit; font-size: 12px; resize: vertical; }
     .sl-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
     .sl-save-msg { font-size: 12px; margin-left: 6px; }
-
-    /* LLM Call Logging > Pricing table */
-    .pricing-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
-    .pricing-row:last-child { border-bottom: none; }
-    .pricing-model { flex: 1; min-width: 120px; padding: 6px 8px; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); }
-    .pricing-rate-group { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
-    .pricing-rate-group input { width: 100px; padding: 6px; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="settings-container">
-    <h2 style="margin-bottom: 16px;">Settings</h2>
+    <h1 class="page-title">Settings</h1>
 
     <!-- 1. Query Instructions -->
     <div class="settings-main-section">
-        <div class="settings-main-header" onclick="toggleMainSection(this)">
+        <div class="settings-main-header collapsed" onclick="toggleMainSection(this)">
             <div>
                 <h2>Query Instructions</h2>
             </div>
+            <span class="expand-icon">▼</span>
         </div>
-        <div class="settings-main-body">
+        <div class="settings-main-body collapsed">
             <div class="settings-section" style="margin-left: 0;">
                 <div class="setting-desc" style="margin-bottom: 4px;">
                     Standing rules applied to every question you ask Saarthi &mdash; not just this session. For example: <em>&ldquo;For &lsquo;top N&rsquo; questions, rank by total sales amount unless I say otherwise.&rdquo;</em>
@@ -109,14 +104,14 @@
 
     <!-- 2. RAG Settings (Retrieval, Document Processing, Generation) -->
     <div class="settings-main-section">
-        <div class="settings-main-header" onclick="toggleMainSection(this)">
+        <div class="settings-main-header collapsed" onclick="toggleMainSection(this)">
             <div>
                 <h2>RAG Settings</h2>
                 <div class="settings-main-desc">How Saarthi retrieves, processes, and generates answers from your data</div>
             </div>
             <span class="expand-icon">▼</span>
         </div>
-        <div class="settings-main-body">
+        <div class="settings-main-body collapsed">
             <div class="settings-section">
                 <h3>Retrieval</h3>
                 <div class="setting-row">
@@ -169,12 +164,13 @@
 
     <!-- 3. Data Warehouse -->
     <div class="settings-main-section">
-        <div class="settings-main-header" onclick="toggleMainSection(this)">
+        <div class="settings-main-header collapsed" onclick="toggleMainSection(this)">
             <div>
                 <h2>Data Warehouse</h2>
             </div>
+            <span class="expand-icon">▼</span>
         </div>
-        <div class="settings-main-body">
+        <div class="settings-main-body collapsed">
             <div class="settings-section" style="margin-left: 0;">
                 <div class="setting-row" style="align-items: flex-start;">
                     <div>
@@ -191,14 +187,14 @@
 
     <!-- 4. Self-Learning (Settings, Feedback & Queries) -->
     <div class="settings-main-section">
-        <div class="settings-main-header" onclick="toggleMainSection(this)">
+        <div class="settings-main-header collapsed" onclick="toggleMainSection(this)">
             <div>
                 <h2>Self-Learning</h2>
                 <div class="settings-main-desc">Like/dislike on answers, and the feedback used to improve future answers</div>
             </div>
             <span class="expand-icon">▼</span>
         </div>
-        <div class="settings-main-body">
+        <div class="settings-main-body collapsed">
             <div class="settings-section">
                 <h3>Settings</h3>
                 <div class="setting-row">
@@ -236,12 +232,13 @@
 
     <!-- 5. Model Selection -->
     <div class="settings-main-section">
-        <div class="settings-main-header" onclick="toggleMainSection(this)">
+        <div class="settings-main-header collapsed" onclick="toggleMainSection(this)">
             <div>
                 <h2>Model Selection</h2>
             </div>
+            <span class="expand-icon">▼</span>
         </div>
-        <div class="settings-main-body">
+        <div class="settings-main-body collapsed">
             <div class="settings-section" style="margin-left: 0;">
                 <div class="setting-row" style="align-items: flex-start;">
                     <div>
@@ -258,12 +255,13 @@
 
     <!-- 6. BI Semantics -->
     <div class="settings-main-section">
-        <div class="settings-main-header" onclick="toggleMainSection(this)">
+        <div class="settings-main-header collapsed" onclick="toggleMainSection(this)">
             <div>
                 <h2>BI Semantics</h2>
             </div>
+            <span class="expand-icon">▼</span>
         </div>
-        <div class="settings-main-body">
+        <div class="settings-main-body collapsed">
             <div class="settings-section" style="margin-left: 0;">
                 <div class="setting-row" style="align-items: flex-start;">
                     <div>
@@ -280,14 +278,14 @@
 
     <!-- 7. LLM Call Logging -->
     <div class="settings-main-section">
-        <div class="settings-main-header" onclick="toggleMainSection(this)">
+        <div class="settings-main-header collapsed" onclick="toggleMainSection(this)">
             <div>
                 <h2>LLM Call Logging</h2>
                 <div class="settings-main-desc">A user-readable log of every LLM call made anywhere in the app, with token counts and cost</div>
             </div>
             <span class="expand-icon">▼</span>
         </div>
-        <div class="settings-main-body">
+        <div class="settings-main-body collapsed">
             <div class="settings-section">
                 <h3>Logging</h3>
                 <div class="setting-row">
@@ -318,21 +316,6 @@
                     </div>
                     <div class="setting-input">
                         <a href="/llm_calls" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Open</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="settings-section">
-                <h3>Pricing (USD per 1,000 tokens)</h3>
-                <div class="setting-desc" style="margin-bottom: 12px;">
-                    Cost shown in the LLM Calls log is computed from these rates. A model name is matched exactly first, then by substring (e.g. "claude-3-5-sonnet" matches "claude-3-5-sonnet-20241022"); anything unmatched (including local Ollama models) falls back to "default".
-                </div>
-                <div id="llmPricingTable"></div>
-                <div style="display:flex; justify-content: space-between; align-items:center; margin-top: 10px;">
-                    <button type="button" class="btn btn-secondary" onclick="addPricingRow()">+ Add Model</button>
-                    <div>
-                        <span class="save-status" id="pricingSaveStatus"></span>
-                        <button type="button" class="btn btn-primary" onclick="savePricing()">Save Pricing</button>
                     </div>
                 </div>
             </div>
@@ -388,65 +371,6 @@
             const { instructions } = await instRes.json();
             document.getElementById('queryInstructions').value = instructions || '';
         }
-
-        renderPricingTable((config.llm_logging || {}).pricing);
-    }
-
-    // ==========================================
-    // LLM CALL LOGGING > PRICING TABLE
-    // ==========================================
-    function pricingRowHtml(model, rates) {
-        rates = rates || {};
-        const inputRate = rates.input_per_1k != null ? rates.input_per_1k : 0;
-        const outputRate = rates.output_per_1k != null ? rates.output_per_1k : 0;
-        return `
-            <div class="pricing-row">
-                <input type="text" class="pricing-model" value="${slEscapeHtml(model)}" placeholder="model name (or &quot;default&quot;)">
-                <div class="pricing-rate-group">in <input type="number" class="pricing-input" value="${inputRate}" step="0.000001" min="0"></div>
-                <div class="pricing-rate-group">out <input type="number" class="pricing-output" value="${outputRate}" step="0.000001" min="0"></div>
-                <button type="button" class="btn btn-danger" onclick="this.closest('.pricing-row').remove()">✕</button>
-            </div>
-        `;
-    }
-
-    function renderPricingTable(pricing) {
-        const container = document.getElementById('llmPricingTable');
-        const entries = Object.entries(pricing || {});
-        container.innerHTML = entries.length
-            ? entries.map(([model, rates]) => pricingRowHtml(model, rates)).join('')
-            : pricingRowHtml('default', {});
-    }
-
-    function addPricingRow() {
-        document.getElementById('llmPricingTable').insertAdjacentHTML('beforeend', pricingRowHtml('', {}));
-    }
-
-    async function savePricing() {
-        const statusEl = document.getElementById('pricingSaveStatus');
-        const pricing = {};
-        document.querySelectorAll('#llmPricingTable .pricing-row').forEach(row => {
-            const model = row.querySelector('.pricing-model').value.trim();
-            if (!model) return;
-            pricing[model] = {
-                input_per_1k: Number(row.querySelector('.pricing-input').value) || 0,
-                output_per_1k: Number(row.querySelector('.pricing-output').value) || 0,
-            };
-        });
-
-        try {
-            const res = await authFetch('/api/settings/rag-config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ llm_logging: { pricing } })
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            statusEl.textContent = '✓ Saved';
-            statusEl.style.color = 'var(--accent-green)';
-        } catch (e) {
-            statusEl.textContent = '✗ Failed to save: ' + e.message;
-            statusEl.style.color = '#F48771';
-        }
-        setTimeout(() => { statusEl.textContent = ''; }, 2500);
     }
 
     async function saveQueryInstructions() {
