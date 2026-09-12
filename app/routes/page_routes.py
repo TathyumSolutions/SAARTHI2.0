@@ -284,6 +284,14 @@ def rpa_workflows():
 def resource_mapping_page():
     return render_template('resource_mapping.html')
 
+@bp.route('/llm_mapping')
+def llm_mapping_page():
+    """Admin screen to allocate a company's Model Configurations (Configure
+    New Model, under AI & Models) to specific employees, with an optional
+    daily budget - the LLM-only counterpart of Resource Mapping, built on
+    the same /api/resource-mapping endpoints filtered to resource_type='llm'."""
+    return render_template('llm_mapping.html')
+
 # API Connectors
 @bp.route('/api-connectors/rest-apis')
 def rest_apis():

@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+{% block title %}Saarthi - LLM Mapping{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .rm-page { max-width: 1100px; }
+    .rm-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .rm-grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+    .rm-panel { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; }
+    .rm-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .rm-select-all-btn { background: none; border: 1px solid var(--border-color); color: var(--accent-green); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+    .rm-select-all-btn:hover { background: rgba(78, 201, 176, 0.12); }
+    .rm-search { width: 100%; padding: 8px 10px; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); margin-bottom: 10px; }
+    .rm-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .rm-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(255,255,255,0.02); }
+    .rm-item-label { font-size: 13px; color: var(--text-primary); }
+    .rm-item small { color: var(--text-secondary); display: block; margin-top: 2px; }
+    .rm-empty { color: var(--text-secondary); font-size: 13px; padding: 8px 0; }
+    .rm-action-row { display: flex; justify-content: flex-end; margin-top: 12px; }
+    .rm-cta { background: var(--accent-green); color: var(--dark-bg); border: none; border-radius: 6px; padding: 8px 12px; cursor: pointer; font-weight: 600; }
+    .rm-summary { background: rgba(255,255,255,0.03); border: 1px dashed var(--border-color); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; color: var(--text-secondary); font-size: 13px; }
+    .rm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .rm-table th, .rm-table td { padding: 8px 10px; border-bottom: 1px solid var(--border-color); text-align: left; }
+    .rm-table th { color: var(--text-secondary); font-weight: 600; }
+    .rm-table td { color: var(--text-primary); }
+    .rm-remove-btn { color: #F48771; cursor: pointer; background: none; border: none; font-size: 13px; }
+    .rm-section-block { margin-top: 18px; }
+    .rm-section-title { font-size: 14px; color: var(--accent-green); margin-bottom: 10px; }
+    @media (max-width: 900px) { .rm-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rm-page">
+    <div class="rm-toolbar">
+        <h2 style="margin: 0;">LLM Mapping</h2>
+    </div>
+    <p style="color: var(--text-secondary); font-size: 13px; margin: -8px 0 16px;">
+        Admin only. Allocate a Model Configuration (created via <a href="javascript:void(0)" onclick="window.location.href='/index'" style="color: var(--accent-green);">AI &amp; Models &gt; Configure New Model</a>)
+        to other employees of your company, with an optional daily spend budget. Nothing is shared automatically -
+        a configuration stays private to whoever created it until granted here.
+    </p>
+
+    <div class="rm-grid">
+        <div class="rm-panel">
+            <div class="rm-panel-header">
+                <strong>Employees</strong>
+                <button type="button" id="selectAllUsersBtn" class="rm-select-all-btn">Select All</button>
+            </div>
+            <input id="userSearch" class="rm-search" type="text" placeholder="Search employees..." />
+            <div id="userList" class="rm-list"></div>
+        </div>
+
+        <div class="rm-panel">
+            <div class="rm-panel-header">
+                <strong>Model Configurations</strong>
+                <button type="button" id="selectAllResourcesBtn" class="rm-select-all-btn">Select All</button>
+            </div>
+            <input id="resourceSearch" class="rm-search" type="text" placeholder="Search configured models..." />
+            <div id="resourceList" class="rm-list"></div>
+        </div>
+    </div>
+
+    <div class="rm-panel rm-section-block">
+        <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">
+            Daily budget (USD, optional - leave blank for unlimited)
+            <input id="llmDailyBudget" type="number" min="0" step="0.01" class="rm-search" style="margin-top: 4px;" placeholder="e.g. 5.00" />
+        </label>
+        <div class="rm-action-row">
+            <button id="addPendingBtn" class="rm-cta">Add to mapping list</button>
+        </div>
+        <div id="pendingSummary" class="rm-summary">No selections yet.</div>
+        <div class="rm-section-title">Final list</div>
+        <div id="pendingMappingsList"></div>
+        <div class="rm-action-row" style="margin-top: 12px;">
+            <button id="saveMappingsBtn" class="rm-cta">Save Mappings</button>
+        </div>
+    </div>
+
+    <div class="rm-panel rm-section-block">
+        <div class="rm-section-title">Existing LLM Mappings</div>
+        <input id="existingSearch" class="rm-search" type="text" placeholder="Search existing mappings..." />
+        <div id="existingMappingsList"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Same admin-curated grant mechanism as Resource Mapping
+    // (/api/resource-mapping/*), just filtered down to resource_type='llm'
+    // (Model Configurations) so admins don't have to pick a resource type
+    // out of a combined database/file/api/llm list.
+    const RESOURCE_TYPE = 'llm';
+
+    let allUsers = [];
+    let allResources = [];
+    let pendingMappings = [];
+    let existingMappings = [];
+
+    function getSelectedValues(containerId) {
+        return Array.from(document.querySelectorAll(`#${containerId} input[type="checkbox"]:checked`)).map(el => el.value);
+    }
+
+    function renderUserList() {
+        const query = document.getElementById('userSearch').value.toLowerCase();
+        const visibleUsers = allUsers.filter(user => {
+            const haystack = [user.name, user.email, user.role, user.company_code].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(query);
+        });
+
+        const list = document.getElementById('userList');
+        if (!visibleUsers.length) {
+            list.innerHTML = '<div class="rm-empty">No employees match the current search.</div>';
+            return;
+        }
+
+        list.innerHTML = visibleUsers.map(user => `
+            <label class="rm-item">
+                <div class="rm-item-label">
+                    <div>${user.name || 'Unnamed user'}</div>
+                    <small>${user.email || ''} • ${user.role || 'role'}</small>
+                </div>
+                <input type="checkbox" value="${user.id}" class="user-checkbox" />
+            </label>
+        `).join('');
+    }
+
+    function renderResourceList() {
+        const query = document.getElementById('resourceSearch').value.toLowerCase();
+        const visibleResources = allResources.filter(resource => {
+            const haystack = [resource.name, resource.id].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(query);
+        });
+
+        const list = document.getElementById('resourceList');
+        if (!visibleResources.length) {
+            list.innerHTML = '<div class="rm-empty">No configured models match the current search - configure one first under AI &amp; Models.</div>';
+            return;
+        }
+
+        list.innerHTML = visibleResources.map(resource => `
+            <label class="rm-item">
+                <div class="rm-item-label">
+                    <div>${resource.name || resource.id}</div>
+                    <small>ID: ${resource.id}</small>
+                </div>
+                <input type="checkbox" value="${resource.id}" data-name="${resource.name}" class="resource-checkbox" />
+            </label>
+        `).join('');
+    }
+
+    function renderPendingSummary() {
+        const selectedUsers = getSelectedValues('userList');
+        const selectedResources = getSelectedValues('resourceList');
+        const expectedCount = selectedUsers.length * selectedResources.length;
+        const pendingCount = pendingMappings.length;
+        const summary = document.getElementById('pendingSummary');
+        summary.textContent = selectedUsers.length && selectedResources.length
+            ? `${selectedUsers.length} selected employee(s) × ${selectedResources.length} selected model(s) = ${expectedCount} potential mapping(s). Current pending list: ${pendingCount}.`
+            : `No selections yet. Current pending list: ${pendingCount}.`;
+    }
+
+    function renderPendingMappings() {
+        const container = document.getElementById('pendingMappingsList');
+        if (!pendingMappings.length) {
+            container.innerHTML = '<div class="rm-empty">No pending mappings yet.</div>';
+            renderPendingSummary();
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="rm-table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Model Configuration</th>
+                        <th>Daily Budget</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${pendingMappings.map((mapping, index) => `
+                        <tr>
+                            <td>${mapping.user_name || mapping.user_id}</td>
+                            <td>${mapping.resource_name || mapping.resource_id}</td>
+                            <td>${mapping.daily_budget != null ? `$${mapping.daily_budget.toFixed(2)}` : 'Unlimited'}</td>
+                            <td><button class="rm-remove-btn" data-remove-pending="${index}">🗑️</button></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        renderPendingSummary();
+    }
+
+    function renderExistingMappings() {
+        const query = document.getElementById('existingSearch').value.toLowerCase();
+        const filtered = existingMappings.filter(mapping => {
+            const haystack = [
+                mapping.user_name,
+                mapping.user_email,
+                mapping.resource_name,
+                mapping.resource_id,
+                mapping.created_at
+            ].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(query);
+        });
+
+        const container = document.getElementById('existingMappingsList');
+        if (!filtered.length) {
+            container.innerHTML = '<div class="rm-empty">No existing LLM mappings found.</div>';
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="rm-table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Model Configuration</th>
+                        <th>Daily Budget</th>
+                        <th>Created</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${filtered.map(mapping => `
+                        <tr>
+                            <td>${mapping.user_name || mapping.user_email || mapping.user_id}<br><small>${mapping.user_email || ''}</small></td>
+                            <td>${mapping.resource_name || mapping.resource_id}<br><small>ID: ${mapping.resource_id}</small></td>
+                            <td>${mapping.daily_budget != null ? `$${Number(mapping.daily_budget).toFixed(2)}` : 'Unlimited'}</td>
+                            <td>${mapping.created_at ? new Date(mapping.created_at).toLocaleString() : ''}</td>
+                            <td><button class="rm-remove-btn" data-remove-existing="${mapping.id}">🗑️</button></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+
+    async function loadUsers() {
+        const res = await authFetch('/api/resource-mapping/users');
+        const data = await res.json();
+        allUsers = data.users || [];
+        renderUserList();
+    }
+
+    async function loadResources() {
+        const res = await authFetch('/api/resource-mapping/resources');
+        const data = await res.json();
+        allResources = (data.resources || []).filter(r => r.type === RESOURCE_TYPE);
+        renderResourceList();
+    }
+
+    async function loadExistingMappings() {
+        const res = await authFetch('/api/resource-mapping/all');
+        const data = await res.json();
+        existingMappings = (data.mappings || []).filter(m => m.resource_type === RESOURCE_TYPE);
+        renderExistingMappings();
+    }
+
+    function toggleSelectAll(containerId, buttonId) {
+        const checkboxes = Array.from(document.querySelectorAll(`#${containerId} input[type="checkbox"]`));
+        const button = document.getElementById(buttonId);
+        if (!checkboxes.length) {
+            return;
+        }
+        const shouldSelectAll = checkboxes.some(box => !box.checked);
+        checkboxes.forEach(box => { box.checked = shouldSelectAll; });
+        if (button) {
+            button.textContent = shouldSelectAll ? 'Deselect All' : 'Select All';
+        }
+        renderPendingSummary();
+    }
+
+    function clearSelections() {
+        document.querySelectorAll('.user-checkbox:checked').forEach(box => box.checked = false);
+        document.querySelectorAll('.resource-checkbox:checked').forEach(box => box.checked = false);
+        const selectAllUsersBtn = document.getElementById('selectAllUsersBtn');
+        const selectAllResourcesBtn = document.getElementById('selectAllResourcesBtn');
+        if (selectAllUsersBtn) selectAllUsersBtn.textContent = 'Select All';
+        if (selectAllResourcesBtn) selectAllResourcesBtn.textContent = 'Select All';
+        renderPendingSummary();
+    }
+
+    function addPendingMappings() {
+        const selectedUserIds = getSelectedValues('userList');
+        const selectedResources = Array.from(document.querySelectorAll('.resource-checkbox:checked'));
+
+        if (!selectedUserIds.length || !selectedResources.length) {
+            alert('Select at least one employee and one model configuration first.');
+            return;
+        }
+
+        const userMap = new Map(allUsers.map(user => [String(user.id), user]));
+        const seen = new Set(pendingMappings.map(mapping => `${mapping.user_id}:${mapping.resource_id}`));
+        const budgetInput = document.getElementById('llmDailyBudget').value;
+        const dailyBudget = budgetInput !== '' ? parseFloat(budgetInput) : null;
+
+        selectedUserIds.forEach(userId => {
+            const user = userMap.get(String(userId));
+            selectedResources.forEach(resourceEl => {
+                const key = `${userId}:${resourceEl.value}`;
+                if (seen.has(key)) {
+                    return;
+                }
+                seen.add(key);
+                pendingMappings.push({
+                    user_id: userId,
+                    user_name: user ? user.name : userId,
+                    resource_id: resourceEl.value,
+                    resource_name: resourceEl.dataset.name,
+                    daily_budget: dailyBudget
+                });
+            });
+        });
+
+        renderPendingMappings();
+        clearSelections();
+    }
+
+    async function savePendingMappings() {
+        if (!pendingMappings.length) {
+            alert('There are no pending mappings to save.');
+            return;
+        }
+
+        for (const mapping of pendingMappings) {
+            const response = await authFetch('/api/resource-mapping', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: mapping.user_id,
+                    resource_type: RESOURCE_TYPE,
+                    resource_id: mapping.resource_id,
+                    daily_budget: mapping.daily_budget
+                })
+            });
+            if (!response.ok) {
+                throw new Error('Failed to save one or more mappings.');
+            }
+        }
+
+        pendingMappings = [];
+        renderPendingMappings();
+        await loadExistingMappings();
+        alert('LLM mappings saved successfully.');
+    }
+
+    async function deleteExistingMapping(mappingId) {
+        const response = await authFetch(`/api/resource-mapping/${mappingId}`, { method: 'DELETE' });
+        if (!response.ok) {
+            throw new Error('Failed to delete mapping.');
+        }
+        existingMappings = existingMappings.filter(mapping => mapping.id !== mappingId);
+        renderExistingMappings();
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        document.getElementById('userSearch').addEventListener('input', () => {
+            renderUserList();
+            document.getElementById('selectAllUsersBtn').textContent = 'Select All';
+        });
+        document.getElementById('resourceSearch').addEventListener('input', () => {
+            renderResourceList();
+            document.getElementById('selectAllResourcesBtn').textContent = 'Select All';
+        });
+        document.getElementById('existingSearch').addEventListener('input', renderExistingMappings);
+        document.getElementById('addPendingBtn').addEventListener('click', addPendingMappings);
+        document.getElementById('saveMappingsBtn').addEventListener('click', savePendingMappings);
+        document.getElementById('selectAllUsersBtn').addEventListener('click', () => toggleSelectAll('userList', 'selectAllUsersBtn'));
+        document.getElementById('selectAllResourcesBtn').addEventListener('click', () => toggleSelectAll('resourceList', 'selectAllResourcesBtn'));
+
+        document.getElementById('pendingMappingsList').addEventListener('click', (event) => {
+            const button = event.target.closest('[data-remove-pending]');
+            if (!button) {
+                return;
+            }
+            const index = Number(button.getAttribute('data-remove-pending'));
+            pendingMappings.splice(index, 1);
+            renderPendingMappings();
+        });
+
+        document.getElementById('existingMappingsList').addEventListener('click', async (event) => {
+            const button = event.target.closest('[data-remove-existing]');
+            if (!button) {
+                return;
+            }
+            const mappingId = Number(button.getAttribute('data-remove-existing'));
+            try {
+                await deleteExistingMapping(mappingId);
+            } catch (error) {
+                console.error(error);
+                alert('Could not delete mapping.');
+            }
+        });
+
+        await Promise.all([loadUsers(), loadResources(), loadExistingMappings()]);
+        renderPendingMappings();
+    });
+</script>
+{% endblock %}
