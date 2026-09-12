@@ -13,7 +13,7 @@ from app.models.user import User
 from app.models.database_connection import DatabaseConnection
 from app.models.file_resource import FileResource
 from app.models.api_connector import ApiConnector
-from app.models.llm_connection import LLMConnection
+from app.models.model_config import ModelConfiguration
 from app.models.resource_mapping import ResourceMapping, RESOURCE_TYPES
 from app.services.audit_service import log_event
 from app.utils.decorators import admin_required
@@ -24,7 +24,7 @@ bp = Blueprint('resource_mapping', __name__, url_prefix='/api/resource-mapping')
 def _resource_lookup(resource_type, resource_id, company_code):
     """Returns the resource row if it exists and belongs to company_code, else None."""
     model = {
-        'database': DatabaseConnection, 'file': FileResource, 'api': ApiConnector, 'llm': LLMConnection,
+        'database': DatabaseConnection, 'file': FileResource, 'api': ApiConnector, 'llm': ModelConfiguration,
     }.get(resource_type)
     if not model:
         return None
@@ -88,8 +88,10 @@ def list_resources(current_user):
     for tool in ApiConnector.query.filter_by(company_code=company_code).all():
         resources.append({"type": "api", "id": tool.id, "name": tool.integration_name})
 
-    for conn in LLMConnection.query.filter_by(company_code=company_code).all():
-        resources.append({"type": "llm", "id": conn.id, "name": f"{conn.name} ({conn.provider}/{conn.model})"})
+    for cfg in ModelConfiguration.query.filter(
+        ModelConfiguration.company_code == company_code, ModelConfiguration.name != 'global_default'
+    ).all():
+        resources.append({"type": "llm", "id": cfg.id, "name": f"{cfg.name} ({cfg.provider}/{cfg.model})"})
 
     return jsonify({"resources": resources}), 200
 

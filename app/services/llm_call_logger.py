@@ -84,7 +84,7 @@ def record_llm_call(*, purpose, model_name, provider=None, prompt_text=None, res
                      prompt_tokens=None, completion_tokens=None, total_tokens=None,
                      duration_ms=None, status="success", error_message=None,
                      user_id=None, company_code=None, session_id=None, query_code=None,
-                     llm_connection_id=None):
+                     model_configuration_id=None):
     """Writes one LLMCallLog row. Never raises."""
     cfg = _logging_config()
     if not cfg.get("enabled", True):
@@ -106,7 +106,7 @@ def record_llm_call(*, purpose, model_name, provider=None, prompt_text=None, res
             purpose=purpose,
             provider=provider,
             model=str(model_name) if model_name else "unknown",
-            llm_connection_id=llm_connection_id,
+            model_configuration_id=model_configuration_id,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
