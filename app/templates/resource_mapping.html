@@ -60,6 +60,10 @@
     </div>
 
     <div class="rm-panel rm-section-block">
+        <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">
+            Daily budget (USD, only applies to LLM resources - leave blank for unlimited)
+            <input id="llmDailyBudget" type="number" min="0" step="0.01" class="rm-search" style="margin-top: 4px;" placeholder="e.g. 5.00" />
+        </label>
         <div class="rm-action-row">
             <button id="addPendingBtn" class="rm-cta">Add to mapping list</button>
         </div>
@@ -164,6 +168,7 @@
                         <th>User</th>
                         <th>Resource</th>
                         <th>Type</th>
+                        <th>Daily Budget</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -173,6 +178,7 @@
                             <td>${mapping.user_name || mapping.user_id}</td>
                             <td>${mapping.resource_name || mapping.resource_id}</td>
                             <td>${mapping.resource_type}</td>
+                            <td>${mapping.resource_type === 'llm' ? (mapping.daily_budget != null ? `$${mapping.daily_budget.toFixed(2)}` : 'Unlimited') : '-'}</td>
                             <td><button class="rm-remove-btn" data-remove-pending="${index}">🗑️</button></td>
                         </tr>
                     `).join('')}
@@ -209,6 +215,7 @@
                         <th>User</th>
                         <th>Type</th>
                         <th>Resource</th>
+                        <th>Daily Budget</th>
                         <th>Created</th>
                         <th></th>
                     </tr>
@@ -219,6 +226,7 @@
                             <td>${mapping.user_name || mapping.user_email || mapping.user_id}<br><small>${mapping.user_email || ''}</small></td>
                             <td>${mapping.resource_type}</td>
                             <td>${mapping.resource_name || mapping.resource_id}<br><small>ID: ${mapping.resource_id}</small></td>
+                            <td>${mapping.resource_type === 'llm' ? (mapping.daily_budget != null ? `$${Number(mapping.daily_budget).toFixed(2)}` : 'Unlimited') : '-'}</td>
                             <td>${mapping.created_at ? new Date(mapping.created_at).toLocaleString() : ''}</td>
                             <td><button class="rm-remove-btn" data-remove-existing="${mapping.id}">🗑️</button></td>
                         </tr>
@@ -284,6 +292,8 @@
 
         const userMap = new Map(allUsers.map(user => [String(user.id), user]));
         const seen = new Set(pendingMappings.map(mapping => `${mapping.user_id}:${mapping.resource_type}:${mapping.resource_id}`));
+        const budgetInput = document.getElementById('llmDailyBudget').value;
+        const dailyBudget = budgetInput !== '' ? parseFloat(budgetInput) : null;
 
         selectedUserIds.forEach(userId => {
             const user = userMap.get(String(userId));
@@ -298,7 +308,8 @@
                     user_name: user ? user.name : userId,
                     resource_type: resourceEl.dataset.type,
                     resource_id: resourceEl.value,
-                    resource_name: resourceEl.dataset.name
+                    resource_name: resourceEl.dataset.name,
+                    daily_budget: resourceEl.dataset.type === 'llm' ? dailyBudget : null
                 });
             });
         });
@@ -321,7 +332,8 @@
                     user_id: mapping.user_id,
                     resource_type: mapping.resource_type,
                     resource_id: mapping.resource_id,
-                    resource_name: mapping.resource_name
+                    resource_name: mapping.resource_name,
+                    daily_budget: mapping.daily_budget
                 })
             });
             if (!response.ok) {
