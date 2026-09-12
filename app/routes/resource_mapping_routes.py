@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.database_connection import DatabaseConnection
 from app.models.file_resource import FileResource
 from app.models.api_connector import ApiConnector
+from app.models.llm_connection import LLMConnection
 from app.models.resource_mapping import ResourceMapping, RESOURCE_TYPES
 from app.services.audit_service import log_event
 from app.utils.decorators import admin_required
@@ -22,7 +23,9 @@ bp = Blueprint('resource_mapping', __name__, url_prefix='/api/resource-mapping')
 
 def _resource_lookup(resource_type, resource_id, company_code):
     """Returns the resource row if it exists and belongs to company_code, else None."""
-    model = {'database': DatabaseConnection, 'file': FileResource, 'api': ApiConnector}.get(resource_type)
+    model = {
+        'database': DatabaseConnection, 'file': FileResource, 'api': ApiConnector, 'llm': LLMConnection,
+    }.get(resource_type)
     if not model:
         return None
     resource = model.query.get(resource_id)
@@ -31,11 +34,25 @@ def _resource_lookup(resource_type, resource_id, company_code):
     return resource
 
 
+def _parse_budget(value):
+    """Coerces a submitted daily_budget into a float, or None for
+    unlimited/blank/invalid - only meaningful for resource_type='llm'."""
+    if value in (None, '', 'null'):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
 def _resource_display_name(resource_type, resource):
     if resource_type == 'file':
         return resource.file_name
     if resource_type == 'api':
         return resource.integration_name
+    if resource_type == 'llm':
+        return f"{resource.name} ({resource.provider}/{resource.model})"
     return resource.name
 
 
@@ -70,6 +87,9 @@ def list_resources(current_user):
 
     for tool in ApiConnector.query.filter_by(company_code=company_code).all():
         resources.append({"type": "api", "id": tool.id, "name": tool.integration_name})
+
+    for conn in LLMConnection.query.filter_by(company_code=company_code).all():
+        resources.append({"type": "llm", "id": conn.id, "name": f"{conn.name} ({conn.provider}/{conn.model})"})
 
     return jsonify({"resources": resources}), 200
 
@@ -134,6 +154,8 @@ def create_mappings_bulk(current_user):
                 resource_id=resource_id,
                 user_id=user_id,
                 granted_by_user_id=current_user.id,
+                daily_budget=_parse_budget(r.get("daily_budget")) if resource_type == 'llm' else None,
+                budget_currency=(r.get("budget_currency") or 'USD') if resource_type == 'llm' else 'USD',
             ))
             created += 1
 
@@ -171,6 +193,8 @@ def get_all_mappings(current_user):
             "resource_type": m.resource_type,
             "resource_id": m.resource_id,
             "resource_name": _resource_display_name(m.resource_type, resource) if resource else None,
+            "daily_budget": float(m.daily_budget) if m.daily_budget is not None else None,
+            "budget_currency": m.budget_currency,
             "created_at": m.created_at.isoformat() if m.created_at else None,
         })
 
@@ -211,7 +235,7 @@ def create_mapping(current_user):
         return jsonify({"status": "error", "message": "user_id and resource_id must be numeric."}), 400
 
     if resource_type not in RESOURCE_TYPES:
-        return jsonify({"status": "error", "message": "resource_type must be 'database', 'file', or 'api'."}), 400
+        return jsonify({"status": "error", "message": "resource_type must be 'database', 'file', 'api', or 'llm'."}), 400
 
     target = User.query.get(user_id)
     if not target or target.company_code != current_user.company_code:
@@ -229,6 +253,8 @@ def create_mapping(current_user):
         resource_id=resource_id,
         user_id=user_id,
         granted_by_user_id=current_user.id,
+        daily_budget=_parse_budget(data.get("daily_budget")) if resource_type == 'llm' else None,
+        budget_currency=(data.get("budget_currency") or 'USD') if resource_type == 'llm' else 'USD',
     )
     db.session.add(mapping)
     db.session.commit()
@@ -239,6 +265,30 @@ def create_mapping(current_user):
     # No router config to warm - see the bulk-grant route above.
 
     return jsonify({"status": "success", "message": "Resource mapped to user."}), 201
+
+
+@bp.route('/<int:mapping_id>/budget', methods=['PATCH'])
+@jwt_required()
+@admin_required
+def update_mapping_budget(current_user, mapping_id):
+    """Updates the daily_budget/budget_currency of an existing 'llm' mapping."""
+    mapping = ResourceMapping.query.get(mapping_id)
+    if not mapping or mapping.company_code != current_user.company_code:
+        return jsonify({"status": "error", "message": "Mapping not found."}), 404
+    if mapping.resource_type != 'llm':
+        return jsonify({"status": "error", "message": "Only 'llm' mappings carry a budget."}), 400
+
+    data = request.get_json(silent=True) or {}
+    mapping.daily_budget = _parse_budget(data.get("daily_budget"))
+    if data.get("budget_currency"):
+        mapping.budget_currency = data["budget_currency"]
+    db.session.commit()
+
+    log_event('resource_mapping_budget_updated', company_code=current_user.company_code, user_id=current_user.id,
+               resource_type='llm', resource_id=mapping.resource_id,
+               details={'user_id': mapping.user_id, 'daily_budget': mapping.to_dict()['daily_budget']})
+
+    return jsonify({"status": "success", "mapping": mapping.to_dict()}), 200
 
 
 @bp.route('/<int:mapping_id>', methods=['DELETE'])

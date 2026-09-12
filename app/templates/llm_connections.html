@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Saarthi - LLM Connections{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .lc-page { max-width: 1000px; }
+    .lc-panel { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .lc-form-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+    .lc-form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+    .lc-form-grid input, .lc-form-grid select, .lc-form-grid textarea {
+        padding: 8px 10px; background: var(--dark-bg); border: 1px solid var(--border-color);
+        border-radius: 6px; color: var(--text-primary); font-size: 13px;
+    }
+    .lc-full { grid-column: 1 / -1; }
+    .lc-cta { background: var(--accent-green); color: var(--dark-bg); border: none; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-weight: 600; margin-top: 8px; }
+    .lc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .lc-table th, .lc-table td { padding: 8px 10px; border-bottom: 1px solid var(--border-color); text-align: left; }
+    .lc-table th { color: var(--text-secondary); font-weight: 600; }
+    .lc-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+    .lc-badge.active { background: rgba(78, 201, 176, 0.15); color: var(--accent-green); }
+    .lc-badge.error { background: rgba(244, 135, 113, 0.15); color: #F48771; }
+    .lc-badge.inactive { background: rgba(255,255,255,0.08); color: var(--text-secondary); }
+    .lc-remove-btn { color: #F48771; cursor: pointer; background: none; border: none; font-size: 13px; }
+    .lc-empty { color: var(--text-secondary); font-size: 13px; padding: 8px 0; }
+    @media (max-width: 700px) { .lc-form-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lc-page">
+    <h2 style="margin: 0 0 4px;">LLM Connections</h2>
+    <p style="color: var(--text-secondary); font-size: 13px; margin: 0 0 16px;">
+        Register the LLM provider connections your company uses. A connection you create stays private to you
+        until an admin grants it to other users on the <a href="/resource_mapping" style="color: var(--accent-green);">Resource Mapping</a> page
+        (with an optional daily budget).
+    </p>
+
+    <div class="lc-panel">
+        <strong>Add LLM Connection</strong>
+        <div class="lc-form-grid" style="margin-top: 12px;">
+            <label>Name
+                <input id="lcName" type="text" placeholder="e.g. Company OpenAI GPT-4o" />
+            </label>
+            <label>Provider
+                <select id="lcProvider">
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="azure_openai">Azure OpenAI</option>
+                    <option value="google">Google</option>
+                    <option value="custom">Custom / Self-hosted</option>
+                </select>
+            </label>
+            <label>Model
+                <input id="lcModel" type="text" placeholder="e.g. gpt-4o, claude-sonnet-5" />
+            </label>
+            <label>API Key
+                <input id="lcApiKey" type="password" placeholder="sk-..." />
+            </label>
+            <label>API Base URL (optional)
+                <input id="lcBaseUrl" type="text" placeholder="Custom / Azure endpoint" />
+            </label>
+            <label>API Version (optional)
+                <input id="lcApiVersion" type="text" placeholder="Azure api-version" />
+            </label>
+            <label class="lc-full">Description (optional)
+                <textarea id="lcDescription" rows="2" placeholder="What this connection is used for"></textarea>
+            </label>
+        </div>
+        <button id="lcSaveBtn" class="lc-cta">Save Connection</button>
+    </div>
+
+    <div class="lc-panel">
+        <strong>Your LLM Connections</strong>
+        <div id="lcList" style="margin-top: 12px;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function loadLlmConnections() {
+        const res = await authFetch('/api/llm-connections/');
+        const data = await res.json();
+        renderLlmConnections(data.connections || []);
+    }
+
+    function renderLlmConnections(connections) {
+        const container = document.getElementById('lcList');
+        if (!connections.length) {
+            container.innerHTML = '<div class="lc-empty">No LLM connections yet - add one above.</div>';
+            return;
+        }
+        container.innerHTML = `
+            <table class="lc-table">
+                <thead>
+                    <tr>
+                        <th>Name</th><th>Provider</th><th>Model</th><th>Status</th><th>Today's Spend</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${connections.map(c => `
+                        <tr>
+                            <td>${c.name}${c.description ? `<br><small style="color:var(--text-secondary);">${c.description}</small>` : ''}</td>
+                            <td>${c.provider}</td>
+                            <td>${c.model}</td>
+                            <td><span class="lc-badge ${c.status}">${c.status}</span></td>
+                            <td>${c.budget && c.budget.daily_budget != null
+                                ? `$${c.budget.used_today.toFixed(2)} / $${c.budget.daily_budget.toFixed(2)}`
+                                : `$${(c.budget ? c.budget.used_today : 0).toFixed(2)} (unlimited)`}</td>
+                            <td><button class="lc-remove-btn" data-remove-connection="${c.id}">🗑️</button></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+
+    async function saveLlmConnection() {
+        const payload = {
+            name: document.getElementById('lcName').value.trim(),
+            provider: document.getElementById('lcProvider').value,
+            model: document.getElementById('lcModel').value.trim(),
+            api_key: document.getElementById('lcApiKey').value,
+            api_base_url: document.getElementById('lcBaseUrl').value.trim(),
+            api_version: document.getElementById('lcApiVersion').value.trim(),
+            description: document.getElementById('lcDescription').value.trim(),
+        };
+        if (!payload.name || !payload.provider || !payload.model) {
+            alert('Name, provider, and model are required.');
+            return;
+        }
+        const res = await authFetch('/api/llm-connections/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert(err.error || 'Failed to save connection.');
+            return;
+        }
+        ['lcName', 'lcModel', 'lcApiKey', 'lcBaseUrl', 'lcApiVersion', 'lcDescription'].forEach(id => {
+            document.getElementById(id).value = '';
+        });
+        await loadLlmConnections();
+    }
+
+    async function deleteLlmConnection(id) {
+        const res = await authFetch(`/api/llm-connections/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+            alert('Failed to delete connection.');
+            return;
+        }
+        await loadLlmConnections();
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        document.getElementById('lcSaveBtn').addEventListener('click', saveLlmConnection);
+        document.getElementById('lcList').addEventListener('click', (event) => {
+            const button = event.target.closest('[data-remove-connection]');
+            if (!button) return;
+            deleteLlmConnection(Number(button.getAttribute('data-remove-connection')));
+        });
+        await loadLlmConnections();
+    });
+</script>
+{% endblock %}

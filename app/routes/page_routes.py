@@ -284,6 +284,11 @@ def rpa_workflows():
 def resource_mapping_page():
     return render_template('resource_mapping.html')
 
+@bp.route('/llm_connections')
+def llm_connections_page():
+    """Admin screen to register/manage LLM provider connections (OpenAI, Anthropic, Azure OpenAI, etc.)."""
+    return render_template('llm_connections.html')
+
 # API Connectors
 @bp.route('/api-connectors/rest-apis')
 def rest_apis():
