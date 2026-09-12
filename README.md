@@ -287,14 +287,19 @@ The easiest way to spin up the entire Saarthi platform infrastructure (Flask web
   `app/services/databridge_services/metamind.py`
    
 
-2. **🧠 Download the Local LLM Models (Ollama)**
-   The Ollama container runs locally but starts empty. Before running the pipeline or clicking "Process", you must pull the specific models used by the multi-agent system. 
-   
-   Run these commands in your terminal:
-   ```bash
-   docker exec -it ollama ollama pull llama3
-   docker exec -it ollama ollama pull llama3:latest
-   docker exec -it ollama ollama pull phi3:mini
+2. **🧠 Local LLM Models (Ollama)**
+   The `ollama-init` service pulls and warms local models automatically as
+   part of `docker-compose up` - no manual `ollama pull` needed. By default
+   it only pulls one small model (`llama2:7b`) so a fresh setup stays fast
+   and light on disk.
+
+   To pull additional/different local models instead, set `OLLAMA_MODELS`
+   in your `.env` file (space-separated tags), e.g.:
+   ```env
+   OLLAMA_MODELS=llama2:7b mistral:7b codellama:7b
+   ```
+   Then re-run `docker-compose up -d` - `ollama-init` will pull and warm
+   exactly that list.
 
 ### Docker
 ```bash

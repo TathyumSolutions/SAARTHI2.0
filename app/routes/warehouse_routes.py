@@ -12,8 +12,15 @@ from flask_jwt_extended import jwt_required
 from app.models.database_connection import DatabaseConnection
 from app.services.warehouse_generator import (
     WarehouseGenerationError,
+    check_health,
+    generate_health_script,
     generate_script,
     get_discovered_tables,
+    get_raw_table_columns,
+    get_table_mapping,
+    run_job,
+    save_table_mapping,
+    suggest_transformations,
 )
 from app.utils.auth_helpers import get_current_user
 
@@ -194,6 +201,180 @@ def generate_warehouse_script():
             as_attachment=True,
             download_name=filename,
         )
+    except WarehouseGenerationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@bp.route("/api/warehouse/run", methods=["POST"])
+@jwt_required()
+def run_warehouse():
+    """Executes the job in-process against a validated job spec (schema/
+    full/incremental) and returns per-table results - no arbitrary script
+    text is ever exec'd server-side."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        data = request.get_json() or {}
+
+        target_connection_id = data.get("target_connection_id")
+        selected_tables = data.get("selected_tables", [])
+        schema_generator = bool(data.get("schema_generator"))
+        incremental_load = bool(data.get("incremental_load"))
+        full_load = bool(data.get("full_load"))
+
+        if not target_connection_id:
+            return jsonify({"error": "target_connection_id is required"}), 400
+
+        target_connection = DatabaseConnection.query.get(target_connection_id)
+        if not target_connection:
+            return jsonify({"error": "Target connection not found"}), 404
+        if not _is_warehouse_target(target_connection):
+            return jsonify({"error": "Selected connection is not marked as warehouse_target"}), 400
+
+        results = run_job(
+            target_connection=target_connection,
+            selected_tables=selected_tables,
+            schema_generator=schema_generator,
+            incremental_load=incremental_load,
+            full_load=full_load,
+            user_id=current_user.id,
+        )
+        return jsonify({"results": results}), 200
+    except WarehouseGenerationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@bp.route("/api/warehouse/health", methods=["GET"])
+@jwt_required()
+def warehouse_health():
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        target_connection_id = request.args.get("target_connection_id", type=int)
+        if not target_connection_id:
+            return jsonify({"error": "target_connection_id is required"}), 400
+
+        target_connection = DatabaseConnection.query.get(target_connection_id)
+        if not target_connection:
+            return jsonify({"error": "Target connection not found"}), 404
+        if not _is_warehouse_target(target_connection):
+            return jsonify({"error": "Selected connection is not marked as warehouse_target"}), 400
+
+        return jsonify(check_health(target_connection)), 200
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@bp.route("/api/warehouse/health/script", methods=["GET"])
+@jwt_required()
+def warehouse_health_script():
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        target_connection_id = request.args.get("target_connection_id", type=int)
+        if not target_connection_id:
+            return jsonify({"error": "target_connection_id is required"}), 400
+
+        target_connection = DatabaseConnection.query.get(target_connection_id)
+        if not target_connection:
+            return jsonify({"error": "Target connection not found"}), 404
+        if not _is_warehouse_target(target_connection):
+            return jsonify({"error": "Selected connection is not marked as warehouse_target"}), 400
+
+        script, filename = generate_health_script(target_connection)
+        return send_file(
+            io.BytesIO(script.encode("utf-8")),
+            mimetype="text/x-python",
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@bp.route("/api/warehouse/mapping/<path:table_name>", methods=["GET"])
+@jwt_required()
+def get_warehouse_mapping(table_name):
+    """Merged view for the mapping editor: every source column plus any
+    saved override for it (defaults are a straight 1:1 pass-through)."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        target_connection_id = request.args.get("target_connection_id", type=int)
+        target_connection = (
+            DatabaseConnection.query.get(target_connection_id) if target_connection_id else None
+        )
+
+        raw_columns = get_raw_table_columns(current_user.id, table_name)
+        saved = get_table_mapping(target_connection, table_name)
+
+        columns = []
+        for col in raw_columns:
+            override = saved.get(col["name"], {})
+            columns.append({
+                "source_name": col["name"],
+                "data_type": col.get("data_type"),
+                "nullable": col.get("nullable", True),
+                "target_name": override.get("target_name", col["name"]),
+                "target_type": override.get("target_type") or "",
+                "include": override.get("include", True),
+                "transform_expr": override.get("transform_expr") or "",
+            })
+
+        return jsonify({"table": table_name, "columns": columns}), 200
+    except WarehouseGenerationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@bp.route("/api/warehouse/mapping/<path:table_name>", methods=["POST"])
+@jwt_required()
+def save_warehouse_mapping(table_name):
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        data = request.get_json() or {}
+        target_connection_id = data.get("target_connection_id")
+        columns = data.get("columns", [])
+
+        if not target_connection_id:
+            return jsonify({"error": "target_connection_id is required"}), 400
+
+        target_connection = DatabaseConnection.query.get(target_connection_id)
+        if not target_connection:
+            return jsonify({"error": "Target connection not found"}), 404
+        if not _is_warehouse_target(target_connection):
+            return jsonify({"error": "Selected connection is not marked as warehouse_target"}), 400
+
+        save_table_mapping(target_connection, table_name, columns)
+        return jsonify({"message": "Mapping saved"}), 200
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@bp.route("/api/warehouse/mapping/<path:table_name>/suggest", methods=["POST"])
+@jwt_required()
+def suggest_warehouse_mapping(table_name):
+    """AI-assisted (with a rule-based fallback) starting point for the
+    mapping editor - always returned for the user to review/edit, never
+    saved automatically."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        raw_columns = get_raw_table_columns(current_user.id, table_name)
+        suggestions = suggest_transformations(table_name, raw_columns)
+        return jsonify({"table": table_name, "suggestions": suggestions}), 200
     except WarehouseGenerationError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:

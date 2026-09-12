@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+{% block title %}Warehouse Mapping - Saarthi{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .mapping-container {
+        max-width: 1300px;
+        margin: 0 auto;
+    }
+
+    .mapping-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .mapping-section {
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 18px;
+    }
+
+    .section-help {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 14px;
+    }
+
+    .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        border: 1px solid var(--border-color);
+        background: var(--hover-bg);
+        color: var(--text-primary);
+        border-radius: 4px;
+        padding: 8px 14px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .btn-primary {
+        background: var(--primary-blue);
+        border-color: var(--primary-blue);
+        color: white;
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .status {
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    .mapping-table-wrap {
+        overflow-x: auto;
+    }
+
+    table.mapping-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 900px;
+    }
+
+    .mapping-table th,
+    .mapping-table td {
+        border-bottom: 1px solid var(--border-color);
+        padding: 8px;
+        text-align: left;
+        font-size: 13px;
+        vertical-align: top;
+    }
+
+    .mapping-table th {
+        color: var(--text-secondary);
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .cell-input {
+        width: 100%;
+        min-width: 120px;
+        padding: 6px 8px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-primary);
+        font-size: 13px;
+    }
+
+    .cell-input.expr {
+        min-width: 220px;
+        font-family: 'SFMono-Regular', Consolas, monospace;
+    }
+
+    .source-name {
+        font-weight: 600;
+    }
+
+    .source-meta {
+        font-size: 11px;
+        color: var(--text-secondary);
+    }
+
+    .rationale {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-top: 4px;
+        max-width: 220px;
+    }
+
+    .excluded-row {
+        opacity: 0.5;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mapping-container">
+    <div class="mapping-header">
+        <h2 id="pageTitle">Warehouse Mapping</h2>
+        <a class="btn" href="/build_warehouse">Back to Build Warehouse</a>
+    </div>
+
+    <div class="mapping-section">
+        <div class="section-help">
+            Every column defaults to a straight 1:1 copy. Uncheck "Include" to drop a column,
+            rename the target, override its target type, or add a transform expression to
+            compute it instead of copying it directly. Nothing here is applied until you save it,
+            and generating/running the warehouse job always re-reads whatever is saved here.
+        </div>
+        <div class="toolbar">
+            <button class="btn" type="button" id="suggestBtn">Suggest Transformations (AI)</button>
+            <button class="btn" type="button" id="resetBtn">Reset to 1:1</button>
+            <span class="status" id="mappingStatus">Loading columns...</span>
+        </div>
+        <div class="mapping-table-wrap">
+            <table class="mapping-table">
+                <thead>
+                    <tr>
+                        <th>Include</th>
+                        <th>Source Column</th>
+                        <th>Target Name</th>
+                        <th>Target Type</th>
+                        <th>Transform Expression</th>
+                    </tr>
+                </thead>
+                <tbody id="mappingBody"></tbody>
+            </table>
+        </div>
+        <div class="toolbar" style="margin-top: 14px;">
+            <button class="btn btn-primary" type="button" id="saveMappingBtn">Save Mapping</button>
+            <span class="status" id="saveStatus"></span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const TARGET_TYPES = ["TEXT", "BIGINT", "SMALLINT", "INTEGER", "NUMERIC", "DOUBLE PRECISION", "BOOLEAN", "TIMESTAMP", "DATE", "TIME", "JSONB", "UUID"];
+
+    const params = new URLSearchParams(window.location.search);
+    const tableName = params.get('table');
+    const targetConnectionId = params.get('target_connection_id');
+
+    let columns = [];
+
+    function typeOptionsHtml(selected) {
+        const norm = (selected || "").toUpperCase();
+        return TARGET_TYPES.map(t => `<option value="${t}" ${t === norm ? 'selected' : ''}>${t}</option>`).join('');
+    }
+
+    function renderRows() {
+        const body = document.getElementById('mappingBody');
+        body.innerHTML = '';
+
+        columns.forEach((col, index) => {
+            const tr = document.createElement('tr');
+            tr.className = col.include ? '' : 'excluded-row';
+            tr.innerHTML = `
+                <td><input type="checkbox" class="col-include" data-index="${index}" ${col.include ? 'checked' : ''}></td>
+                <td>
+                    <div class="source-name">${col.source_name}</div>
+                    <div class="source-meta">${col.data_type || ''}${col.nullable === false ? ' · NOT NULL' : ''}</div>
+                    ${col.rationale ? `<div class="rationale">${col.rationale}</div>` : ''}
+                </td>
+                <td><input class="cell-input col-target-name" data-index="${index}" value="${col.target_name || col.source_name}"></td>
+                <td>
+                    <select class="cell-input col-target-type" data-index="${index}">
+                        ${typeOptionsHtml(col.target_type)}
+                    </select>
+                </td>
+                <td><input class="cell-input expr col-transform" data-index="${index}" placeholder="e.g. TRIM(&quot;${col.source_name}&quot;)" value="${col.transform_expr || ''}"></td>
+            `;
+            body.appendChild(tr);
+        });
+
+        body.querySelectorAll('.col-include').forEach(el => el.addEventListener('change', (e) => {
+            columns[Number(e.target.dataset.index)].include = e.target.checked;
+            renderRows();
+        }));
+        body.querySelectorAll('.col-target-name').forEach(el => el.addEventListener('input', (e) => {
+            columns[Number(e.target.dataset.index)].target_name = e.target.value;
+        }));
+        body.querySelectorAll('.col-target-type').forEach(el => el.addEventListener('change', (e) => {
+            columns[Number(e.target.dataset.index)].target_type = e.target.value;
+        }));
+        body.querySelectorAll('.col-transform').forEach(el => el.addEventListener('input', (e) => {
+            columns[Number(e.target.dataset.index)].transform_expr = e.target.value;
+        }));
+    }
+
+    async function loadMapping() {
+        const status = document.getElementById('mappingStatus');
+        try {
+            const res = await authFetch(`/api/warehouse/mapping/${encodeURIComponent(tableName)}?target_connection_id=${encodeURIComponent(targetConnectionId || '')}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            columns = data.columns || [];
+            renderRows();
+            status.textContent = `${columns.length} column(s) loaded.`;
+        } catch (err) {
+            status.textContent = `Failed to load columns: ${err.message}`;
+        }
+    }
+
+    async function suggestTransformations() {
+        const status = document.getElementById('mappingStatus');
+        status.textContent = 'Requesting suggestions...';
+        try {
+            const res = await authFetch(`/api/warehouse/mapping/${encodeURIComponent(tableName)}/suggest`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+            const suggestionsByName = {};
+            (data.suggestions || []).forEach(s => { suggestionsByName[s.source_name] = s; });
+
+            columns = columns.map(col => {
+                const s = suggestionsByName[col.source_name];
+                if (!s) return col;
+                return {
+                    ...col,
+                    target_name: s.suggested_target_name || col.target_name,
+                    target_type: s.suggested_target_type || col.target_type,
+                    transform_expr: s.suggested_transform_expr || col.transform_expr,
+                    rationale: s.rationale || '',
+                };
+            });
+            renderRows();
+            status.textContent = 'Suggestions applied - review and edit before saving.';
+        } catch (err) {
+            status.textContent = `Suggestion failed: ${err.message}`;
+        }
+    }
+
+    function resetToOneToOne() {
+        columns = columns.map(col => ({
+            ...col,
+            include: true,
+            target_name: col.source_name,
+            transform_expr: '',
+            rationale: '',
+        }));
+        renderRows();
+    }
+
+    async function saveMapping() {
+        const status = document.getElementById('saveStatus');
+        if (!targetConnectionId) {
+            status.textContent = 'No target connection selected - open this page from Build Warehouse.';
+            return;
+        }
+        status.textContent = 'Saving...';
+        try {
+            const res = await authFetch(`/api/warehouse/mapping/${encodeURIComponent(tableName)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target_connection_id: Number(targetConnectionId),
+                    columns: columns.map(c => ({
+                        source_name: c.source_name,
+                        target_name: c.target_name,
+                        target_type: c.target_type,
+                        include: c.include,
+                        transform_expr: c.transform_expr,
+                    })),
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            status.textContent = 'Mapping saved.';
+        } catch (err) {
+            status.textContent = `Save failed: ${err.message}`;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('pageTitle').textContent = tableName ? `Warehouse Mapping — ${tableName}` : 'Warehouse Mapping';
+        if (!tableName) {
+            document.getElementById('mappingStatus').textContent = 'No table specified. Open this page from Build Warehouse.';
+            return;
+        }
+        document.getElementById('suggestBtn').addEventListener('click', suggestTransformations);
+        document.getElementById('resetBtn').addEventListener('click', resetToOneToOne);
+        document.getElementById('saveMappingBtn').addEventListener('click', saveMapping);
+        loadMapping();
+    });
+</script>
+{% endblock %}

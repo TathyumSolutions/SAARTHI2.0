@@ -167,6 +167,13 @@ def build_warehouse_page():
     return render_template('build_warehouse.html')
 
 
+@bp.route('/warehouse/mapping')
+def warehouse_mapping_page():
+    """Column mapping/transformation editor for one warehouse table - opened
+    from the Build Warehouse page as its own page/tab (?table=...&target_connection_id=...)."""
+    return render_template('warehouse_mapping.html')
+
+
 @bp.route('/model_selection')
 def model_selection_page():
     """Model Selection page"""
