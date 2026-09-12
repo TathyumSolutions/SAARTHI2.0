@@ -96,11 +96,15 @@ services:
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - OLLAMA_KEEP_ALIVE=-1
+    # Which local models get pulled/warmed on startup - space-separated,
+    # override in your .env file (e.g. OLLAMA_MODELS=llama2:7b mistral:7b).
+    # Defaults to just the one small Llama model so a fresh `docker compose
+    # up` doesn't pull 4+ multi-GB models before the app can start.
     entrypoint: >
       sh -c "
         echo 'Waiting for Ollama to be ready...' &&
         sleep 2 &&
-        for model in llama2:7b llama3:8b mistral:7b codellama:7b; do
+        for model in ${OLLAMA_MODELS:-llama2:7b}; do
           echo \"Pulling $$model...\" &&
           ollama pull $$model || exit 1 &&
           echo \"Warming $$model...\" &&
