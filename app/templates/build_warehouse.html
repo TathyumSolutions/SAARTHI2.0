@@ -144,6 +144,18 @@
         cursor: not-allowed;
     }
 
+    .btn-x {
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-secondary);
+        border-radius: 4px;
+        width: 22px;
+        height: 22px;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
     .status {
         font-size: 13px;
         color: var(--text-secondary);
@@ -191,6 +203,7 @@
         display: flex;
         gap: 8px;
         align-items: center;
+        flex-shrink: 0;
     }
 
     .table-item {
@@ -224,8 +237,289 @@
         font-size: 13px;
     }
 
+    /* Target connection cards */
+    .target-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .target-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 10px 12px;
+        background: var(--dark-bg);
+    }
+
+    .target-card.active {
+        border-color: var(--primary-blue);
+    }
+
+    /* Data Model overview (auto-detected relationships) */
+    .dm-container {
+        position: relative;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--dark-bg);
+        padding: 20px;
+        overflow: auto;
+        max-height: 560px;
+    }
+
+    .dm-svg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    .dm-link {
+        fill: none;
+        stroke: var(--primary-blue);
+        stroke-width: 1.5;
+        opacity: 0.85;
+        pointer-events: stroke;
+        cursor: default;
+    }
+
+    .dm-link-inferred {
+        stroke-dasharray: 6 4;
+        opacity: 0.7;
+    }
+
+    .dm-link-name_heuristic {
+        stroke: var(--text-secondary);
+        stroke-dasharray: 2 3;
+        opacity: 0.6;
+    }
+
+    .dm-link-label {
+        font-size: 10px;
+        font-weight: 700;
+        fill: var(--text-secondary);
+    }
+
+    .dm-legend {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 10px;
+    }
+
+    .dm-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .dm-legend-swatch {
+        display: inline-block;
+        width: 22px;
+        height: 0;
+        border-top-width: 2px;
+        border-top-style: solid;
+        border-top-color: var(--primary-blue);
+    }
+
+    .dm-legend-swatch.inferred {
+        border-top-style: dashed;
+    }
+
+    .dm-legend-swatch.name_heuristic {
+        border-top-style: dotted;
+        border-top-color: var(--text-secondary);
+    }
+
+    .dm-cards {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 28px;
+        align-items: flex-start;
+    }
+
+    .dm-card {
+        width: 200px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--panel-bg);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    .dm-card-header {
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 700;
+        background: var(--hover-bg);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .dm-card-body {
+        padding: 4px 0;
+    }
+
+    .dm-col-row {
+        padding: 4px 10px;
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Table-level (drag & drop) mapping */
+    .mapping-dnd {
+        display: grid;
+        grid-template-columns: 1fr 1.4fr;
+        gap: 16px;
+    }
+
+    .dnd-col-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+    }
+
+    .dnd-list {
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--dark-bg);
+        padding: 10px;
+        min-height: 160px;
+        max-height: 420px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .dnd-item {
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 8px 10px;
+        background: var(--panel-bg);
+        cursor: grab;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+    }
+
+    .dnd-item:active {
+        cursor: grabbing;
+    }
+
+    .target-group-card {
+        border: 1px dashed var(--border-color);
+        border-radius: 6px;
+        padding: 10px;
+        background: var(--panel-bg);
+    }
+
+    .target-group-header {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .target-group-sources {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 6px;
+    }
+
+    .source-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        padding: 3px 8px;
+        border-radius: 12px;
+        background: var(--hover-bg);
+        border: 1px solid var(--border-color);
+    }
+
+    .chip-x {
+        cursor: pointer;
+        color: var(--text-secondary);
+    }
+
+    .join-editor {
+        border-top: 1px solid var(--border-color);
+        padding-top: 8px;
+        margin-top: 4px;
+    }
+
+    .join-editor-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+    }
+
+    .join-key-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+        font-size: 12px;
+    }
+
+    .join-key-row select {
+        min-width: 110px;
+    }
+
+    .cell-input {
+        padding: 6px 8px;
+        background: var(--sidebar-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-primary);
+        font-size: 13px;
+    }
+
+    .target-name-input {
+        flex: 1;
+        font-weight: 600;
+    }
+
+    .script-output {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: var(--dark-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 12px;
+        font-family: 'SFMono-Regular', Consolas, monospace;
+        font-size: 12px;
+        max-height: 420px;
+        overflow-y: auto;
+        margin-top: 10px;
+    }
+
     @media (max-width: 900px) {
         .form-row {
+            grid-template-columns: 1fr;
+        }
+
+        .mapping-dnd {
             grid-template-columns: 1fr;
         }
     }
@@ -238,14 +532,16 @@
 
     <div class="warehouse-section">
         <h3>1. Target Connection</h3>
-        <div class="section-help">Create or select a warehouse target connection. New connections are saved using the existing DatabaseConnection API with role warehouse_target.</div>
+        <div class="section-help">Warehouse target connections you've saved. Pick "Use" to make one active for the steps below, or "Edit" to update its details - saved connections stay listed here, they don't disappear after saving.</div>
 
-        <div class="form-group">
-            <label class="form-label" for="existingTargetSelect">Use Existing Warehouse Target</label>
-            <select class="form-input" id="existingTargetSelect"></select>
+        <div class="target-list" id="targetList"></div>
+
+        <div class="toolbar" style="margin-top: 12px;">
+            <button class="btn" type="button" id="addNewTargetBtn">+ Add New Target Connection</button>
         </div>
 
-        <form id="targetConnectionForm">
+        <form id="targetConnectionForm" hidden>
+            <h4 id="targetFormTitle" style="margin: 6px 0 10px; font-size: 14px;">New Target Connection</h4>
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label" for="connName">Connection Name</label>
@@ -286,8 +582,9 @@
                     <label class="form-label" for="connPassword">Password</label>
                     <input class="form-input" id="connPassword" type="password" required />
                 </div>
-                <div class="form-group" style="display: flex; align-items: end;">
-                    <button class="btn btn-primary" type="submit">Save Target Connection</button>
+                <div class="form-group" style="display: flex; align-items: end; gap: 10px;">
+                    <button class="btn btn-primary" type="submit" id="targetFormSubmitBtn">Save Target Connection</button>
+                    <button class="btn" type="button" id="cancelTargetFormBtn">Cancel</button>
                 </div>
             </div>
         </form>
@@ -296,7 +593,59 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>2. Load Modes</h3>
+        <h3>2. Data Model</h3>
+        <div class="section-help">
+            Every discovered table, with relationships drawn from the data sources' own metadata wherever
+            possible - a declared foreign key straight from the source database's schema first, then a join
+            your Metamind router already inferred from actual sample-value overlap (not just naming), and only
+            as a last resort a plain naming-convention guess for tables with no such metadata (spreadsheets).
+            This is the map Table-Level Mapping below draws its join-key suggestions from once you combine two
+            related tables - review it, it isn't something you need to fix by hand.
+        </div>
+        <div class="toolbar">
+            <span class="status" id="dataModelStatus">Loading data model...</span>
+        </div>
+        <div class="dm-legend">
+            <span class="dm-legend-item"><span class="dm-legend-swatch"></span> Declared foreign key (source schema)</span>
+            <span class="dm-legend-item"><span class="dm-legend-swatch inferred"></span> Inferred from sample-value overlap</span>
+            <span class="dm-legend-item"><span class="dm-legend-swatch name_heuristic"></span> Naming convention guess</span>
+        </div>
+        <div class="dm-container" id="dataModelContainer">
+            <svg id="dataModelSvg" class="dm-svg"></svg>
+            <div class="dm-cards" id="dataModelCards"></div>
+        </div>
+    </div>
+
+    <div class="warehouse-section">
+        <h3>3. Table-Level Mapping (Joins)</h3>
+        <div class="section-help">
+            Mapping isn't always 1:1 - a target table can be built by joining more than one source table.
+            Drag a source table from the left onto a target table on the right to combine them (a join);
+            drag it back out (✕ on its chip) to split it out again. Target table names are editable. Once a
+            target table has more than one source, set the join type and at least one join key below it -
+            a join key detected in the Data Model above is pre-filled automatically when possible.
+            Column-level transformations (Configure Mapping, in the Table Selection step below) are always
+            based on whatever is saved here.
+        </div>
+        <div class="toolbar">
+            <button class="btn" type="button" id="addTargetGroupBtn">+ New Target Table</button>
+            <button class="btn btn-primary" type="button" id="saveTableGroupsBtn">Save Table Mapping</button>
+            <span class="status" id="tableGroupsStatus"></span>
+        </div>
+        <div class="mapping-dnd">
+            <div>
+                <div class="dnd-col-title">Source Tables (drag onto a target →)</div>
+                <div class="dnd-list" id="sourceTablesList"></div>
+            </div>
+            <div>
+                <div class="dnd-col-title">Target Tables (suggested - editable)</div>
+                <div class="dnd-list" id="targetGroupsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="warehouse-section">
+        <h3>4. Load Modes</h3>
         <div class="section-help">Schema Generator runs first if selected. Incremental Load and Full Load are mutually exclusive.</div>
         <div class="checkbox-grid">
             <div class="mode-card">
@@ -305,7 +654,7 @@
             </div>
             <div class="mode-card">
                 <label><input type="checkbox" id="modeIncremental" /> Incremental Load</label>
-                <div class="mode-note">Loads only new or changed rows by watermark.</div>
+                <div class="mode-note">Loads only new or changed rows by watermark. Falls back to full load for joined/spreadsheet target tables.</div>
             </div>
             <div class="mode-card">
                 <label><input type="checkbox" id="modeFull" /> Full Load</label>
@@ -315,7 +664,8 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>3. Table Selection</h3>
+        <h3>5. Table Selection</h3>
+        <div class="section-help">These are your target tables from Table-Level Mapping above (a joined target table combines more than one source). Select which ones to generate/run.</div>
         <div class="toolbar">
             <button class="btn" type="button" id="selectAllTablesBtn">Select All</button>
             <button class="btn" type="button" id="clearAllTablesBtn">Clear All</button>
@@ -325,13 +675,21 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>4. Generate or Run</h3>
-        <div class="section-help">"Generate Script" downloads a standalone .py file for external/cron use (database-sourced tables only). "Run Now" executes the same job immediately inside the app - it supports spreadsheet-sourced tables and any saved column mapping/transforms too.</div>
+        <h3>6. Generate, Upload, or Run</h3>
+        <div class="section-help">"Generate Script" downloads a standalone .py file for external/cron use (database-sourced target tables only, joins included). Need a manual change? Edit the downloaded file, then "Upload Script" to load your edited copy back in before executing. "Run Now" executes the same job immediately inside the app - it supports spreadsheet-sourced and joined target tables too, plus any saved column mapping/transforms.</div>
         <div class="toolbar">
             <button class="btn btn-primary" id="generateScriptBtn" type="button" disabled>Generate Script</button>
+            <button class="btn" id="uploadScriptBtn" type="button">Upload Script</button>
+            <input type="file" id="uploadScriptInput" accept=".py" hidden>
             <button class="btn btn-primary" id="runNowBtn" type="button" disabled>Run Now</button>
             <span class="status" id="generateStatus">Select at least one mode to enable generation.</span>
         </div>
+        <div class="toolbar" id="scriptExecuteToolbar" hidden>
+            <span class="status" id="loadedScriptLabel"></span>
+            <button class="btn btn-primary" id="executeScriptBtn" type="button">Execute Script</button>
+            <span class="status" id="executeStatus"></span>
+        </div>
+        <pre class="script-output" id="scriptOutput" hidden></pre>
         <div style="overflow-x: auto;">
             <table class="run-results-table" id="runResultsTable" hidden>
                 <thead>
@@ -349,7 +707,7 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>5. Warehouse Health</h3>
+        <h3>7. Warehouse Health</h3>
         <div class="section-help">Checks that the target is reachable, whether it has run history yet, and the current row count per table with logged runs.</div>
         <div class="toolbar">
             <button class="btn" id="checkHealthBtn" type="button">Test Warehouse</button>
@@ -372,7 +730,7 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>6. Run History</h3>
+        <h3>8. Run History</h3>
         <div class="section-help">History from warehouse_sync_log on the selected warehouse target connection.</div>
         <div style="overflow-x: auto;">
             <table class="history-table" id="historyTable">
@@ -398,8 +756,14 @@
     const state = {
         targets: [],
         selectedTargetId: null,
-        tables: []
+        editingTargetId: null,
+        tables: [],
+        groups: {},
+        dataModelTables: [],
+        dataModelRelationships: []
     };
+
+    let loadedScript = null; // {text, filename, source: 'generated'|'uploaded'}
 
     function getSelectedModes() {
         return {
@@ -446,34 +810,39 @@
         document.getElementById('tableCountLabel').textContent = `${count} selected`;
     }
 
+    // ---------------- Table Selection (driven by table-level mapping groups) ----------------
+
     function renderTableList() {
         const wrap = document.getElementById('tableListWrap');
         wrap.innerHTML = '';
 
-        if (!state.tables.length) {
-            wrap.innerHTML = '<div class="status">No discovered tables found.</div>';
+        const targetNames = Object.keys(state.groups).sort();
+        if (!targetNames.length) {
+            wrap.innerHTML = '<div class="status">No target tables mapped yet - see Table-Level Mapping above.</div>';
             updateTableSelectionLabel();
             return;
         }
 
-        state.tables.forEach(table => {
+        targetNames.forEach(targetName => {
+            const group = state.groups[targetName];
+            const sources = group.source_tables || [];
+            const joined = sources.length > 1;
+            const primarySource = state.tables.find(t => t.name === sources[0]);
+            const sourceType = joined ? 'JOIN' : (primarySource ? (primarySource.source_type || 'DB') : 'DB');
+            const colsLabel = joined ? '' : ` | Columns: ${(primarySource && primarySource.columns || []).length}`;
+
             const item = document.createElement('div');
             item.className = 'table-item';
-
-            const cols = (table.columns || []).length;
-            const rowCount = table.row_count === null || table.row_count === undefined ? 'n/a' : table.row_count;
-
-            const sourceType = table.source_type || 'DB';
             item.innerHTML = `
                 <div class="table-item-main">
-                    <input class="table-select" type="checkbox" value="${table.name}">
+                    <input class="table-select" type="checkbox" value="${targetName}">
                     <div>
-                        <div class="table-title">${table.name}<span class="source-badge">${sourceType}</span></div>
-                        <div class="table-meta">Columns: ${cols} | Rows: ${rowCount}</div>
+                        <div class="table-title">${targetName}<span class="source-badge">${sourceType}</span></div>
+                        <div class="table-meta">Source(s): ${sources.join(', ') || '—'}${colsLabel}</div>
                     </div>
                 </div>
                 <div class="table-actions">
-                    <a class="link-btn" href="#" data-table="${table.name}">Configure Mapping</a>
+                    <a class="link-btn" href="#" data-target="${targetName}">Configure Mapping</a>
                 </div>
             `;
 
@@ -488,7 +857,7 @@
                     alert('Select or create a target connection first (step 1) before configuring a mapping.');
                     return;
                 }
-                const url = `/warehouse/mapping?table=${encodeURIComponent(table.name)}&target_connection_id=${encodeURIComponent(targetId)}`;
+                const url = `/warehouse/mapping?target_table=${encodeURIComponent(targetName)}&target_connection_id=${encodeURIComponent(targetId)}`;
                 window.open(url, '_blank');
             });
 
@@ -498,29 +867,81 @@
         updateTableSelectionLabel();
     }
 
-    function renderTargetOptions() {
-        const select = document.getElementById('existingTargetSelect');
-        select.innerHTML = '';
+    // ---------------- Target connection cards (persistent, editable) ----------------
+
+    function renderTargetList() {
+        const wrap = document.getElementById('targetList');
+        wrap.innerHTML = '';
 
         if (!state.targets.length) {
-            const opt = document.createElement('option');
-            opt.value = '';
-            opt.textContent = 'No saved warehouse targets. Create one below.';
-            select.appendChild(opt);
-            state.selectedTargetId = null;
+            wrap.innerHTML = '<div class="status">No saved warehouse targets yet. Click "Add New Target Connection" below.</div>';
             return;
         }
 
-        state.targets.forEach((target, index) => {
-            const opt = document.createElement('option');
-            opt.value = String(target.id);
-            opt.textContent = `${target.name} (${target.host}:${target.port}/${target.database})`;
-            if (index === 0) {
-                opt.selected = true;
-                state.selectedTargetId = target.id;
-            }
-            select.appendChild(opt);
+        state.targets.forEach(target => {
+            const isActive = target.id === state.selectedTargetId;
+            const card = document.createElement('div');
+            card.className = 'target-card' + (isActive ? ' active' : '');
+            card.innerHTML = `
+                <div>
+                    <div class="table-title">${target.name}${isActive ? '<span class="source-badge">ACTIVE</span>' : ''}</div>
+                    <div class="table-meta">${target.type || ''} · ${target.host || ''}:${target.port || ''}/${target.database || ''}</div>
+                </div>
+                <div class="table-actions">
+                    ${isActive ? '' : `<a class="link-btn" href="#" data-action="use" data-id="${target.id}">Use</a>`}
+                    <a class="link-btn" href="#" data-action="edit" data-id="${target.id}">Edit</a>
+                </div>
+            `;
+            wrap.appendChild(card);
         });
+
+        wrap.querySelectorAll('[data-action="use"]').forEach(el => el.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectTarget(Number(e.currentTarget.dataset.id));
+        }));
+        wrap.querySelectorAll('[data-action="edit"]').forEach(el => el.addEventListener('click', (e) => {
+            e.preventDefault();
+            editTarget(Number(e.currentTarget.dataset.id));
+        }));
+    }
+
+    async function selectTarget(id) {
+        state.selectedTargetId = id;
+        renderTargetList();
+        await loadHistory();
+        await loadTableGroups();
+    }
+
+    function resetTargetForm() {
+        state.editingTargetId = null;
+        const form = document.getElementById('targetConnectionForm');
+        form.reset();
+        form.hidden = true;
+        document.getElementById('targetFormTitle').textContent = 'New Target Connection';
+        document.getElementById('connPassword').placeholder = '';
+        document.getElementById('connPassword').required = true;
+        document.getElementById('connPort').value = 5432;
+        document.getElementById('targetFormSubmitBtn').textContent = 'Save Target Connection';
+    }
+
+    function editTarget(id) {
+        const target = state.targets.find(t => t.id === id);
+        if (!target) return;
+        state.editingTargetId = id;
+        document.getElementById('targetFormTitle').textContent = `Edit Target Connection — ${target.name}`;
+        document.getElementById('connName').value = target.name || '';
+        document.getElementById('connType').value = target.type || 'PostgreSQL';
+        document.getElementById('connHost').value = target.host || '';
+        document.getElementById('connPort').value = target.port || 5432;
+        document.getElementById('connDatabase').value = target.database || '';
+        document.getElementById('connUsername').value = target.username || '';
+        const passwordField = document.getElementById('connPassword');
+        passwordField.value = '';
+        passwordField.required = false;
+        passwordField.placeholder = 'Leave blank to keep current password';
+        document.getElementById('targetFormSubmitBtn').textContent = 'Update Target Connection';
+        document.getElementById('targetConnectionForm').hidden = false;
+        document.getElementById('targetConnectionForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     async function loadTargets() {
@@ -528,16 +949,498 @@
         const data = await res.json();
         state.targets = data.connections || [];
 
-        renderTargetOptions();
+        if (!state.targets.find(t => t.id === state.selectedTargetId)) {
+            state.selectedTargetId = state.targets.length ? state.targets[0].id : null;
+        }
+
+        renderTargetList();
         await loadHistory();
     }
+
+    async function saveTargetConnection(event) {
+        event.preventDefault();
+        const status = document.getElementById('targetStatus');
+        const editingId = state.editingTargetId;
+
+        const payload = {
+            name: document.getElementById('connName').value,
+            type: document.getElementById('connType').value,
+            host: document.getElementById('connHost').value,
+            port: Number(document.getElementById('connPort').value),
+            database: document.getElementById('connDatabase').value,
+            username: document.getElementById('connUsername').value,
+        };
+        const password = document.getElementById('connPassword').value;
+        if (password || !editingId) {
+            payload.password = password;
+        }
+        if (!editingId) {
+            payload.workspace_id = 1;
+            payload.config = { role: 'warehouse_target' };
+        }
+
+        status.textContent = editingId ? 'Updating target connection...' : 'Saving target connection...';
+
+        try {
+            const url = editingId ? `/api/databases/${editingId}` : '/api/databases/';
+            const method = editingId ? 'PUT' : 'POST';
+            const res = await authFetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+
+            status.textContent = editingId ? 'Target connection updated.' : 'Target connection saved.';
+            const savedId = editingId || (data.database && data.database.id);
+            resetTargetForm();
+            await loadTargets();
+            if (savedId) {
+                await selectTarget(savedId);
+            }
+        } catch (err) {
+            status.textContent = `Failed to save target: ${err.message}`;
+        }
+    }
+
+    // ---------------- Data Model (all tables + auto-detected relationships) ----------------
+
+    function cssId(s) {
+        return String(s).replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    async function loadDataModel() {
+        const status = document.getElementById('dataModelStatus');
+        try {
+            const res = await authFetch('/api/warehouse/data-model');
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            state.dataModelTables = data.tables || [];
+            state.dataModelRelationships = data.relationships || [];
+            renderDataModel();
+
+            const bySource = { foreign_key: 0, inferred: 0, name_heuristic: 0 };
+            state.dataModelRelationships.forEach(r => { bySource[r.source] = (bySource[r.source] || 0) + 1; });
+            status.textContent = `${state.dataModelTables.length} table(s) - ${bySource.foreign_key} declared FK, ` +
+                `${bySource.inferred} inferred, ${bySource.name_heuristic} naming-guess relationship(s).`;
+        } catch (err) {
+            status.textContent = `Failed to load data model: ${err.message}`;
+        }
+    }
+
+    function renderDataModel() {
+        const cardsWrap = document.getElementById('dataModelCards');
+        cardsWrap.innerHTML = '';
+
+        state.dataModelTables.forEach(t => {
+            const card = document.createElement('div');
+            card.className = 'dm-card';
+            card.id = `dm-table-${cssId(t.name)}`;
+            const rows = (t.columns || []).map(c =>
+                `<div class="dm-col-row" id="dm-col-${cssId(t.name)}-${cssId(c.name)}">${c.name}</div>`
+            ).join('') || '<div class="dm-col-row status">No columns</div>';
+            card.innerHTML = `
+                <div class="dm-card-header">${t.name}<span class="source-badge">${t.source_type || 'DB'}</span></div>
+                <div class="dm-card-body">${rows}</div>
+            `;
+            cardsWrap.appendChild(card);
+        });
+
+        requestAnimationFrame(drawDataModelLines);
+    }
+
+    function drawDataModelLines() {
+        const container = document.getElementById('dataModelContainer');
+        const svg = document.getElementById('dataModelSvg');
+        if (!container || !svg) return;
+
+        svg.setAttribute('width', container.scrollWidth);
+        svg.setAttribute('height', container.scrollHeight);
+        svg.innerHTML = '';
+
+        const containerRect = container.getBoundingClientRect();
+        const toLocal = (clientX, clientY) => ({
+            x: clientX - containerRect.left + container.scrollLeft,
+            y: clientY - containerRect.top + container.scrollTop,
+        });
+
+        state.dataModelRelationships.forEach(rel => {
+            const fromEl = document.getElementById(`dm-col-${cssId(rel.from_table)}-${cssId(rel.from_column)}`);
+            const toEl = document.getElementById(`dm-col-${cssId(rel.to_table)}-${cssId(rel.to_column)}`);
+            const fromCard = document.getElementById(`dm-table-${cssId(rel.from_table)}`);
+            const toCard = document.getElementById(`dm-table-${cssId(rel.to_table)}`);
+            if (!fromEl || !toEl || !fromCard || !toCard) return;
+
+            const fromRect = fromEl.getBoundingClientRect();
+            const toRect = toEl.getBoundingClientRect();
+            const fromCardRect = fromCard.getBoundingClientRect();
+            const toCardRect = toCard.getBoundingClientRect();
+            const fromCenterX = fromCardRect.left + fromCardRect.width / 2;
+            const toCenterX = toCardRect.left + toCardRect.width / 2;
+
+            let start, end;
+            if (Math.abs(fromCenterX - toCenterX) < 4) {
+                start = toLocal(fromRect.right, fromRect.top + fromRect.height / 2);
+                end = toLocal(toRect.right, toRect.top + toRect.height / 2);
+            } else if (fromCenterX < toCenterX) {
+                start = toLocal(fromRect.right, fromRect.top + fromRect.height / 2);
+                end = toLocal(toRect.left, toRect.top + toRect.height / 2);
+            } else {
+                start = toLocal(fromRect.left, fromRect.top + fromRect.height / 2);
+                end = toLocal(toRect.right, toRect.top + toRect.height / 2);
+            }
+
+            const midX = (start.x + end.x) / 2;
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', `M ${start.x} ${start.y} C ${midX} ${start.y}, ${midX} ${end.y}, ${end.x} ${end.y}`);
+            path.setAttribute('class', `dm-link dm-link-${rel.source || 'foreign_key'}`);
+
+            const sourceLabel = rel.source === 'foreign_key' ? 'declared foreign key'
+                : rel.source === 'inferred' ? `inferred from sample-value overlap (${rel.confidence || 'n/a'})`
+                : 'naming convention guess';
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = `${rel.from_table}.${rel.from_column} → ${rel.to_table}.${rel.to_column} - ${sourceLabel}`;
+            path.appendChild(title);
+
+            svg.appendChild(path);
+
+            const manyLabelX = start.x + (start.x <= end.x ? 8 : -14);
+            const oneLabelX = end.x + (end.x >= start.x ? -14 : 8);
+            addDataModelLabel(svg, manyLabelX, start.y - 6, '*');
+            addDataModelLabel(svg, oneLabelX, end.y - 6, '1');
+        });
+    }
+
+    function addDataModelLabel(svg, x, y, text) {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        el.setAttribute('x', x);
+        el.setAttribute('y', y);
+        el.setAttribute('class', 'dm-link-label');
+        el.textContent = text;
+        svg.appendChild(el);
+    }
+
+    function detectedRelationship(tableA, tableB) {
+        return state.dataModelRelationships.find(r =>
+            (r.from_table === tableA && r.to_table === tableB) ||
+            (r.from_table === tableB && r.to_table === tableA)
+        );
+    }
+
+    let dataModelResizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(dataModelResizeTimer);
+        dataModelResizeTimer = setTimeout(drawDataModelLines, 150);
+    });
+
+    // ---------------- Table-level mapping (drag & drop, joins) ----------------
+
+    function findGroupOf(sourceTable) {
+        return Object.entries(state.groups).find(([, g]) => (g.source_tables || []).includes(sourceTable));
+    }
+
+    function renderSourceTables() {
+        const list = document.getElementById('sourceTablesList');
+        list.innerHTML = '';
+
+        if (!state.tables.length) {
+            list.innerHTML = '<div class="status">No discovered tables found.</div>';
+            return;
+        }
+
+        state.tables.forEach(t => {
+            const item = document.createElement('div');
+            item.className = 'dnd-item';
+            item.draggable = true;
+            item.dataset.table = t.name;
+            item.innerHTML = `<span>${t.name}</span><span class="source-badge">${t.source_type || 'DB'}</span>`;
+            item.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', t.name);
+            });
+            list.appendChild(item);
+        });
+    }
+
+    function renderJoinEditor(targetName, group) {
+        const sources = group.source_tables;
+        const columnsByTable = {};
+        sources.forEach(s => {
+            const t = state.tables.find(x => x.name === s);
+            columnsByTable[s] = (t && t.columns) ? t.columns.map(c => c.name) : [];
+        });
+
+        const joinTypeSelect = `
+            <select class="cell-input join-type-select" data-target="${targetName}">
+                <option value="INNER" ${group.join_type !== 'LEFT' ? 'selected' : ''}>INNER JOIN</option>
+                <option value="LEFT" ${group.join_type === 'LEFT' ? 'selected' : ''}>LEFT JOIN</option>
+            </select>`;
+
+        const tableOptions = (selected) => sources.map(s => `<option value="${s}" ${s === selected ? 'selected' : ''}>${s}</option>`).join('');
+        const colOptions = (table, selected) => (columnsByTable[table] || []).map(c => `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`).join('');
+
+        const keyRows = (group.join_keys || []).map((jk, idx) => `
+            <div class="join-key-row" data-target="${targetName}" data-idx="${idx}">
+                <select class="cell-input jk-left-table">${tableOptions(jk.left_table)}</select>
+                <select class="cell-input jk-left-col">${colOptions(jk.left_table, jk.left_column)}</select>
+                <span>=</span>
+                <select class="cell-input jk-right-table">${tableOptions(jk.right_table)}</select>
+                <select class="cell-input jk-right-col">${colOptions(jk.right_table, jk.right_column)}</select>
+                <button class="btn-x" type="button" data-action="remove-key" title="Remove join key">✕</button>
+            </div>
+        `).join('');
+
+        return `
+            <div class="join-editor">
+                <div class="join-editor-row">
+                    <label class="form-label" style="margin:0;">Join type:</label>
+                    ${joinTypeSelect}
+                    <button class="btn" type="button" data-action="add-key" data-target="${targetName}">+ Add Join Key</button>
+                </div>
+                ${keyRows || '<div class="section-help" style="margin:0 0 6px;">No join keys yet - add at least one so the join has something to match on.</div>'}
+            </div>
+        `;
+    }
+
+    function attachJoinEditorEvents() {
+        document.querySelectorAll('.join-type-select').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                state.groups[e.target.dataset.target].join_type = e.target.value;
+            });
+        });
+        document.querySelectorAll('[data-action="add-key"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const targetName = e.currentTarget.dataset.target;
+                const group = state.groups[targetName];
+                const [t1, t2] = group.source_tables;
+                group.join_keys = group.join_keys || [];
+                group.join_keys.push({ left_table: t1, left_column: '', right_table: t2, right_column: '' });
+                renderTargetGroups();
+            });
+        });
+        document.querySelectorAll('.join-key-row').forEach(row => {
+            const targetName = row.dataset.target;
+            const idx = Number(row.dataset.idx);
+            const group = state.groups[targetName];
+            const jk = group.join_keys[idx];
+            row.querySelector('.jk-left-table').addEventListener('change', (e) => { jk.left_table = e.target.value; renderTargetGroups(); });
+            row.querySelector('.jk-left-col').addEventListener('change', (e) => { jk.left_column = e.target.value; });
+            row.querySelector('.jk-right-table').addEventListener('change', (e) => { jk.right_table = e.target.value; renderTargetGroups(); });
+            row.querySelector('.jk-right-col').addEventListener('change', (e) => { jk.right_column = e.target.value; });
+            row.querySelector('[data-action="remove-key"]').addEventListener('click', () => {
+                group.join_keys.splice(idx, 1);
+                renderTargetGroups();
+            });
+        });
+    }
+
+    function renderTargetGroups() {
+        const list = document.getElementById('targetGroupsList');
+        list.innerHTML = '';
+
+        const names = Object.keys(state.groups).sort();
+        if (!names.length) {
+            list.innerHTML = '<div class="status">No target tables yet.</div>';
+            renderTableList();
+            return;
+        }
+
+        names.forEach(targetName => {
+            const group = state.groups[targetName];
+            const isJoined = (group.source_tables || []).length > 1;
+
+            const card = document.createElement('div');
+            card.className = 'target-group-card';
+            card.dataset.target = targetName;
+            card.innerHTML = `
+                <div class="target-group-header">
+                    <input class="cell-input target-name-input" value="${targetName}" data-original="${targetName}">
+                    <button class="btn-x" type="button" data-action="remove-group" title="Remove target table (returns its sources to 1:1)">✕</button>
+                </div>
+                <div class="target-group-sources">
+                    ${(group.source_tables || []).map(s => `<span class="source-chip">${s} <span class="chip-x" data-action="remove-source" data-source="${s}" title="Remove from this target">✕</span></span>`).join('') || '<span class="status">Drop a source table here</span>'}
+                </div>
+                ${isJoined ? renderJoinEditor(targetName, group) : '<div class="section-help" style="margin:0;">Drop another source table here to create a join.</div>'}
+            `;
+
+            card.addEventListener('dragover', (e) => e.preventDefault());
+            card.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const sourceTable = e.dataTransfer.getData('text/plain');
+                addSourceToGroup(sourceTable, targetName);
+            });
+
+            list.appendChild(card);
+        });
+
+        list.querySelectorAll('.target-name-input').forEach(input => {
+            input.addEventListener('change', (e) => renameGroup(e.target.dataset.original, e.target.value));
+        });
+        list.querySelectorAll('[data-action="remove-group"]').forEach(btn => {
+            btn.addEventListener('click', (e) => removeGroup(e.currentTarget.closest('.target-group-card').dataset.target));
+        });
+        list.querySelectorAll('[data-action="remove-source"]').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const card = e.currentTarget.closest('.target-group-card');
+                removeSourceFromGroup(card.dataset.target, e.currentTarget.dataset.source);
+            });
+        });
+        attachJoinEditorEvents();
+        renderTableList();
+    }
+
+    function addSourceToGroup(sourceTable, targetName) {
+        if (!sourceTable || !targetName || !state.groups[targetName]) return;
+        const current = findGroupOf(sourceTable);
+        if (current && current[0] === targetName) return;
+
+        if (current) {
+            const [oldTarget, oldGroup] = current;
+            oldGroup.source_tables = oldGroup.source_tables.filter(s => s !== sourceTable);
+            oldGroup.join_keys = (oldGroup.join_keys || []).filter(jk => jk.left_table !== sourceTable && jk.right_table !== sourceTable);
+            if (!oldGroup.source_tables.length) {
+                delete state.groups[oldTarget];
+            }
+        }
+
+        const group = state.groups[targetName];
+        group.source_tables.push(sourceTable);
+
+        if (group.source_tables.length > 1) {
+            const otherTables = group.source_tables.filter(t => t !== sourceTable);
+            for (const other of otherTables) {
+                const rel = detectedRelationship(sourceTable, other);
+                if (!rel) continue;
+                const alreadyHasKey = (group.join_keys || []).some(jk =>
+                    jk.left_table === rel.from_table && jk.left_column === rel.from_column &&
+                    jk.right_table === rel.to_table && jk.right_column === rel.to_column
+                );
+                if (!alreadyHasKey) {
+                    group.join_keys = group.join_keys || [];
+                    group.join_keys.push({
+                        left_table: rel.from_table, left_column: rel.from_column,
+                        right_table: rel.to_table, right_column: rel.to_column,
+                    });
+                }
+                break;
+            }
+        }
+
+        renderTargetGroups();
+    }
+
+    function removeSourceFromGroup(targetName, sourceTable) {
+        const group = state.groups[targetName];
+        if (!group) return;
+        group.source_tables = group.source_tables.filter(s => s !== sourceTable);
+        group.join_keys = (group.join_keys || []).filter(jk => jk.left_table !== sourceTable && jk.right_table !== sourceTable);
+
+        if (!group.source_tables.length) {
+            delete state.groups[targetName];
+        }
+        if (!state.groups[sourceTable]) {
+            state.groups[sourceTable] = { source_tables: [sourceTable], join_type: 'INNER', join_keys: [] };
+        }
+        renderTargetGroups();
+    }
+
+    function removeGroup(targetName) {
+        const group = state.groups[targetName];
+        if (!group) return;
+        delete state.groups[targetName];
+        (group.source_tables || []).forEach(s => {
+            if (!state.groups[s]) {
+                state.groups[s] = { source_tables: [s], join_type: 'INNER', join_keys: [] };
+            }
+        });
+        renderTargetGroups();
+    }
+
+    function renameGroup(oldName, newName) {
+        newName = (newName || '').trim();
+        if (!newName || newName === oldName) {
+            renderTargetGroups();
+            return;
+        }
+        if (state.groups[newName]) {
+            alert(`A target table named "${newName}" already exists.`);
+            renderTargetGroups();
+            return;
+        }
+        state.groups[newName] = state.groups[oldName];
+        delete state.groups[oldName];
+        renderTargetGroups();
+    }
+
+    function addTargetGroup() {
+        let base = 'new_target_table';
+        let name = base;
+        let n = 2;
+        while (state.groups[name]) {
+            name = `${base}_${n++}`;
+        }
+        state.groups[name] = { source_tables: [], join_type: 'INNER', join_keys: [] };
+        renderTargetGroups();
+    }
+
+    async function loadTableGroups() {
+        const targetId = state.selectedTargetId;
+        const query = targetId ? `?target_connection_id=${targetId}` : '';
+        const res = await authFetch(`/api/warehouse/table-groups${query}`);
+        const data = await res.json();
+        state.tables = data.tables || state.tables;
+        state.groups = data.groups || {};
+        renderSourceTables();
+        renderTargetGroups();
+    }
+
+    async function saveTableGroups() {
+        const status = document.getElementById('tableGroupsStatus');
+        const targetId = state.selectedTargetId;
+        if (!targetId) {
+            status.textContent = 'Select or create a target connection first.';
+            return;
+        }
+
+        for (const [name, g] of Object.entries(state.groups)) {
+            if ((g.source_tables || []).length > 1) {
+                const validKeys = (g.join_keys || []).filter(jk => jk.left_table && jk.left_column && jk.right_table && jk.right_column);
+                if (!validKeys.length) {
+                    status.textContent = `Target "${name}" joins ${g.source_tables.length} tables but has no complete join key yet.`;
+                    return;
+                }
+            }
+        }
+
+        status.textContent = 'Saving table mapping...';
+        try {
+            const res = await authFetch('/api/warehouse/table-groups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_connection_id: targetId, groups: state.groups })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            status.textContent = 'Table mapping saved.';
+            await loadTableGroups();
+        } catch (err) {
+            status.textContent = `Save failed: ${err.message}`;
+        }
+    }
+
+    // ---------------- Discovered tables (raw, feeds the drag & drop LHS) ----------------
 
     async function loadTables() {
         const res = await authFetch('/api/warehouse/tables');
         const data = await res.json();
         state.tables = data.tables || [];
-        renderTableList();
     }
+
+    // ---------------- History ----------------
 
     async function loadHistory() {
         const body = document.getElementById('historyBody');
@@ -570,56 +1473,17 @@
         });
     }
 
-    async function saveTargetConnection(event) {
-        event.preventDefault();
+    // ---------------- Generate / Upload / Run / Execute ----------------
 
-        const payload = {
-            name: document.getElementById('connName').value,
-            type: document.getElementById('connType').value,
-            host: document.getElementById('connHost').value,
-            port: Number(document.getElementById('connPort').value),
-            database: document.getElementById('connDatabase').value,
-            username: document.getElementById('connUsername').value,
-            password: document.getElementById('connPassword').value,
-            workspace_id: 1,
-            config: {
-                role: 'warehouse_target'
-            }
-        };
-
-        const status = document.getElementById('targetStatus');
-        status.textContent = 'Saving target connection...';
-
-        try {
-            const res = await authFetch('/api/databases/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            const data = await res.json();
-            if (!res.ok) {
-                throw new Error(data.error || `HTTP ${res.status}`);
-            }
-
-            status.textContent = 'Target connection saved.';
-            if (data.database && data.database.id) {
-                state.selectedTargetId = data.database.id;
-            }
-
-            await loadTargets();
-            const select = document.getElementById('existingTargetSelect');
-            if (state.selectedTargetId) {
-                select.value = String(state.selectedTargetId);
-            }
-            await loadHistory();
-        } catch (err) {
-            status.textContent = `Failed to save target: ${err.message}`;
-        }
+    function showLoadedScript() {
+        document.getElementById('scriptExecuteToolbar').hidden = !loadedScript;
+        document.getElementById('loadedScriptLabel').textContent = loadedScript
+            ? `Loaded: ${loadedScript.filename} (${loadedScript.source})`
+            : '';
     }
 
     async function generateScript() {
-        const targetId = Number(document.getElementById('existingTargetSelect').value);
+        const targetId = Number(state.selectedTargetId);
         const tables = selectedTables();
         const modes = getSelectedModes();
 
@@ -654,6 +1518,7 @@
         }
 
         const blob = await res.blob();
+        const scriptText = await blob.text();
         const contentDisposition = res.headers.get('Content-Disposition') || '';
         const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
         const filename = match ? match[1] : 'warehouse_etl.py';
@@ -667,12 +1532,59 @@
         a.remove();
         window.URL.revokeObjectURL(url);
 
+        loadedScript = { text: scriptText, filename, source: 'generated' };
+        showLoadedScript();
+
         status.textContent = 'Script generated and downloaded.';
         await loadHistory();
     }
 
+    async function handleScriptUpload(event) {
+        const file = event.target.files[0];
+        event.target.value = '';
+        if (!file) return;
+        const text = await file.text();
+        loadedScript = { text, filename: file.name, source: 'uploaded' };
+        showLoadedScript();
+        document.getElementById('executeStatus').textContent = 'Script loaded - review, then Execute Script to run it.';
+    }
+
+    async function executeLoadedScript() {
+        const status = document.getElementById('executeStatus');
+        const output = document.getElementById('scriptOutput');
+
+        if (!loadedScript) {
+            status.textContent = 'Generate or upload a script first.';
+            return;
+        }
+        if (!confirm(`This runs "${loadedScript.filename}" on the server exactly as written (including any manual edits). Continue?`)) {
+            return;
+        }
+
+        status.textContent = 'Executing...';
+        document.getElementById('executeScriptBtn').disabled = true;
+        try {
+            const res = await authFetch('/api/warehouse/execute-script', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ script: loadedScript.text })
+            });
+            const data = await res.json();
+
+            output.hidden = false;
+            const exitLabel = data.timed_out ? 'timed out' : data.exit_code;
+            output.textContent = `Exit code: ${exitLabel}\n\n--- stdout ---\n${data.stdout || ''}\n\n--- stderr ---\n${data.stderr || ''}`;
+            status.textContent = (res.ok && data.exit_code === 0) ? 'Execution finished successfully.' : 'Execution finished with errors - see output below.';
+            await loadHistory();
+        } catch (err) {
+            status.textContent = `Execution failed: ${err.message}`;
+        } finally {
+            document.getElementById('executeScriptBtn').disabled = false;
+        }
+    }
+
     async function runNow() {
-        const targetId = Number(document.getElementById('existingTargetSelect').value);
+        const targetId = Number(state.selectedTargetId);
         const tables = selectedTables();
         const modes = getSelectedModes();
 
@@ -814,6 +1726,14 @@
 
     document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('targetConnectionForm').addEventListener('submit', saveTargetConnection);
+        document.getElementById('addNewTargetBtn').addEventListener('click', () => {
+            resetTargetForm();
+            document.getElementById('targetConnectionForm').hidden = false;
+        });
+        document.getElementById('cancelTargetFormBtn').addEventListener('click', resetTargetForm);
+
+        document.getElementById('addTargetGroupBtn').addEventListener('click', addTargetGroup);
+        document.getElementById('saveTableGroupsBtn').addEventListener('click', saveTableGroups);
 
         document.getElementById('modeSchema').addEventListener('change', () => updateGenerateButtonState());
         document.getElementById('modeIncremental').addEventListener('change', () => enforceModeExclusivity('modeIncremental'));
@@ -833,19 +1753,19 @@
             updateTableSelectionLabel();
         });
 
-        document.getElementById('existingTargetSelect').addEventListener('change', async (e) => {
-            state.selectedTargetId = Number(e.target.value) || null;
-            await loadHistory();
-        });
-
         document.getElementById('generateScriptBtn').addEventListener('click', generateScript);
+        document.getElementById('uploadScriptBtn').addEventListener('click', () => document.getElementById('uploadScriptInput').click());
+        document.getElementById('uploadScriptInput').addEventListener('change', handleScriptUpload);
+        document.getElementById('executeScriptBtn').addEventListener('click', executeLoadedScript);
         document.getElementById('runNowBtn').addEventListener('click', runNow);
         document.getElementById('checkHealthBtn').addEventListener('click', checkHealth);
         document.getElementById('downloadHealthScriptBtn').addEventListener('click', downloadHealthScript);
 
         updateGenerateButtonState();
         await loadTables();
+        await loadDataModel();
         await loadTargets();
+        await loadTableGroups();
     });
 </script>
 {% endblock %}

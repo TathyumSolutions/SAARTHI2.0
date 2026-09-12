@@ -1,19 +1,30 @@
 """
 Warehouse ETL script generator plus in-process execution, health checks,
-and per-table column mapping/transformation support.
+table-level mapping (including joins across multiple source tables), and
+per-column mapping/transformation support.
 
 Sources: DB-track tables (live Postgres, via Metamind) and SPREADSHEET-track
 tables (Excel/CSV uploads stored as Parquet, via spreadsheet_service). Target
 is always a Postgres connection marked with config.role == "warehouse_target"
 on a DatabaseConnection row.
 
-Mapping overlay (per target connection, per table, stored at
-connection.config["warehouse_mapping"][table_name]) lets a column be
+Table-level mapping (per target connection, stored at
+connection.config["warehouse_table_groups"]) groups one or more source
+tables into a single target table. A group with exactly one source table is
+a straight 1:1 mapping (the default for every discovered table that hasn't
+been grouped otherwise); a group with more than one source table is joined
+together (INNER or LEFT, on explicit join keys) before column mapping is
+applied. Joining a database-sourced table with a spreadsheet-sourced table
+in the same group isn't supported.
+
+Column mapping overlay (per target connection, per target table, stored at
+connection.config["warehouse_mapping"][target_table_name]) lets a column be
 renamed, retyped, excluded, or computed via a transform expression instead
 of the default 1:1 copy. transform_expr is a raw SQL expression (DB
-sources) or a pandas .eval() expression (spreadsheet sources), evaluated
-with the same trust boundary as the app's existing raw-SQL query endpoint:
-it runs only against connections the requesting user already configured.
+sources) or a pandas .eval() expression (single-source spreadsheet tables
+only), evaluated with the same trust boundary as the app's existing raw-SQL
+query endpoint: it runs only against connections the requesting user
+already configured.
 """
 
 from __future__ import annotations
@@ -44,22 +55,35 @@ ALLOWED_TARGET_TYPES = {
     "BOOLEAN", "TIMESTAMP", "DATE", "TIME", "JSONB", "UUID",
 }
 
+ALLOWED_JOIN_TYPES = {"INNER", "LEFT"}
+
 
 # ============================================================
 # Discovery: merge DB-track and SPREADSHEET-track tables
 # ============================================================
 
-def _load_metamind_tables(user_id: int) -> Dict[str, Dict[str, Any]]:
+def _load_metamind_menu(user_id: int) -> Dict[str, Any]:
     """Computes this user's own router config live (see
-    automated_metamind.generate_router_config) and merges both the DB and
-    SPREADSHEET tracks into one flat table map, each entry tagged with
-    source_type so downstream code knows how to read rows from it."""
+    automated_metamind.generate_router_config). This is also the payload
+    that carries the introspected schema metadata used for relationship
+    detection - each DB table's declared foreign-key constraints (from
+    Postgres's own information_schema, see automated_metamind's
+    _get_table_constraints) and the router's own sample-value-based
+    undeclared-join inference (_infer_db_relations)."""
     from app.services.automated_metamind import generate_router_config
 
     menu = generate_router_config(user_id)
     if not menu:
         raise WarehouseGenerationError("Metamind table metadata not found for this user")
+    return menu
 
+
+def _extract_tables_from_menu(menu: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Merges the DB and SPREADSHEET tracks of a router config menu into
+    one flat table map, each entry tagged with source_type so downstream
+    code knows how to read rows from it. DB table entries retain whatever
+    automated_metamind attached during introspection, including
+    "constraints" (declared primary/foreign keys)."""
     datasources = menu.get("routing_menu", {}).get("datasources", {})
     tables: Dict[str, Dict[str, Any]] = {}
 
@@ -91,11 +115,15 @@ def _load_metamind_tables(user_id: int) -> Dict[str, Dict[str, Any]]:
     return tables
 
 
-def get_discovered_tables(user_id: int) -> List[Dict[str, Any]]:
-    """Return a lightweight list of discovered tables and columns for UI use."""
-    tables = _load_metamind_tables(user_id)
-    out: List[Dict[str, Any]] = []
+def _load_metamind_tables(user_id: int) -> Dict[str, Dict[str, Any]]:
+    """Computes this user's own router config live and merges both the DB
+    and SPREADSHEET tracks into one flat table map, each entry tagged with
+    source_type so downstream code knows how to read rows from it."""
+    return _extract_tables_from_menu(_load_metamind_menu(user_id))
 
+
+def _discovered_list(tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
     for table_name, table_info in tables.items():
         columns = table_info.get("columns", []) if isinstance(table_info, dict) else []
         out.append(
@@ -115,18 +143,336 @@ def get_discovered_tables(user_id: int) -> List[Dict[str, Any]]:
                 ],
             }
         )
-
     return sorted(out, key=lambda x: x["name"])
 
 
+def get_discovered_tables(user_id: int) -> List[Dict[str, Any]]:
+    """Return a lightweight list of discovered tables and columns for UI use."""
+    return _discovered_list(_load_metamind_tables(user_id))
+
+
+# ============================================================
+# Data model: auto-detected relationships across every discovered table
+# ============================================================
+
+def _table_name_stems(table_name: str) -> set:
+    """Cheap singular/plural variants of a table name so 'customers' and a
+    'customer_id' foreign key column can be matched to each other without a
+    real inflection library."""
+    base = (table_name or "").strip().lower()
+    stems = {base}
+    if base.endswith("ies") and len(base) > 3:
+        stems.add(base[:-3] + "y")
+    if base.endswith("ses") and len(base) > 3:
+        stems.add(base[:-2])
+    if base.endswith("s") and not base.endswith("ss") and len(base) > 1:
+        stems.add(base[:-1])
+    stems.add(base + "s")
+    return stems
+
+
+def _relationship_pair_key(a_table: str, a_column: str, b_table: str, b_column: str) -> frozenset:
+    return frozenset({(a_table, a_column), (b_table, b_column)})
+
+
+def _declared_foreign_key_relationships(tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Real relationships, straight from the source database's own
+    metadata: the FK constraints automated_metamind already introspected
+    via Postgres's information_schema for every DB-sourced table (see
+    _get_table_constraints/_get_table_constraints's callers). This is the
+    strongest possible signal - an actual declared constraint, not a
+    guess - so it always wins over any inference below."""
+    relationships: List[Dict[str, Any]] = []
+    seen = set()
+
+    for table_name, info in sorted(tables.items()):
+        if not isinstance(info, dict):
+            continue
+        constraints = info.get("constraints")
+        if not isinstance(constraints, dict):
+            continue
+        for fk in constraints.get("foreign_keys", []) or []:
+            column = fk.get("column")
+            ref_table = fk.get("references_table")
+            ref_column = fk.get("references_column")
+            if not (column and ref_table and ref_column) or ref_table not in tables:
+                continue
+            key = _relationship_pair_key(table_name, column, ref_table, ref_column)
+            if key in seen:
+                continue
+            seen.add(key)
+            relationships.append({
+                "from_table": table_name,
+                "from_column": column,
+                "to_table": ref_table,
+                "to_column": ref_column,
+                "cardinality": "many_to_one",
+                "source": "foreign_key",
+            })
+
+    return relationships
+
+
+def _inferred_relationships_from_menu(menu: Dict[str, Any], tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Relationships the source database never declared as a real FK but
+    that automated_metamind's own inference engine (_infer_db_relations)
+    found evidence for from this user's live-introspected metadata - column
+    names AND actual sample-value overlap, not just naming convention. This
+    is still "using the data source's metadata", just the router's existing
+    undeclared-join detector rather than a fresh one reinvented here."""
+    relationships: List[Dict[str, Any]] = []
+    for rel in menu.get("routing_menu", {}).get("inferred_relations") or []:
+        from_table, to_table = rel.get("from_table"), rel.get("to_table")
+        from_col, to_col = rel.get("from_column"), rel.get("to_column")
+        if not (from_table in tables and to_table in tables and from_col and to_col):
+            continue
+        relationships.append({
+            "from_table": from_table,
+            "from_column": from_col,
+            "to_table": to_table,
+            "to_column": to_col,
+            "cardinality": "many_to_one",
+            "source": "inferred",
+            "confidence": rel.get("confidence"),
+        })
+    return relationships
+
+
+def _name_heuristic_relationships(tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Last-resort fallback when a table has no introspected metadata to
+    draw on at all (spreadsheet-sourced tables, which carry no FK
+    constraints or sample-value profiling): a 'foo_id' (or 'fooid') column
+    on one table is matched to a table named 'foo'/'foos' that has an 'id'
+    (or the same 'foo_id') column. Best-effort and read-only - nothing here
+    is persisted, it's purely a suggestion."""
+    pk_columns: Dict[str, set] = {}
+    for name, info in tables.items():
+        cols = [c.get("name", "") for c in info.get("columns", []) if isinstance(c, dict)]
+        pk_columns[name] = {c.lower() for c in cols if c}
+
+    stem_to_tables: Dict[str, List[str]] = {}
+    for name in tables:
+        for stem in _table_name_stems(name):
+            stem_to_tables.setdefault(stem, []).append(name)
+
+    relationships: List[Dict[str, Any]] = []
+    seen = set()
+
+    for name, info in sorted(tables.items()):
+        for col in info.get("columns", []) or []:
+            if not isinstance(col, dict) or not col.get("name"):
+                continue
+            col_name = col["name"]
+            lowered = col_name.lower()
+
+            if lowered.endswith("_id"):
+                stem = lowered[:-3]
+            elif lowered.endswith("id") and lowered != "id":
+                stem = lowered[:-2]
+            else:
+                continue
+            if not stem:
+                continue
+
+            for target_table in stem_to_tables.get(stem, []):
+                if target_table == name:
+                    continue
+                target_cols = pk_columns.get(target_table, set())
+                if "id" in target_cols:
+                    pk_col = "id"
+                elif f"{stem}_id" in target_cols:
+                    pk_col = f"{stem}_id"
+                elif lowered in target_cols:
+                    pk_col = col_name
+                else:
+                    continue
+
+                key = _relationship_pair_key(name, col_name, target_table, pk_col)
+                if key in seen:
+                    continue
+                seen.add(key)
+                relationships.append({
+                    "from_table": name,
+                    "from_column": col_name,
+                    "to_table": target_table,
+                    "to_column": pk_col,
+                    "cardinality": "many_to_one",
+                    "source": "name_heuristic",
+                })
+
+    return relationships
+
+
+def get_data_model(user_id: int) -> Dict[str, Any]:
+    """Every discovered table plus relationships between them, for the
+    "Data Model" overview shown above Table-Level Mapping (akin to a Power
+    BI model diagram). Relationships are layered by how much they're
+    actually backed by the data source's own metadata, highest confidence
+    first, and a pair is only reported once even if more than one layer
+    would have found it:
+
+    1. Declared foreign-key constraints (real DB metadata, from
+       information_schema via automated_metamind's own introspection).
+    2. Undeclared joins automated_metamind's router already infers from
+       column-name normalization AND actual sample-value overlap across
+       this user's live-introspected tables - still metadata-driven, just
+       reusing the app's existing inference engine instead of a new one.
+    3. A plain naming-convention fallback ('foo_id' <-> a 'foo'/'foos'
+       table), used only for pairs neither metadata-backed layer above
+       covers - in practice this only ever fires for spreadsheet-sourced
+       tables, which carry no FK constraints or sample-value profiling at
+       all.
+    """
+    menu = _load_metamind_menu(user_id)
+    tables = _extract_tables_from_menu(menu)
+
+    relationships: List[Dict[str, Any]] = []
+    covered_pairs = set()
+
+    def _add_all(candidates: List[Dict[str, Any]]) -> None:
+        for rel in candidates:
+            key = _relationship_pair_key(rel["from_table"], rel["from_column"], rel["to_table"], rel["to_column"])
+            if key in covered_pairs:
+                continue
+            covered_pairs.add(key)
+            relationships.append(rel)
+
+    _add_all(_declared_foreign_key_relationships(tables))
+    _add_all(_inferred_relationships_from_menu(menu, tables))
+    _add_all(_name_heuristic_relationships(tables))
+
+    return {
+        "tables": _discovered_list(tables),
+        "relationships": relationships,
+    }
+
+
 def get_raw_table_columns(user_id: int, table_name: str) -> List[Dict[str, Any]]:
-    """Raw (pre-mapping) columns for one discovered table - used by the
-    mapping editor page."""
+    """Raw (pre-mapping) columns for one discovered table."""
     tables = _load_metamind_tables(user_id)
     table_info = tables.get(table_name)
     if not table_info:
         raise WarehouseGenerationError(f"Table '{table_name}' not found in discovered metadata")
     return [c for c in table_info.get("columns", []) if isinstance(c, dict) and c.get("name")]
+
+
+def get_group_source_columns(user_id: int, source_tables: List[str]) -> Tuple[List[Dict[str, Any]], str]:
+    """Raw columns for every source table in a mapping group, each tagged
+    with its own source_table. Also returns the group's uniform
+    source_type (DB or SPREADSHEET) - mixing the two in one group is
+    rejected here, before any mapping/execution work happens."""
+    tables = _load_metamind_tables(user_id)
+    tagged: List[Dict[str, Any]] = []
+    source_type: Optional[str] = None
+
+    for table_name in source_tables:
+        info = tables.get(table_name)
+        if not info:
+            raise WarehouseGenerationError(f"Table '{table_name}' not found in discovered metadata")
+        this_type = info.get("source_type", "DB")
+        if source_type is None:
+            source_type = this_type
+        elif this_type != source_type and len(source_tables) > 1:
+            raise WarehouseGenerationError(
+                "Cannot join a database-sourced table with a spreadsheet-sourced table in the same mapping"
+            )
+        for col in info.get("columns", []):
+            if isinstance(col, dict) and col.get("name"):
+                tagged.append({**col, "source_table": table_name})
+
+    return tagged, (source_type or "DB")
+
+
+# ============================================================
+# Table-level mapping (source tables -> target table, with joins)
+# ============================================================
+
+def _get_target_groups(target_connection: Optional[DatabaseConnection]) -> Dict[str, Any]:
+    if not target_connection:
+        return {}
+    config = target_connection.config or {}
+    groups = config.get("warehouse_table_groups") if isinstance(config, dict) else None
+    return groups if isinstance(groups, dict) else {}
+
+
+def get_table_groups(target_connection: Optional[DatabaseConnection], user_id: int) -> Dict[str, Any]:
+    """Effective table-level mapping: every saved group, plus a default 1:1
+    group (target table name == source table name) for any discovered
+    table not already covered by a saved group. Always fully populated so
+    the UI never has to special-case "no mapping saved yet"."""
+    raw_tables = _load_metamind_tables(user_id)
+    discovered = _discovered_list(raw_tables)
+    discovered_names = {t["name"] for t in discovered}
+
+    saved = _get_target_groups(target_connection)
+    groups: Dict[str, Any] = {}
+    covered_sources = set()
+
+    for target_name, g in saved.items():
+        if not isinstance(g, dict):
+            continue
+        source_tables = [t for t in (g.get("source_tables") or []) if t in discovered_names]
+        if not source_tables:
+            continue
+        groups[target_name] = {
+            "source_tables": source_tables,
+            "join_type": g.get("join_type") if g.get("join_type") in ALLOWED_JOIN_TYPES else "INNER",
+            "join_keys": g.get("join_keys") or [],
+        }
+        covered_sources.update(source_tables)
+
+    for table in discovered:
+        name = table["name"]
+        if name in covered_sources or name in groups:
+            continue
+        groups[name] = {"source_tables": [name], "join_type": "INNER", "join_keys": []}
+
+    return {"tables": discovered, "groups": groups}
+
+
+def save_table_groups(target_connection: DatabaseConnection, groups: Dict[str, Any]) -> None:
+    """groups: {target_table_name: {source_tables: [...], join_type, join_keys: [
+    {left_table, left_column, right_table, right_column}, ...]}}"""
+    from app import db as _db
+
+    sanitized: Dict[str, Any] = {}
+    for target_name, g in (groups or {}).items():
+        target_name = (target_name or "").strip()
+        if not target_name or not isinstance(g, dict):
+            continue
+
+        source_tables = [s.strip() for s in (g.get("source_tables") or []) if isinstance(s, str) and s.strip()]
+        if not source_tables:
+            continue
+
+        is_joined = len(source_tables) > 1
+        join_type = (g.get("join_type") or "INNER").strip().upper()
+        if join_type not in ALLOWED_JOIN_TYPES:
+            join_type = "INNER"
+
+        join_keys = []
+        if is_joined:
+            for jk in (g.get("join_keys") or []):
+                if not isinstance(jk, dict):
+                    continue
+                lt, lc = jk.get("left_table"), jk.get("left_column")
+                rt, rc = jk.get("right_table"), jk.get("right_column")
+                if lt in source_tables and rt in source_tables and lc and rc:
+                    join_keys.append({
+                        "left_table": lt, "left_column": lc,
+                        "right_table": rt, "right_column": rc,
+                    })
+
+        sanitized[target_name] = {
+            "source_tables": source_tables,
+            "join_type": join_type if is_joined else "INNER",
+            "join_keys": join_keys,
+        }
+
+    config = dict(target_connection.config or {})
+    config["warehouse_table_groups"] = sanitized
+    target_connection.config = config
+    _db.session.commit()
 
 
 # ============================================================
@@ -141,10 +487,12 @@ def _get_target_mappings(target_connection: Optional[DatabaseConnection]) -> Dic
     return mapping if isinstance(mapping, dict) else {}
 
 
-def get_table_mapping(target_connection: Optional[DatabaseConnection], table_name: str) -> Dict[str, Any]:
-    """Saved per-column overrides for one table, keyed by source column name."""
+def get_table_mapping(target_connection: Optional[DatabaseConnection], target_table_name: str) -> Dict[str, Any]:
+    """Saved per-column overrides for one target table, keyed by
+    "source_table::source_column" (or, for mappings saved before table
+    groups existed, plain source_column)."""
     mappings = _get_target_mappings(target_connection)
-    table_mapping = mappings.get(table_name, {})
+    table_mapping = mappings.get(target_table_name, {})
     columns = table_mapping.get("columns", {}) if isinstance(table_mapping, dict) else {}
     return columns if isinstance(columns, dict) else {}
 
@@ -154,8 +502,8 @@ def _sanitize_target_type(target_type: Optional[str], fallback: str) -> str:
     return candidate if candidate in ALLOWED_TARGET_TYPES else fallback
 
 
-def save_table_mapping(target_connection: DatabaseConnection, table_name: str, columns: List[Dict[str, Any]]) -> None:
-    """columns: [{source_name, target_name, target_type, include, transform_expr}, ...]"""
+def save_table_mapping(target_connection: DatabaseConnection, target_table_name: str, columns: List[Dict[str, Any]]) -> None:
+    """columns: [{source_table, source_name, target_name, target_type, include, transform_expr}, ...]"""
     from app import db as _db
 
     sanitized: Dict[str, Any] = {}
@@ -163,8 +511,10 @@ def save_table_mapping(target_connection: DatabaseConnection, table_name: str, c
         source_name = (col or {}).get("source_name")
         if not source_name:
             continue
+        source_table = (col or {}).get("source_table")
+        key = f"{source_table}::{source_name}" if source_table else source_name
         target_name = (col.get("target_name") or source_name).strip() or source_name
-        sanitized[source_name] = {
+        sanitized[key] = {
             "target_name": target_name,
             "target_type": _sanitize_target_type(col.get("target_type"), "") or None,
             "include": bool(col.get("include", True)),
@@ -172,7 +522,7 @@ def save_table_mapping(target_connection: DatabaseConnection, table_name: str, c
         }
 
     mappings = dict(_get_target_mappings(target_connection))
-    mappings[table_name] = {"columns": sanitized}
+    mappings[target_table_name] = {"columns": sanitized}
 
     config = dict(target_connection.config or {})
     config["warehouse_mapping"] = mappings
@@ -180,13 +530,19 @@ def save_table_mapping(target_connection: DatabaseConnection, table_name: str, c
     _db.session.commit()
 
 
-def _apply_mapping(raw_columns: List[Dict[str, Any]], mapping: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _apply_mapping(tagged_raw_columns: List[Dict[str, Any]], mapping: Dict[str, Any]) -> List[Dict[str, Any]]:
     result: List[Dict[str, Any]] = []
-    for col in raw_columns:
+    for col in tagged_raw_columns:
         if not isinstance(col, dict) or not col.get("name"):
             continue
         source_name = col["name"]
-        override = mapping.get(source_name, {}) if isinstance(mapping, dict) else {}
+        source_table = col.get("source_table")
+        key = f"{source_table}::{source_name}" if source_table else source_name
+        override = mapping.get(key)
+        if override is None:
+            # Back-compat with mappings saved before table groups existed,
+            # when the key was always the plain source column name.
+            override = mapping.get(source_name, {}) if isinstance(mapping, dict) else {}
         if override.get("include") is False:
             continue
 
@@ -194,6 +550,7 @@ def _apply_mapping(raw_columns: List[Dict[str, Any]], mapping: Dict[str, Any]) -
         target_type = _sanitize_target_type(override.get("target_type"), default_type)
 
         result.append({
+            "source_table": source_table,
             "source_name": source_name,
             "target_name": (override.get("target_name") or source_name),
             "data_type": col.get("data_type", "text"),
@@ -226,6 +583,7 @@ def _heuristic_suggestions(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]
             rationale = "Trim stray whitespace on a free-text column."
 
         out.append({
+            "source_table": col.get("source_table"),
             "source_name": name,
             "suggested_target_name": name,
             "suggested_target_type": _normalize_type(col.get("data_type", "text")),
@@ -236,10 +594,11 @@ def _heuristic_suggestions(columns: List[Dict[str, Any]]) -> List[Dict[str, Any]
 
 
 def suggest_transformations(table_name: str, columns: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Returns editable suggestions: [{source_name, suggested_target_name,
-    suggested_target_type, suggested_transform_expr, rationale}]. Falls back
-    to a small rule-based pass when no OPENAI_API_KEY is configured or the
-    LLM call fails, so the feature never hard-depends on an LLM provider."""
+    """Returns editable suggestions: [{source_table, source_name,
+    suggested_target_name, suggested_target_type, suggested_transform_expr,
+    rationale}]. Falls back to a small rule-based pass when no
+    OPENAI_API_KEY is configured or the LLM call fails, so the feature
+    never hard-depends on an LLM provider."""
     fallback = _heuristic_suggestions(columns)
 
     api_key = os.getenv("OPENAI_API_KEY")
@@ -295,6 +654,7 @@ def suggest_transformations(table_name: str, columns: List[Dict[str, Any]]) -> L
             hit = by_name.get(name)
             if hit:
                 merged.append({
+                    "source_table": col.get("source_table"),
                     "source_name": name,
                     "suggested_target_name": hit.target_name or name,
                     "suggested_target_type": _sanitize_target_type(hit.target_type, _normalize_type(col.get("data_type", "text"))),
@@ -352,7 +712,8 @@ def _normalize_type(data_type: str) -> str:
 def _choose_watermark(columns: List[Dict[str, Any]]) -> Optional[Dict[str, str]]:
     """Picks an incremental watermark column from columns that aren't
     themselves computed (a transform_expr column can't reliably drive
-    incremental filtering). Returns {source_name, target_name, kind} or None."""
+    incremental filtering). Returns {source_name, source_table, target_name,
+    kind} or None. Only ever called for single-source (non-joined) groups."""
     candidates = [c for c in columns if not c.get("transform_expr")]
     if not candidates:
         return None
@@ -371,63 +732,93 @@ def _choose_watermark(columns: List[Dict[str, Any]]) -> Optional[Dict[str, str]]
 
     col = _find(timestamp_priority, ["timestamp", "date"])
     if col:
-        return {"source_name": col["source_name"], "target_name": col["target_name"], "kind": "timestamp"}
+        return {"source_name": col["source_name"], "source_table": col.get("source_table"), "target_name": col["target_name"], "kind": "timestamp"}
 
     col = _find(id_priority, ["int", "serial", "bigint", "numeric"])
     if col:
-        return {"source_name": col["source_name"], "target_name": col["target_name"], "kind": "id"}
+        return {"source_name": col["source_name"], "source_table": col.get("source_table"), "target_name": col["target_name"], "kind": "id"}
 
     for col in candidates:
         data_type = str(col.get("data_type", "")).lower()
         if "timestamp" in data_type or data_type == "date":
-            return {"source_name": col["source_name"], "target_name": col["target_name"], "kind": "timestamp"}
+            return {"source_name": col["source_name"], "source_table": col.get("source_table"), "target_name": col["target_name"], "kind": "timestamp"}
 
     for col in candidates:
         data_type = str(col.get("data_type", "")).lower()
         if any(x in data_type for x in ["int", "serial", "bigint", "numeric"]):
-            return {"source_name": col["source_name"], "target_name": col["target_name"], "kind": "id"}
+            return {"source_name": col["source_name"], "source_table": col.get("source_table"), "target_name": col["target_name"], "kind": "id"}
 
     return None
 
 
 def _build_table_metadata(
     raw_tables: Dict[str, Dict[str, Any]],
-    selected_tables: List[str],
+    groups: Dict[str, Any],
+    selected_targets: List[str],
     mappings: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    selected_set = set(selected_tables)
     mappings = mappings or {}
     metadata: Dict[str, Any] = {}
 
-    for table_name, table_info in raw_tables.items():
-        if table_name not in selected_set:
+    for target_name in selected_targets:
+        group = groups.get(target_name)
+        if not group:
             continue
 
-        raw_columns = table_info.get("columns", []) if isinstance(table_info, dict) else []
-        source_type = (table_info or {}).get("source_type", "DB")
-        table_mapping = mappings.get(table_name, {})
+        source_tables = group.get("source_tables") or []
+        is_joined = len(source_tables) > 1
+
+        tagged_raw_columns: List[Dict[str, Any]] = []
+        source_type: Optional[str] = None
+        mismatch = False
+        for table_name in source_tables:
+            table_info = raw_tables.get(table_name)
+            if not isinstance(table_info, dict):
+                continue
+            this_type = table_info.get("source_type", "DB")
+            if source_type is None:
+                source_type = this_type
+            elif this_type != source_type:
+                mismatch = True
+            for col in table_info.get("columns", []):
+                if isinstance(col, dict) and col.get("name"):
+                    tagged_raw_columns.append({**col, "source_table": table_name})
+
+        if mismatch:
+            raise WarehouseGenerationError(
+                f"Target '{target_name}': cannot join database-sourced and spreadsheet-sourced tables together"
+            )
+        if not tagged_raw_columns:
+            continue
+
+        table_mapping = mappings.get(target_name, {})
         column_overrides = table_mapping.get("columns", {}) if isinstance(table_mapping, dict) else {}
 
-        columns = _apply_mapping(raw_columns, column_overrides)
+        columns = _apply_mapping(tagged_raw_columns, column_overrides)
         if not columns:
             continue
 
-        watermark = _choose_watermark(columns) if source_type == "DB" else None
+        watermark = _choose_watermark(columns) if (source_type == "DB" and not is_joined) else None
 
         entry: Dict[str, Any] = {
-            "source_type": source_type,
+            "source_type": source_type or "DB",
+            "source_tables": source_tables,
+            "join_type": group.get("join_type", "INNER"),
+            "join_keys": group.get("join_keys", []),
+            "is_joined": is_joined,
             "columns": columns,
             "watermark_column": watermark["source_name"] if watermark else None,
+            "watermark_source_table": watermark["source_table"] if watermark else None,
             "watermark_target_column": watermark["target_name"] if watermark else None,
             "watermark_kind": watermark["kind"] if watermark else None,
         }
 
-        if source_type == "SPREADSHEET":
+        if source_type == "SPREADSHEET" and not is_joined:
             from app.services.spreadsheet_service import get_table_record
-            record = get_table_record(table_name) or {}
+            record = get_table_record(source_tables[0]) or {}
             entry["parquet_path"] = record.get("parquet_path")
 
-        metadata[table_name] = entry
+        metadata[target_name] = entry
 
     if not metadata:
         raise WarehouseGenerationError("No valid selected tables found in Metamind metadata")
@@ -504,15 +895,57 @@ def _create_table_if_needed(target_conn, table_name: str, columns: List[Dict[str
 def _select_expr(col: Dict[str, Any]):
     if col.get("transform_expr"):
         return sql.SQL(col["transform_expr"])
+    if col.get("source_table"):
+        return sql.Identifier(col["source_table"], col["source_name"])
     return sql.Identifier(col["source_name"])
 
 
-def _fetch_db_rows(source_conn, table_name, columns, where_clause=None, params=None):
+def _from_clause(source_tables: List[str], join_type: str, join_keys: List[Dict[str, str]]):
+    """Builds a FROM clause across one or more source tables. Extra source
+    tables not connected to the joined set by any join key fall back to a
+    CROSS JOIN rather than silently being dropped."""
+    if len(source_tables) <= 1:
+        return sql.Identifier(source_tables[0])
+
+    from_sql = sql.Identifier(source_tables[0])
+    joined = {source_tables[0]}
+    remaining = list(join_keys)
+
+    for _ in range(len(source_tables) - 1):
+        applied = False
+        for jk in list(remaining):
+            lt, lc, rt, rc = jk["left_table"], jk["left_column"], jk["right_table"], jk["right_column"]
+            if lt in joined and rt not in joined:
+                pass
+            elif rt in joined and lt not in joined:
+                lt, lc, rt, rc = rt, rc, lt, lc
+            else:
+                continue
+            from_sql = sql.SQL("{} {} JOIN {} ON {} = {}").format(
+                from_sql, sql.SQL(join_type), sql.Identifier(rt),
+                sql.Identifier(lt, lc), sql.Identifier(rt, rc),
+            )
+            joined.add(rt)
+            remaining.remove(jk)
+            applied = True
+            break
+
+        if not applied:
+            missing = next((t for t in source_tables if t not in joined), None)
+            if missing:
+                from_sql = sql.SQL("{} CROSS JOIN {}").format(from_sql, sql.Identifier(missing))
+                joined.add(missing)
+
+    return from_sql
+
+
+def _fetch_db_rows(source_conn, info, columns, where_clause=None, params=None):
     fields = sql.SQL(", ").join(
         sql.SQL("{} AS {}").format(_select_expr(col), sql.Identifier(col["target_name"]))
         for col in columns
     )
-    query = sql.SQL("SELECT {} FROM {}").format(fields, sql.Identifier(table_name))
+    from_sql = _from_clause(info["source_tables"], info.get("join_type", "INNER"), info.get("join_keys", []))
+    query = sql.SQL("SELECT {} FROM {}").format(fields, from_sql)
     if where_clause:
         query = sql.SQL("{} WHERE {}").format(query, where_clause)
 
@@ -521,20 +954,66 @@ def _fetch_db_rows(source_conn, table_name, columns, where_clause=None, params=N
         return cur.fetchall()
 
 
-def _fetch_spreadsheet_rows(table_name, columns):
+def _fetch_spreadsheet_rows(source_tables, join_type, join_keys, columns):
     from app.services.spreadsheet_service import get_table_df
 
-    df = get_table_df(table_name)
+    if len(source_tables) == 1:
+        df = get_table_df(source_tables[0])
+        data = {}
+        for col in columns:
+            series = None
+            if col.get("transform_expr"):
+                try:
+                    series = df.eval(col["transform_expr"])
+                except Exception:
+                    series = None
+            if series is None:
+                series = df[col["source_name"]] if col["source_name"] in df.columns else pd.Series([None] * len(df))
+            data[col["target_name"]] = series
+
+        built = pd.DataFrame(data)
+        built = built.where(pd.notnull(built), None)
+        return [tuple(row) for row in built.itertuples(index=False, name=None)]
+
+    # Multi-source join: every column is renamed "<table>__<column>" before
+    # merging so there's never any ambiguity about which table a name came
+    # from. transform_expr isn't supported across a spreadsheet join - a
+    # straight copy is used instead (this is enforced at save time).
+    how = "left" if join_type == "LEFT" else "inner"
+    dfs = {}
+    for table_name in source_tables:
+        d = get_table_df(table_name).copy()
+        d.columns = [f"{table_name}__{c}" for c in d.columns]
+        dfs[table_name] = d
+
+    merged = dfs[source_tables[0]]
+    joined = {source_tables[0]}
+    remaining = list(join_keys)
+    for _ in range(len(source_tables) - 1):
+        applied = False
+        for jk in list(remaining):
+            lt, lc, rt, rc = jk["left_table"], jk["left_column"], jk["right_table"], jk["right_column"]
+            if lt in joined and rt not in joined:
+                pass
+            elif rt in joined and lt not in joined:
+                lt, lc, rt, rc = rt, rc, lt, lc
+            else:
+                continue
+            merged = merged.merge(dfs[rt], how=how, left_on=f"{lt}__{lc}", right_on=f"{rt}__{rc}")
+            joined.add(rt)
+            remaining.remove(jk)
+            applied = True
+            break
+        if not applied:
+            missing = next((t for t in source_tables if t not in joined), None)
+            if missing:
+                merged = merged.merge(dfs[missing], how="cross")
+                joined.add(missing)
+
     data = {}
     for col in columns:
-        series = None
-        if col.get("transform_expr"):
-            try:
-                series = df.eval(col["transform_expr"])
-            except Exception:
-                series = None
-        if series is None:
-            series = df[col["source_name"]] if col["source_name"] in df.columns else pd.Series([None] * len(df))
+        key = f"{col.get('source_table')}__{col['source_name']}"
+        series = merged[key] if key in merged.columns else pd.Series([None] * len(merged))
         data[col["target_name"]] = series
 
     built = pd.DataFrame(data)
@@ -542,10 +1021,10 @@ def _fetch_spreadsheet_rows(table_name, columns):
     return [tuple(row) for row in built.itertuples(index=False, name=None)]
 
 
-def _fetch_rows_for_table(source_conn, table_name, info, where_clause=None, params=None):
+def _fetch_rows_for_table(source_conn, info):
     if info["source_type"] == "SPREADSHEET":
-        return _fetch_spreadsheet_rows(table_name, info["columns"])
-    return _fetch_db_rows(source_conn, table_name, info["columns"], where_clause, params)
+        return _fetch_spreadsheet_rows(info["source_tables"], info.get("join_type", "INNER"), info.get("join_keys", []), info["columns"])
+    return _fetch_db_rows(source_conn, info, info["columns"])
 
 
 def _replace_rows(target_conn, table_name, target_columns, rows) -> None:
@@ -600,7 +1079,7 @@ def _run_schema_for_table(target_conn, table_name, info) -> Dict[str, Any]:
 def _run_full_for_table(target_conn, source_conn, table_name, info, load_type="full") -> Dict[str, Any]:
     target_columns = [c["target_name"] for c in info["columns"]]
     try:
-        rows = _fetch_rows_for_table(source_conn, table_name, info)
+        rows = _fetch_rows_for_table(source_conn, info)
         _replace_rows(target_conn, table_name, target_columns, rows)
         _log_sync(target_conn, table_name, load_type, len(rows), "success", None)
         return {"table": table_name, "load_type": load_type, "rows_loaded": len(rows), "status": "success", "error_message": None}
@@ -614,6 +1093,7 @@ def _run_incremental_for_table(target_conn, source_conn, table_name, info) -> Di
     columns = info["columns"]
     target_columns = [c["target_name"] for c in columns]
     watermark_source = info.get("watermark_column")
+    watermark_source_table = info.get("watermark_source_table")
     watermark_target = info.get("watermark_target_column")
     watermark_kind = info.get("watermark_kind")
 
@@ -622,12 +1102,14 @@ def _run_incremental_for_table(target_conn, source_conn, table_name, info) -> Di
         return {"table": table_name, "load_type": "incremental", "rows_loaded": 0, "status": "failed", "error_message": "No watermark column found"}
 
     try:
+        watermark_identifier = sql.Identifier(watermark_source_table, watermark_source) if watermark_source_table else sql.Identifier(watermark_source)
+
         if watermark_kind == "timestamp":
             last_run_ts = _get_last_successful_run(target_conn, table_name, "incremental")
-            where_clause = sql.SQL("{} > %s").format(sql.Identifier(watermark_source))
+            where_clause = sql.SQL("{} > %s").format(watermark_identifier)
             rows = (
-                _fetch_db_rows(source_conn, table_name, columns, where_clause, [last_run_ts])
-                if last_run_ts else _fetch_db_rows(source_conn, table_name, columns)
+                _fetch_db_rows(source_conn, info, columns, where_clause, [last_run_ts])
+                if last_run_ts else _fetch_db_rows(source_conn, info, columns)
             )
         else:
             with target_conn.cursor() as cur:
@@ -637,8 +1119,8 @@ def _run_incremental_for_table(target_conn, source_conn, table_name, info) -> Di
                     )
                 )
                 max_target_id = cur.fetchone()[0] or 0
-            where_clause = sql.SQL("{} > %s").format(sql.Identifier(watermark_source))
-            rows = _fetch_db_rows(source_conn, table_name, columns, where_clause, [max_target_id])
+            where_clause = sql.SQL("{} > %s").format(watermark_identifier)
+            rows = _fetch_db_rows(source_conn, info, columns, where_clause, [max_target_id])
 
         _append_rows(target_conn, table_name, target_columns, rows)
         _log_sync(target_conn, table_name, "incremental", len(rows), "success", None)
@@ -660,15 +1142,18 @@ def run_job(
 ) -> List[Dict[str, Any]]:
     """Executes the warehouse job in-process against a validated job spec
     (never against arbitrary edited script text) and returns per-table
-    results. Spreadsheet-sourced tables always run as a full replace
-    regardless of mode, since they have no natural incremental watermark."""
+    results. Spreadsheet-sourced tables and any joined (multi-source) group
+    always run as a full replace regardless of mode, since neither has a
+    natural single-column incremental watermark. selected_tables here are
+    target table names (mapping-group keys), not raw source table names."""
     _validate_modes(schema_generator, incremental_load, full_load)
     if not selected_tables:
         raise WarehouseGenerationError("Select at least one table")
 
     raw_tables = _load_metamind_tables(user_id)
+    groups = get_table_groups(target_connection, user_id)["groups"]
     mappings = _get_target_mappings(target_connection)
-    table_metadata = _build_table_metadata(raw_tables, selected_tables, mappings)
+    table_metadata = _build_table_metadata(raw_tables, groups, selected_tables, mappings)
     target_config = _target_connection_payload(target_connection)
 
     target_conn = psycopg2.connect(connect_timeout=10, **target_config)
@@ -691,7 +1176,7 @@ def run_job(
 
         if incremental_load:
             for table_name, info in table_metadata.items():
-                if info["source_type"] == "DB":
+                if info["source_type"] == "DB" and not info["is_joined"]:
                     results.append(_run_incremental_for_table(target_conn, source_conn, table_name, info))
                 else:
                     results.append(_run_full_for_table(target_conn, source_conn, table_name, info, load_type="incremental"))
@@ -915,13 +1400,46 @@ def _render_script(
         'def select_expr(col):\n'
         '    if col.get("transform_expr"):\n'
         '        return sql.SQL(col["transform_expr"])\n'
+        '    if col.get("source_table"):\n'
+        '        return sql.Identifier(col["source_table"], col["source_name"])\n'
         '    return sql.Identifier(col["source_name"])\n\n\n'
-        'def fetch_source_rows(source_conn, table_name, columns, where_clause=None, params=None):\n'
+        'def from_clause(source_tables, join_type, join_keys):\n'
+        '    if len(source_tables) <= 1:\n'
+        '        return sql.Identifier(source_tables[0])\n\n'
+        '    from_sql = sql.Identifier(source_tables[0])\n'
+        '    joined = {source_tables[0]}\n'
+        '    remaining = list(join_keys)\n\n'
+        '    for _ in range(len(source_tables) - 1):\n'
+        '        applied = False\n'
+        '        for jk in list(remaining):\n'
+        '            lt, lc, rt, rc = jk["left_table"], jk["left_column"], jk["right_table"], jk["right_column"]\n'
+        '            if lt in joined and rt not in joined:\n'
+        '                pass\n'
+        '            elif rt in joined and lt not in joined:\n'
+        '                lt, lc, rt, rc = rt, rc, lt, lc\n'
+        '            else:\n'
+        '                continue\n'
+        '            from_sql = sql.SQL("{} {} JOIN {} ON {} = {}").format(\n'
+        '                from_sql, sql.SQL(join_type), sql.Identifier(rt),\n'
+        '                sql.Identifier(lt, lc), sql.Identifier(rt, rc),\n'
+        '            )\n'
+        '            joined.add(rt)\n'
+        '            remaining.remove(jk)\n'
+        '            applied = True\n'
+        '            break\n'
+        '        if not applied:\n'
+        '            missing = next((t for t in source_tables if t not in joined), None)\n'
+        '            if missing:\n'
+        '                from_sql = sql.SQL("{} CROSS JOIN {}").format(from_sql, sql.Identifier(missing))\n'
+        '                joined.add(missing)\n\n'
+        '    return from_sql\n\n\n'
+        'def fetch_source_rows(source_conn, table_info, columns, where_clause=None, params=None):\n'
         '    fields = sql.SQL(", ").join(\n'
         '        sql.SQL("{} AS {}").format(select_expr(col), sql.Identifier(col["target_name"]))\n'
         '        for col in columns\n'
         '    )\n'
-        '    query = sql.SQL("SELECT {} FROM {}").format(fields, sql.Identifier(table_name))\n\n'
+        '    from_sql = from_clause(table_info.get("source_tables") or [], table_info.get("join_type", "INNER"), table_info.get("join_keys", []))\n'
+        '    query = sql.SQL("SELECT {} FROM {}").format(fields, from_sql)\n\n'
         '    if where_clause:\n'
         '        query = sql.SQL("{} WHERE {}").format(query, where_clause)\n\n'
         '    with source_conn.cursor() as cur:\n'
@@ -982,7 +1500,7 @@ def _render_script(
         '            if not target_columns:\n'
         '                log_sync(target_conn, table_name, "full", 0, "success", None)\n'
         '                continue\n\n'
-        '            rows = fetch_source_rows(source_conn, table_name, columns)\n'
+        '            rows = fetch_source_rows(source_conn, table_info, columns)\n'
         '            replace_table_data(target_conn, table_name, target_columns, rows)\n'
         '            log_sync(target_conn, table_name, "full", len(rows), "success", None)\n'
         '        except Exception as err:\n'
@@ -994,23 +1512,30 @@ def _render_script(
         '        columns = table_info.get("columns", [])\n'
         '        target_columns = [col["target_name"] for col in columns]\n'
         '        watermark_column = table_info.get("watermark_column")\n'
+        '        watermark_source_table = table_info.get("watermark_source_table")\n'
         '        watermark_target_column = table_info.get("watermark_target_column")\n'
         '        watermark_kind = table_info.get("watermark_kind")\n\n'
         '        try:\n'
         '            if not target_columns:\n'
         '                log_sync(target_conn, table_name, "incremental", 0, "success", None)\n'
         '                continue\n\n'
-        '            if not watermark_column:\n'
-        '                log_sync(target_conn, table_name, "incremental", 0, "failed", "No watermark column found")\n'
+        '            if not watermark_column or table_info.get("is_joined"):\n'
+        '                rows = fetch_source_rows(source_conn, table_info, columns)\n'
+        '                replace_table_data(target_conn, table_name, target_columns, rows)\n'
+        '                log_sync(target_conn, table_name, "incremental", len(rows), "success", None)\n'
         '                continue\n\n'
+        '            watermark_identifier = (\n'
+        '                sql.Identifier(watermark_source_table, watermark_column)\n'
+        '                if watermark_source_table else sql.Identifier(watermark_column)\n'
+        '            )\n\n'
         '            rows = []\n'
         '            if watermark_kind == "timestamp":\n'
         '                last_run_ts = get_last_successful_run(target_conn, table_name, "incremental")\n'
-        '                where_clause = sql.SQL("{} > %s").format(sql.Identifier(watermark_column))\n'
+        '                where_clause = sql.SQL("{} > %s").format(watermark_identifier)\n'
         '                if last_run_ts:\n'
-        '                    rows = fetch_source_rows(source_conn, table_name, columns, where_clause, [last_run_ts])\n'
+        '                    rows = fetch_source_rows(source_conn, table_info, columns, where_clause, [last_run_ts])\n'
         '                else:\n'
-        '                    rows = fetch_source_rows(source_conn, table_name, columns)\n'
+        '                    rows = fetch_source_rows(source_conn, table_info, columns)\n'
         '            else:\n'
         '                with target_conn.cursor() as cur:\n'
         '                    cur.execute(\n'
@@ -1020,8 +1545,8 @@ def _render_script(
         '                        )\n'
         '                    )\n'
         '                    max_target_id = cur.fetchone()[0] or 0\n'
-        '                where_clause = sql.SQL("{} > %s").format(sql.Identifier(watermark_column))\n'
-        '                rows = fetch_source_rows(source_conn, table_name, columns, where_clause, [max_target_id])\n\n'
+        '                where_clause = sql.SQL("{} > %s").format(watermark_identifier)\n'
+        '                rows = fetch_source_rows(source_conn, table_info, columns, where_clause, [max_target_id])\n\n'
         '            append_table_data(target_conn, table_name, target_columns, rows)\n'
         '            log_sync(target_conn, table_name, "incremental", len(rows), "success", None)\n'
         '        except Exception as err:\n'
@@ -1077,17 +1602,20 @@ def generate_script(
     user_id: int,
 ) -> Tuple[str, str]:
     """Build and validate a standalone, downloadable warehouse ETL script.
-    DB-sourced tables only - spreadsheet-sourced selections are skipped
-    (noted in a header comment) since a portable script can't carry the
-    app's Parquet-backed spreadsheet store with it. Use run_job()/
-    "Run Now" in the app for spreadsheet-sourced tables."""
+    DB-sourced tables only (including joined groups made entirely of
+    DB-sourced tables) - spreadsheet-sourced selections are skipped (noted
+    in a header comment) since a portable script can't carry the app's
+    Parquet-backed spreadsheet store with it. Use run_job()/"Run Now" in
+    the app for spreadsheet-sourced tables. selected_tables are target
+    table names (mapping-group keys)."""
     _validate_modes(schema_generator, incremental_load, full_load)
     if not selected_tables:
         raise WarehouseGenerationError("Select at least one table")
 
     raw_tables = _load_metamind_tables(user_id)
+    groups = get_table_groups(target_connection, user_id)["groups"]
     mappings = _get_target_mappings(target_connection)
-    table_metadata = _build_table_metadata(raw_tables, selected_tables, mappings)
+    table_metadata = _build_table_metadata(raw_tables, groups, selected_tables, mappings)
 
     db_table_metadata = {k: v for k, v in table_metadata.items() if v["source_type"] == "DB"}
     skipped = sorted(set(table_metadata) - set(db_table_metadata))
@@ -1126,3 +1654,60 @@ def generate_script(
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"warehouse_etl_{timestamp}.py"
     return script, filename
+
+
+# ============================================================
+# Execute a generated-or-uploaded script (manual-edit escape hatch)
+# ============================================================
+
+def execute_script(script_text: str, timeout_seconds: int = 900) -> Dict[str, Any]:
+    """Runs a warehouse ETL script (the one just generated, or a copy a
+    user downloaded, hand-edited, and re-uploaded) as its own OS process.
+
+    Unlike run_job(), this DOES execute arbitrary script text - that is the
+    entire point of the "upload a manually-edited script" escape hatch. To
+    keep this bounded: it always runs as a separate subprocess (never
+    exec()/eval() inside the Flask process itself), with a hard timeout, so
+    it can only do what any script with this app's own OS/network
+    permissions could already do, and a hang or crash in the script can't
+    take the app down with it. It never runs unvalidated syntax - a source
+    file that doesn't compile is rejected before anything is executed. The
+    route wiring this up requires the same authentication as the rest of
+    the warehouse admin API.
+    """
+    import subprocess
+    import sys
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as tmp_file:
+        tmp_file.write(script_text)
+        temp_path = tmp_file.name
+
+    try:
+        try:
+            py_compile.compile(temp_path, doraise=True)
+        except py_compile.PyCompileError as exc:
+            raise WarehouseGenerationError(f"Script does not compile: {exc}") from exc
+
+        try:
+            proc = subprocess.run(
+                [sys.executable, temp_path],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+            return {
+                "exit_code": proc.returncode,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
+                "timed_out": False,
+            }
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "exit_code": None,
+                "stdout": exc.stdout or "",
+                "stderr": (exc.stderr or "") + f"\nScript timed out after {timeout_seconds}s and was terminated.",
+                "timed_out": True,
+            }
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
