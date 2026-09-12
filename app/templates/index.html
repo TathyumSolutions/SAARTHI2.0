@@ -1692,6 +1692,23 @@
     const sendBtn = document.querySelector('.send-btn');
     const chatContainer = document.querySelector('.chat-container');
 
+    function buildPlainTextConversationHistory() {
+        if (!chatContainer) return '';
+
+        const transcript = [];
+        chatContainer.querySelectorAll('.message').forEach((item) => {
+            const author = item.querySelector('.message-author')?.textContent?.trim() || '';
+            const textNode = item.querySelector('.message-text');
+            if (!textNode) return;
+            const text = textNode.innerText.replace(/\s+/g, ' ').trim();
+            if (!text) return;
+            if (author === 'You') transcript.push(`You: ${text}`);
+            else if (author === 'Saarthi AI') transcript.push(`Saarthi AI: ${text}`);
+        });
+
+        return transcript.join('\n\n');
+    }
+
     async function handleChat() {
         const message = chatInput.value.trim();
         if (!message) return;
@@ -1707,6 +1724,7 @@
 
         const currentSessionId = 1;
         lastUserQuestion = message;
+        const transcriptHistory = buildPlainTextConversationHistory();
 
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         renderMessage('You', `<span style="color: #E2E8F0;">${escapeAttr(message)}</span>`, '👤', time, false);
@@ -1727,6 +1745,7 @@
                         message: message,
                         session_id: 1,
                         mode: 'chat',
+                        chat_history: transcriptHistory,
                         system_instructions: currentSystemInstructions
                     })
                 });

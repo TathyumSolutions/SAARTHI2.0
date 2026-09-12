@@ -253,6 +253,67 @@ def create_chat_session():
         print(f"Error saving chat history log: {e}")
         return jsonify({"error": "Failed to update persistent history trail"}), 500
 
+def _extract_prior_turns_from_text(history_text):
+    """Convert a plain transcript into role-tagged turns the router can understand."""
+    text = (history_text or '').strip()
+    if not text:
+        return []
+
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return []
+
+    turns = []
+    current_role = None
+    current_lines = []
+
+    def flush():
+        if current_role is None:
+            return
+        content = '\n'.join(current_lines).strip()
+        if content:
+            turns.append({'role': current_role, 'content': content})
+
+    for line in lines:
+        lower = line.lower()
+        if lower.startswith('you:'):
+            flush()
+            current_role = 'user'
+            current_lines = [line[4:].strip()]
+            continue
+        if lower.startswith('saarthi ai:'):
+            flush()
+            current_role = 'assistant'
+            current_lines = [line[11:].strip()]
+            continue
+        if current_role is not None:
+            current_lines.append(line)
+        else:
+            current_lines = [line]
+            current_role = 'user'
+
+    flush()
+
+    if not turns and text:
+        return [{'role': 'user', 'content': text}]
+    return turns
+
+
+def _load_chat_history_for_session(session_id, current_user=None):
+    """Return the persisted HTML/text history for a session, or an empty string if none exists."""
+    if not session_id:
+        return ''
+
+    session = ChatSession.query.filter_by(session_id=str(session_id)).first()
+    if not session:
+        return ''
+
+    if current_user is not None and session.user_id != current_user.id:
+        return ''
+
+    return session.chat_history or ''
+
+
 @bp.route('/sessions/<string:session_id>', methods=['GET'])
 @jwt_required()
 def get_chat_session(session_id):
@@ -404,10 +465,17 @@ def send_message():
 
     if not user_query:
         return jsonify({"error": "Message is required"}), 400
-    
+
     if not model_name:
         return jsonify({"error": "No valid LLM model selected. Please select a model from the dropdown."}), 400
-    
+
+    current_user = _resolve_feedback_user()
+    user_id = current_user.id if current_user else 1
+    company_code = current_user.company_code if current_user else None
+
+    raw_history = data.get('chat_history') or _load_chat_history_for_session(session_id, current_user)
+    prior_history = _extract_prior_turns_from_text(raw_history)
+
     company_ctx = _resolve_company_context()
 
     if model_name.startswith('api://') or model_name.startswith('ollama://'):
@@ -435,9 +503,6 @@ def send_message():
         # STEP 1: Get the answer from your RAG logic in LLMService
         # We will build 'answer_from_docs' in the next step
         #ai_response = llm_service.answer_from_docs(user_query)
-        current_user = _resolve_feedback_user()
-        user_id = current_user.id if current_user else 1
-        company_code = current_user.company_code if current_user else None
         if current_user:
             system_instructions = current_user.effective_query_instructions(system_instructions)
 
@@ -447,6 +512,7 @@ def send_message():
             model_name=model_name,
             custom_key=custom_key,
             system_instructions=system_instructions,
+            chat_history=prior_history,
             company_code=company_code,
             user_id=user_id,
         )
