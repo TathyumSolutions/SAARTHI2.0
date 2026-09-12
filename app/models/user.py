@@ -64,12 +64,11 @@ class User(db.Model):
 
     def effective_query_instructions(self, per_message: str = "") -> str:
         """Combines this user's standing Settings-page instructions with
-        any ad hoc instructions sent for a single message (e.g. the
-        "Instructions.md" chat modal). The persisted default always
-        applies to every query; per-message text, when present, is
-        layered on top as an addition rather than a replacement, so the
-        two mechanisms compose instead of one silently overriding the
-        other."""
+        any ad hoc instructions sent for a single request (e.g. via the
+        API). The persisted default always applies to every query;
+        per-message text, when present, is layered on top as an addition
+        rather than a replacement, so the two mechanisms compose instead
+        of one silently overriding the other."""
         parts = [p.strip() for p in (self.query_instructions, per_message) if p and p.strip()]
         return "\n\n".join(parts)
 
