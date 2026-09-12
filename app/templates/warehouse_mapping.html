@@ -136,7 +136,7 @@
     </div>
 
     <div class="mapping-section">
-        <div class="section-help">
+        <div class="section-help" id="sourceTablesHelp">
             Every column defaults to a straight 1:1 copy. Uncheck "Include" to drop a column,
             rename the target, override its target type, or add a transform expression to
             compute it instead of copying it directly. Nothing here is applied until you save it,
@@ -152,7 +152,7 @@
                 <thead>
                     <tr>
                         <th>Include</th>
-                        <th>Source Column</th>
+                        <th id="sourceColHeader">Source Column</th>
                         <th>Target Name</th>
                         <th>Target Type</th>
                         <th>Transform Expression</th>
@@ -174,10 +174,12 @@
     const TARGET_TYPES = ["TEXT", "BIGINT", "SMALLINT", "INTEGER", "NUMERIC", "DOUBLE PRECISION", "BOOLEAN", "TIMESTAMP", "DATE", "TIME", "JSONB", "UUID"];
 
     const params = new URLSearchParams(window.location.search);
-    const tableName = params.get('table');
+    const tableName = params.get('target_table') || params.get('table');
     const targetConnectionId = params.get('target_connection_id');
 
     let columns = [];
+    let sourceTables = [];
+    let isJoined = false;
 
     function typeOptionsHtml(selected) {
         const norm = (selected || "").toUpperCase();
@@ -191,10 +193,11 @@
         columns.forEach((col, index) => {
             const tr = document.createElement('tr');
             tr.className = col.include ? '' : 'excluded-row';
+            const displayName = isJoined && col.source_table ? `${col.source_table}.${col.source_name}` : col.source_name;
             tr.innerHTML = `
                 <td><input type="checkbox" class="col-include" data-index="${index}" ${col.include ? 'checked' : ''}></td>
                 <td>
-                    <div class="source-name">${col.source_name}</div>
+                    <div class="source-name">${displayName}</div>
                     <div class="source-meta">${col.data_type || ''}${col.nullable === false ? ' · NOT NULL' : ''}</div>
                     ${col.rationale ? `<div class="rationale">${col.rationale}</div>` : ''}
                 </td>
@@ -204,7 +207,7 @@
                         ${typeOptionsHtml(col.target_type)}
                     </select>
                 </td>
-                <td><input class="cell-input expr col-transform" data-index="${index}" placeholder="e.g. TRIM(&quot;${col.source_name}&quot;)" value="${col.transform_expr || ''}"></td>
+                <td><input class="cell-input expr col-transform" data-index="${index}" placeholder="e.g. TRIM(${isJoined && col.source_table ? `&quot;${col.source_table}&quot;.` : ''}&quot;${col.source_name}&quot;)" value="${col.transform_expr || ''}"></td>
             `;
             body.appendChild(tr);
         });
@@ -231,6 +234,24 @@
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
             columns = data.columns || [];
+            sourceTables = data.source_tables || [];
+            isJoined = sourceTables.length > 1;
+
+            const helpEl = document.getElementById('sourceTablesHelp');
+            const headerEl = document.getElementById('sourceColHeader');
+            if (isJoined) {
+                headerEl.textContent = 'Source Table.Column';
+                helpEl.innerHTML = `This target table joins <strong>${sourceTables.join(', ')}</strong> (${data.join_type || 'INNER'} JOIN, configured in Table-Level Mapping). ` +
+                    'Every column defaults to a straight copy. Uncheck "Include" to drop a column, rename the target, ' +
+                    'override its target type, or add a transform expression (a raw SQL expression against this joined result) instead of copying it directly. ' +
+                    'Nothing here is applied until you save it.';
+            } else {
+                headerEl.textContent = 'Source Column';
+                helpEl.textContent = 'Every column defaults to a straight 1:1 copy. Uncheck "Include" to drop a column, ' +
+                    'rename the target, override its target type, or add a transform expression to compute it instead of copying it directly. ' +
+                    'Nothing here is applied until you save it, and generating/running the warehouse job always re-reads whatever is saved here.';
+            }
+
             renderRows();
             status.textContent = `${columns.length} column(s) loaded.`;
         } catch (err) {
@@ -242,15 +263,15 @@
         const status = document.getElementById('mappingStatus');
         status.textContent = 'Requesting suggestions...';
         try {
-            const res = await authFetch(`/api/warehouse/mapping/${encodeURIComponent(tableName)}/suggest`, { method: 'POST' });
+            const res = await authFetch(`/api/warehouse/mapping/${encodeURIComponent(tableName)}/suggest?target_connection_id=${encodeURIComponent(targetConnectionId || '')}`, { method: 'POST' });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-            const suggestionsByName = {};
-            (data.suggestions || []).forEach(s => { suggestionsByName[s.source_name] = s; });
+            const suggestionsByKey = {};
+            (data.suggestions || []).forEach(s => { suggestionsByKey[`${s.source_table || ''}::${s.source_name}`] = s; });
 
             columns = columns.map(col => {
-                const s = suggestionsByName[col.source_name];
+                const s = suggestionsByKey[`${col.source_table || ''}::${col.source_name}`];
                 if (!s) return col;
                 return {
                     ...col,
@@ -292,6 +313,7 @@
                 body: JSON.stringify({
                     target_connection_id: Number(targetConnectionId),
                     columns: columns.map(c => ({
+                        source_table: c.source_table,
                         source_name: c.source_name,
                         target_name: c.target_name,
                         target_type: c.target_type,

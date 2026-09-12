@@ -13,12 +13,15 @@ from app.models.database_connection import DatabaseConnection
 from app.services.warehouse_generator import (
     WarehouseGenerationError,
     check_health,
+    execute_script,
     generate_health_script,
     generate_script,
     get_discovered_tables,
-    get_raw_table_columns,
+    get_group_source_columns,
+    get_table_groups,
     get_table_mapping,
     run_job,
+    save_table_groups,
     save_table_mapping,
     suggest_transformations,
 )
@@ -299,11 +302,62 @@ def warehouse_health_script():
         return jsonify({"error": str(exc)}), 500
 
 
-@bp.route("/api/warehouse/mapping/<path:table_name>", methods=["GET"])
+@bp.route("/api/warehouse/table-groups", methods=["GET"])
 @jwt_required()
-def get_warehouse_mapping(table_name):
-    """Merged view for the mapping editor: every source column plus any
-    saved override for it (defaults are a straight 1:1 pass-through)."""
+def warehouse_table_groups():
+    """Table-level mapping: every discovered source table, plus the
+    effective source-tables-per-target-table grouping (a straight 1:1
+    default for anything not explicitly grouped/joined otherwise)."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required", "tables": [], "groups": {}}), 401
+    try:
+        target_connection_id = request.args.get("target_connection_id", type=int)
+        target_connection = (
+            DatabaseConnection.query.get(target_connection_id) if target_connection_id else None
+        )
+        return jsonify(get_table_groups(target_connection, current_user.id)), 200
+    except WarehouseGenerationError as exc:
+        return jsonify({"error": str(exc), "tables": [], "groups": {}}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc), "tables": [], "groups": {}}), 500
+
+
+@bp.route("/api/warehouse/table-groups", methods=["POST"])
+@jwt_required()
+def save_warehouse_table_groups():
+    """Saves the drag-and-drop table-level mapping: which source table(s)
+    feed each target table, and (for a group of more than one source
+    table) how they're joined."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        data = request.get_json() or {}
+        target_connection_id = data.get("target_connection_id")
+        groups = data.get("groups", {})
+
+        if not target_connection_id:
+            return jsonify({"error": "target_connection_id is required"}), 400
+
+        target_connection = DatabaseConnection.query.get(target_connection_id)
+        if not target_connection:
+            return jsonify({"error": "Target connection not found"}), 404
+        if not _is_warehouse_target(target_connection):
+            return jsonify({"error": "Selected connection is not marked as warehouse_target"}), 400
+
+        save_table_groups(target_connection, groups)
+        return jsonify({"message": "Table-level mapping saved"}), 200
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@bp.route("/api/warehouse/mapping/<path:target_table_name>", methods=["GET"])
+@jwt_required()
+def get_warehouse_mapping(target_table_name):
+    """Merged view for the column mapping editor: every column across the
+    target table's mapped source table(s) plus any saved override for it
+    (defaults are a straight 1:1 pass-through)."""
     current_user = get_current_user()
     if not current_user:
         return jsonify({"error": "Authentication required"}), 401
@@ -313,13 +367,20 @@ def get_warehouse_mapping(table_name):
             DatabaseConnection.query.get(target_connection_id) if target_connection_id else None
         )
 
-        raw_columns = get_raw_table_columns(current_user.id, table_name)
-        saved = get_table_mapping(target_connection, table_name)
+        groups = get_table_groups(target_connection, current_user.id)["groups"]
+        group = groups.get(target_table_name)
+        if not group:
+            return jsonify({"error": f"No table mapping found for target '{target_table_name}'"}), 404
+
+        tagged_columns, _source_type = get_group_source_columns(current_user.id, group["source_tables"])
+        saved = get_table_mapping(target_connection, target_table_name)
 
         columns = []
-        for col in raw_columns:
-            override = saved.get(col["name"], {})
+        for col in tagged_columns:
+            key = f"{col['source_table']}::{col['name']}"
+            override = saved.get(key) or saved.get(col["name"], {})
             columns.append({
+                "source_table": col["source_table"],
                 "source_name": col["name"],
                 "data_type": col.get("data_type"),
                 "nullable": col.get("nullable", True),
@@ -329,16 +390,22 @@ def get_warehouse_mapping(table_name):
                 "transform_expr": override.get("transform_expr") or "",
             })
 
-        return jsonify({"table": table_name, "columns": columns}), 200
+        return jsonify({
+            "target_table": target_table_name,
+            "source_tables": group["source_tables"],
+            "join_type": group.get("join_type", "INNER"),
+            "join_keys": group.get("join_keys", []),
+            "columns": columns,
+        }), 200
     except WarehouseGenerationError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
 
-@bp.route("/api/warehouse/mapping/<path:table_name>", methods=["POST"])
+@bp.route("/api/warehouse/mapping/<path:target_table_name>", methods=["POST"])
 @jwt_required()
-def save_warehouse_mapping(table_name):
+def save_warehouse_mapping(target_table_name):
     current_user = get_current_user()
     if not current_user:
         return jsonify({"error": "Authentication required"}), 401
@@ -356,15 +423,15 @@ def save_warehouse_mapping(table_name):
         if not _is_warehouse_target(target_connection):
             return jsonify({"error": "Selected connection is not marked as warehouse_target"}), 400
 
-        save_table_mapping(target_connection, table_name, columns)
+        save_table_mapping(target_connection, target_table_name, columns)
         return jsonify({"message": "Mapping saved"}), 200
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
 
-@bp.route("/api/warehouse/mapping/<path:table_name>/suggest", methods=["POST"])
+@bp.route("/api/warehouse/mapping/<path:target_table_name>/suggest", methods=["POST"])
 @jwt_required()
-def suggest_warehouse_mapping(table_name):
+def suggest_warehouse_mapping(target_table_name):
     """AI-assisted (with a rule-based fallback) starting point for the
     mapping editor - always returned for the user to review/edit, never
     saved automatically."""
@@ -372,9 +439,45 @@ def suggest_warehouse_mapping(table_name):
     if not current_user:
         return jsonify({"error": "Authentication required"}), 401
     try:
-        raw_columns = get_raw_table_columns(current_user.id, table_name)
-        suggestions = suggest_transformations(table_name, raw_columns)
-        return jsonify({"table": table_name, "suggestions": suggestions}), 200
+        target_connection_id = request.args.get("target_connection_id", type=int)
+        target_connection = (
+            DatabaseConnection.query.get(target_connection_id) if target_connection_id else None
+        )
+        groups = get_table_groups(target_connection, current_user.id)["groups"]
+        group = groups.get(target_table_name)
+        if not group:
+            return jsonify({"error": f"No table mapping found for target '{target_table_name}'"}), 404
+
+        tagged_columns, _source_type = get_group_source_columns(current_user.id, group["source_tables"])
+        suggestions = suggest_transformations(target_table_name, tagged_columns)
+        return jsonify({"table": target_table_name, "suggestions": suggestions}), 200
+    except WarehouseGenerationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@bp.route("/api/warehouse/execute-script", methods=["POST"])
+@jwt_required()
+def execute_warehouse_script():
+    """Runs a warehouse ETL script - either the one just generated, or a
+    copy the user downloaded, hand-edited outside the app, and uploaded
+    back - as its own subprocess (see execute_script()'s docstring for the
+    trust boundary this crosses: this route does run arbitrary script
+    text, on purpose, as the escape hatch for manual edits generate_script()
+    itself can't express)."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        data = request.get_json() or {}
+        script_text = data.get("script")
+        if not script_text or not isinstance(script_text, str) or not script_text.strip():
+            return jsonify({"error": "script is required"}), 400
+
+        result = execute_script(script_text)
+        status_code = 200 if (result["exit_code"] == 0 and not result["timed_out"]) else 422
+        return jsonify(result), status_code
     except WarehouseGenerationError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:
