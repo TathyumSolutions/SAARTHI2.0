@@ -1,14 +1,15 @@
 """
 Resource Mapping Model - admin-curated grants of a company's resources
-(database connections, files, API connectors, LLM connections) to specific
-users of that same company. Nothing is auto-shared: a resource only becomes
-visible to someone other than its creator once an admin of the same company
-explicitly grants it here.
+(database connections, files, API connectors, Model Configurations - see
+app/models/model_config.py) to specific users of that same company.
+Nothing is auto-shared: a resource only becomes visible to someone other
+than its creator once an admin of the same company explicitly grants it
+here.
 
-daily_budget/budget_currency only apply to 'llm' grants (an LLM connection
-allocation may cap how much that user can spend on it per day - see
-app/services/llm_connection_service.py); they stay NULL for every other
-resource_type.
+daily_budget/budget_currency only apply to 'llm' grants (a Model
+Configuration allocation may cap how much that user can spend on it per
+day - see app/services/model_config_access_service.py); they stay NULL
+for every other resource_type.
 """
 from app import db
 from datetime import datetime

@@ -34,13 +34,14 @@ class LLMCallLog(db.Model):
     purpose = db.Column(db.String(100), nullable=False, index=True)
     provider = db.Column(db.String(50), nullable=True, index=True)
     model = db.Column(db.String(150), nullable=False, index=True)
-    # Which LLMConnection (resources bind) served this call, when the caller
-    # resolved one via app/services/llm_connection_service.py - plain int,
-    # no FK, since llm_connections lives in a different bind/database.
-    # Nullable: calls made before this column existed, or made through a
-    # code path that hasn't adopted per-connection resolution yet, or via
-    # the global env-var fallback, leave this unset.
-    llm_connection_id = db.Column(db.Integer, nullable=True, index=True)
+    # Which ModelConfiguration ("Configured Models" under AI & Models) served
+    # this call, when the caller resolved one via
+    # app/services/model_config_access_service.py - plain int, no FK, since
+    # ModelConfiguration lives in the same 'workspace' bind but SQLAlchemy
+    # doesn't need a declared FK for this lookup. Nullable: calls made
+    # before this column existed, or through a code path that hasn't
+    # adopted per-configuration resolution yet, leave this unset.
+    model_configuration_id = db.Column(db.Integer, nullable=True, index=True)
 
     prompt_tokens = db.Column(db.Integer, nullable=True)
     completion_tokens = db.Column(db.Integer, nullable=True)
@@ -73,7 +74,7 @@ class LLMCallLog(db.Model):
             'purpose': self.purpose,
             'provider': self.provider,
             'model': self.model,
-            'llm_connection_id': self.llm_connection_id,
+            'model_configuration_id': self.model_configuration_id,
             'prompt_tokens': self.prompt_tokens,
             'completion_tokens': self.completion_tokens,
             'total_tokens': self.total_tokens,

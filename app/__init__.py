@@ -115,8 +115,7 @@ def create_app(config_name='development'):
         resource_mapping_routes,
         warehouse_routes,
         bi_semantics_routes,
-        user_model_pipeline_routes,
-        llm_connection_routes
+        user_model_pipeline_routes
     )
 
     # HTML page routes (no prefix)
@@ -143,7 +142,6 @@ def create_app(config_name='development'):
     app.register_blueprint(warehouse_routes.bp)
     app.register_blueprint(bi_semantics_routes.bp)
     app.register_blueprint(user_model_pipeline_routes.bp)
-    app.register_blueprint(llm_connection_routes.bp)
 
     from app.routes.upload_routes import upload_bp
     app.register_blueprint(upload_bp)

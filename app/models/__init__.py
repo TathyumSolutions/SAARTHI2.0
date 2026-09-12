@@ -3,7 +3,7 @@ Database Models
 
 3 logical databases (see config/config.py SQLALCHEMY_BINDS):
   - core:      Company, User, ResourceMapping, AuditLog
-  - resources: DatabaseConnection, ApiConnector, FileResource, LLMConnection
+  - resources: DatabaseConnection, ApiConnector, FileResource
   - workspace: ChatSession, ModelConfiguration, ResponseFeedback, QueryLog,
     BiSemanticsConfig, LLMCallLog
 
@@ -22,7 +22,6 @@ from .audit_log import AuditLog
 from .database_connection import DatabaseConnection
 from .api_connector import ApiConnector
 from .file_resource import FileResource
-from .llm_connection import LLMConnection
 
 from .chat import ChatSession
 from .model_config import ModelConfiguration
@@ -40,7 +39,6 @@ __all__ = [
     'DatabaseConnection',
     'ApiConnector',
     'FileResource',
-    'LLMConnection',
     'ChatSession',
     'ModelConfiguration',
     'ResponseFeedback',
