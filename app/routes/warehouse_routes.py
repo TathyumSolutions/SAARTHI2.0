@@ -16,6 +16,7 @@ from app.services.warehouse_generator import (
     execute_script,
     generate_health_script,
     generate_script,
+    get_data_model,
     get_discovered_tables,
     get_group_source_columns,
     get_table_groups,
@@ -300,6 +301,22 @@ def warehouse_health_script():
         )
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+@bp.route("/api/warehouse/data-model", methods=["GET"])
+@jwt_required()
+def warehouse_data_model():
+    """Every discovered table plus auto-detected relationships between
+    them, for the Data Model overview shown above Table-Level Mapping."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required", "tables": [], "relationships": []}), 401
+    try:
+        return jsonify(get_data_model(current_user.id)), 200
+    except WarehouseGenerationError as exc:
+        return jsonify({"error": str(exc), "tables": [], "relationships": []}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc), "tables": [], "relationships": []}), 500
 
 
 @bp.route("/api/warehouse/table-groups", methods=["GET"])

@@ -137,8 +137,9 @@
 
     <div class="mapping-section">
         <div class="section-help" id="sourceTablesHelp">
+            Every row shows the source column on the left and its destination column on the right.
             Every column defaults to a straight 1:1 copy. Uncheck "Include" to drop a column,
-            rename the target, override its target type, or add a transform expression to
+            rename the destination, override its destination type, or add a transform expression to
             compute it instead of copying it directly. Nothing here is applied until you save it,
             and generating/running the warehouse job always re-reads whatever is saved here.
         </div>
@@ -153,8 +154,8 @@
                     <tr>
                         <th>Include</th>
                         <th id="sourceColHeader">Source Column</th>
-                        <th>Target Name</th>
-                        <th>Target Type</th>
+                        <th>Destination Column</th>
+                        <th>Destination Type</th>
                         <th>Transform Expression</th>
                     </tr>
                 </thead>
@@ -242,13 +243,15 @@
             if (isJoined) {
                 headerEl.textContent = 'Source Table.Column';
                 helpEl.innerHTML = `This target table joins <strong>${sourceTables.join(', ')}</strong> (${data.join_type || 'INNER'} JOIN, configured in Table-Level Mapping). ` +
-                    'Every column defaults to a straight copy. Uncheck "Include" to drop a column, rename the target, ' +
-                    'override its target type, or add a transform expression (a raw SQL expression against this joined result) instead of copying it directly. ' +
+                    'Every row shows the source column on the left and its destination column on the right. ' +
+                    'Every column defaults to a straight copy. Uncheck "Include" to drop a column, rename the destination, ' +
+                    'override its destination type, or add a transform expression (a raw SQL expression against this joined result) instead of copying it directly. ' +
                     'Nothing here is applied until you save it.';
             } else {
                 headerEl.textContent = 'Source Column';
-                helpEl.textContent = 'Every column defaults to a straight 1:1 copy. Uncheck "Include" to drop a column, ' +
-                    'rename the target, override its target type, or add a transform expression to compute it instead of copying it directly. ' +
+                helpEl.textContent = 'Every row shows the source column on the left and its destination column on the right. ' +
+                    'Every column defaults to a straight 1:1 copy. Uncheck "Include" to drop a column, ' +
+                    'rename the destination, override its destination type, or add a transform expression to compute it instead of copying it directly. ' +
                     'Nothing here is applied until you save it, and generating/running the warehouse job always re-reads whatever is saved here.';
             }
 

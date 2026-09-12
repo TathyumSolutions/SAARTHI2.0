@@ -259,6 +259,80 @@
         border-color: var(--primary-blue);
     }
 
+    /* Data Model overview (auto-detected relationships) */
+    .dm-container {
+        position: relative;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--dark-bg);
+        padding: 20px;
+        overflow: auto;
+        max-height: 560px;
+    }
+
+    .dm-svg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    .dm-link {
+        fill: none;
+        stroke: var(--primary-blue);
+        stroke-width: 1.5;
+        opacity: 0.75;
+    }
+
+    .dm-link-label {
+        font-size: 10px;
+        font-weight: 700;
+        fill: var(--text-secondary);
+    }
+
+    .dm-cards {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 28px;
+        align-items: flex-start;
+    }
+
+    .dm-card {
+        width: 200px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--panel-bg);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    .dm-card-header {
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 700;
+        background: var(--hover-bg);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .dm-card-body {
+        padding: 4px 0;
+    }
+
+    .dm-col-row {
+        padding: 4px 10px;
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
     /* Table-level (drag & drop) mapping */
     .mapping-dnd {
         display: grid;
@@ -473,12 +547,30 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>2. Table-Level Mapping (Joins)</h3>
+        <h3>2. Data Model</h3>
+        <div class="section-help">
+            Every discovered table, with relationships auto-detected the way Power BI's model view would
+            (a "customer_id"-style column matched to a "customers" table's key) - a suggestion to review, not
+            something you need to fix by hand. This is the map Table-Level Mapping below draws its join-key
+            suggestions from once you combine two related tables.
+        </div>
+        <div class="toolbar">
+            <span class="status" id="dataModelStatus">Loading data model...</span>
+        </div>
+        <div class="dm-container" id="dataModelContainer">
+            <svg id="dataModelSvg" class="dm-svg"></svg>
+            <div class="dm-cards" id="dataModelCards"></div>
+        </div>
+    </div>
+
+    <div class="warehouse-section">
+        <h3>3. Table-Level Mapping (Joins)</h3>
         <div class="section-help">
             Mapping isn't always 1:1 - a target table can be built by joining more than one source table.
             Drag a source table from the left onto a target table on the right to combine them (a join);
             drag it back out (✕ on its chip) to split it out again. Target table names are editable. Once a
-            target table has more than one source, set the join type and at least one join key below it.
+            target table has more than one source, set the join type and at least one join key below it -
+            a join key detected in the Data Model above is pre-filled automatically when possible.
             Column-level transformations (Configure Mapping, in the Table Selection step below) are always
             based on whatever is saved here.
         </div>
@@ -500,7 +592,7 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>3. Load Modes</h3>
+        <h3>4. Load Modes</h3>
         <div class="section-help">Schema Generator runs first if selected. Incremental Load and Full Load are mutually exclusive.</div>
         <div class="checkbox-grid">
             <div class="mode-card">
@@ -519,7 +611,7 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>4. Table Selection</h3>
+        <h3>5. Table Selection</h3>
         <div class="section-help">These are your target tables from Table-Level Mapping above (a joined target table combines more than one source). Select which ones to generate/run.</div>
         <div class="toolbar">
             <button class="btn" type="button" id="selectAllTablesBtn">Select All</button>
@@ -530,7 +622,7 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>5. Generate, Upload, or Run</h3>
+        <h3>6. Generate, Upload, or Run</h3>
         <div class="section-help">"Generate Script" downloads a standalone .py file for external/cron use (database-sourced target tables only, joins included). Need a manual change? Edit the downloaded file, then "Upload Script" to load your edited copy back in before executing. "Run Now" executes the same job immediately inside the app - it supports spreadsheet-sourced and joined target tables too, plus any saved column mapping/transforms.</div>
         <div class="toolbar">
             <button class="btn btn-primary" id="generateScriptBtn" type="button" disabled>Generate Script</button>
@@ -562,7 +654,7 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>6. Warehouse Health</h3>
+        <h3>7. Warehouse Health</h3>
         <div class="section-help">Checks that the target is reachable, whether it has run history yet, and the current row count per table with logged runs.</div>
         <div class="toolbar">
             <button class="btn" id="checkHealthBtn" type="button">Test Warehouse</button>
@@ -585,7 +677,7 @@
     </div>
 
     <div class="warehouse-section">
-        <h3>7. Run History</h3>
+        <h3>8. Run History</h3>
         <div class="section-help">History from warehouse_sync_log on the selected warehouse target connection.</div>
         <div style="overflow-x: auto;">
             <table class="history-table" id="historyTable">
@@ -613,7 +705,9 @@
         selectedTargetId: null,
         editingTargetId: null,
         tables: [],
-        groups: {}
+        groups: {},
+        dataModelTables: [],
+        dataModelRelationships: []
     };
 
     let loadedScript = null; // {text, filename, source: 'generated'|'uploaded'}
@@ -860,6 +954,124 @@
         }
     }
 
+    // ---------------- Data Model (all tables + auto-detected relationships) ----------------
+
+    function cssId(s) {
+        return String(s).replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    async function loadDataModel() {
+        const status = document.getElementById('dataModelStatus');
+        try {
+            const res = await authFetch('/api/warehouse/data-model');
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            state.dataModelTables = data.tables || [];
+            state.dataModelRelationships = data.relationships || [];
+            renderDataModel();
+            status.textContent = `${state.dataModelTables.length} table(s), ${state.dataModelRelationships.length} relationship(s) detected.`;
+        } catch (err) {
+            status.textContent = `Failed to load data model: ${err.message}`;
+        }
+    }
+
+    function renderDataModel() {
+        const cardsWrap = document.getElementById('dataModelCards');
+        cardsWrap.innerHTML = '';
+
+        state.dataModelTables.forEach(t => {
+            const card = document.createElement('div');
+            card.className = 'dm-card';
+            card.id = `dm-table-${cssId(t.name)}`;
+            const rows = (t.columns || []).map(c =>
+                `<div class="dm-col-row" id="dm-col-${cssId(t.name)}-${cssId(c.name)}">${c.name}</div>`
+            ).join('') || '<div class="dm-col-row status">No columns</div>';
+            card.innerHTML = `
+                <div class="dm-card-header">${t.name}<span class="source-badge">${t.source_type || 'DB'}</span></div>
+                <div class="dm-card-body">${rows}</div>
+            `;
+            cardsWrap.appendChild(card);
+        });
+
+        requestAnimationFrame(drawDataModelLines);
+    }
+
+    function drawDataModelLines() {
+        const container = document.getElementById('dataModelContainer');
+        const svg = document.getElementById('dataModelSvg');
+        if (!container || !svg) return;
+
+        svg.setAttribute('width', container.scrollWidth);
+        svg.setAttribute('height', container.scrollHeight);
+        svg.innerHTML = '';
+
+        const containerRect = container.getBoundingClientRect();
+        const toLocal = (clientX, clientY) => ({
+            x: clientX - containerRect.left + container.scrollLeft,
+            y: clientY - containerRect.top + container.scrollTop,
+        });
+
+        state.dataModelRelationships.forEach(rel => {
+            const fromEl = document.getElementById(`dm-col-${cssId(rel.from_table)}-${cssId(rel.from_column)}`);
+            const toEl = document.getElementById(`dm-col-${cssId(rel.to_table)}-${cssId(rel.to_column)}`);
+            const fromCard = document.getElementById(`dm-table-${cssId(rel.from_table)}`);
+            const toCard = document.getElementById(`dm-table-${cssId(rel.to_table)}`);
+            if (!fromEl || !toEl || !fromCard || !toCard) return;
+
+            const fromRect = fromEl.getBoundingClientRect();
+            const toRect = toEl.getBoundingClientRect();
+            const fromCardRect = fromCard.getBoundingClientRect();
+            const toCardRect = toCard.getBoundingClientRect();
+            const fromCenterX = fromCardRect.left + fromCardRect.width / 2;
+            const toCenterX = toCardRect.left + toCardRect.width / 2;
+
+            let start, end;
+            if (Math.abs(fromCenterX - toCenterX) < 4) {
+                start = toLocal(fromRect.right, fromRect.top + fromRect.height / 2);
+                end = toLocal(toRect.right, toRect.top + toRect.height / 2);
+            } else if (fromCenterX < toCenterX) {
+                start = toLocal(fromRect.right, fromRect.top + fromRect.height / 2);
+                end = toLocal(toRect.left, toRect.top + toRect.height / 2);
+            } else {
+                start = toLocal(fromRect.left, fromRect.top + fromRect.height / 2);
+                end = toLocal(toRect.right, toRect.top + toRect.height / 2);
+            }
+
+            const midX = (start.x + end.x) / 2;
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', `M ${start.x} ${start.y} C ${midX} ${start.y}, ${midX} ${end.y}, ${end.x} ${end.y}`);
+            path.setAttribute('class', 'dm-link');
+            svg.appendChild(path);
+
+            const manyLabelX = start.x + (start.x <= end.x ? 8 : -14);
+            const oneLabelX = end.x + (end.x >= start.x ? -14 : 8);
+            addDataModelLabel(svg, manyLabelX, start.y - 6, '*');
+            addDataModelLabel(svg, oneLabelX, end.y - 6, '1');
+        });
+    }
+
+    function addDataModelLabel(svg, x, y, text) {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        el.setAttribute('x', x);
+        el.setAttribute('y', y);
+        el.setAttribute('class', 'dm-link-label');
+        el.textContent = text;
+        svg.appendChild(el);
+    }
+
+    function detectedRelationship(tableA, tableB) {
+        return state.dataModelRelationships.find(r =>
+            (r.from_table === tableA && r.to_table === tableB) ||
+            (r.from_table === tableB && r.to_table === tableA)
+        );
+    }
+
+    let dataModelResizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(dataModelResizeTimer);
+        dataModelResizeTimer = setTimeout(drawDataModelLines, 150);
+    });
+
     // ---------------- Table-level mapping (drag & drop, joins) ----------------
 
     function findGroupOf(sourceTable) {
@@ -1030,7 +1242,29 @@
             }
         }
 
-        state.groups[targetName].source_tables.push(sourceTable);
+        const group = state.groups[targetName];
+        group.source_tables.push(sourceTable);
+
+        if (group.source_tables.length > 1) {
+            const otherTables = group.source_tables.filter(t => t !== sourceTable);
+            for (const other of otherTables) {
+                const rel = detectedRelationship(sourceTable, other);
+                if (!rel) continue;
+                const alreadyHasKey = (group.join_keys || []).some(jk =>
+                    jk.left_table === rel.from_table && jk.left_column === rel.from_column &&
+                    jk.right_table === rel.to_table && jk.right_column === rel.to_column
+                );
+                if (!alreadyHasKey) {
+                    group.join_keys = group.join_keys || [];
+                    group.join_keys.push({
+                        left_table: rel.from_table, left_column: rel.from_column,
+                        right_table: rel.to_table, right_column: rel.to_column,
+                    });
+                }
+                break;
+            }
+        }
+
         renderTargetGroups();
     }
 
@@ -1464,6 +1698,7 @@
 
         updateGenerateButtonState();
         await loadTables();
+        await loadDataModel();
         await loadTargets();
         await loadTableGroups();
     });

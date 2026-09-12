@@ -133,6 +133,103 @@ def get_discovered_tables(user_id: int) -> List[Dict[str, Any]]:
     return _discovered_list(_load_metamind_tables(user_id))
 
 
+# ============================================================
+# Data model: auto-detected relationships across every discovered table
+# ============================================================
+
+def _table_name_stems(table_name: str) -> set:
+    """Cheap singular/plural variants of a table name so 'customers' and a
+    'customer_id' foreign key column can be matched to each other without a
+    real inflection library."""
+    base = (table_name or "").strip().lower()
+    stems = {base}
+    if base.endswith("ies") and len(base) > 3:
+        stems.add(base[:-3] + "y")
+    if base.endswith("ses") and len(base) > 3:
+        stems.add(base[:-2])
+    if base.endswith("s") and not base.endswith("ss") and len(base) > 1:
+        stems.add(base[:-1])
+    stems.add(base + "s")
+    return stems
+
+
+def detect_relationships(tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Power BI-style auto-detected relationships: a 'foo_id' (or 'fooid')
+    column on one table is matched to a table named 'foo'/'foos' that has an
+    'id' (or the same 'foo_id') column. Best-effort and read-only - nothing
+    here is persisted, it's purely a suggestion surfaced in the Data Model
+    view and used to pre-fill join keys in Table-Level Mapping. Tables that
+    don't follow this naming convention (e.g. SAP-style tables) simply
+    produce no detected relationships, which is fine - the rest of the
+    warehouse flow doesn't depend on this."""
+    pk_columns: Dict[str, set] = {}
+    for name, info in tables.items():
+        cols = [c.get("name", "") for c in info.get("columns", []) if isinstance(c, dict)]
+        pk_columns[name] = {c.lower() for c in cols if c}
+
+    stem_to_tables: Dict[str, List[str]] = {}
+    for name in tables:
+        for stem in _table_name_stems(name):
+            stem_to_tables.setdefault(stem, []).append(name)
+
+    relationships: List[Dict[str, Any]] = []
+    seen = set()
+
+    for name, info in sorted(tables.items()):
+        for col in info.get("columns", []) or []:
+            if not isinstance(col, dict) or not col.get("name"):
+                continue
+            col_name = col["name"]
+            lowered = col_name.lower()
+
+            if lowered.endswith("_id"):
+                stem = lowered[:-3]
+            elif lowered.endswith("id") and lowered != "id":
+                stem = lowered[:-2]
+            else:
+                continue
+            if not stem:
+                continue
+
+            for target_table in stem_to_tables.get(stem, []):
+                if target_table == name:
+                    continue
+                target_cols = pk_columns.get(target_table, set())
+                if "id" in target_cols:
+                    pk_col = "id"
+                elif f"{stem}_id" in target_cols:
+                    pk_col = f"{stem}_id"
+                elif lowered in target_cols:
+                    pk_col = col_name
+                else:
+                    continue
+
+                key = (name, col_name, target_table, pk_col)
+                if key in seen:
+                    continue
+                seen.add(key)
+                relationships.append({
+                    "from_table": name,
+                    "from_column": col_name,
+                    "to_table": target_table,
+                    "to_column": pk_col,
+                    "cardinality": "many_to_one",
+                })
+
+    return relationships
+
+
+def get_data_model(user_id: int) -> Dict[str, Any]:
+    """Every discovered table plus auto-detected relationships between
+    them - the "Data Model" overview shown above Table-Level Mapping, akin
+    to a Power BI model diagram."""
+    raw_tables = _load_metamind_tables(user_id)
+    return {
+        "tables": _discovered_list(raw_tables),
+        "relationships": detect_relationships(raw_tables),
+    }
+
+
 def get_raw_table_columns(user_id: int, table_name: str) -> List[Dict[str, Any]]:
     """Raw (pre-mapping) columns for one discovered table."""
     tables = _load_metamind_tables(user_id)
