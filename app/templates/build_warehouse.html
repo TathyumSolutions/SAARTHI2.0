@@ -282,13 +282,59 @@
         fill: none;
         stroke: var(--primary-blue);
         stroke-width: 1.5;
-        opacity: 0.75;
+        opacity: 0.85;
+        pointer-events: stroke;
+        cursor: default;
+    }
+
+    .dm-link-inferred {
+        stroke-dasharray: 6 4;
+        opacity: 0.7;
+    }
+
+    .dm-link-name_heuristic {
+        stroke: var(--text-secondary);
+        stroke-dasharray: 2 3;
+        opacity: 0.6;
     }
 
     .dm-link-label {
         font-size: 10px;
         font-weight: 700;
         fill: var(--text-secondary);
+    }
+
+    .dm-legend {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 10px;
+    }
+
+    .dm-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .dm-legend-swatch {
+        display: inline-block;
+        width: 22px;
+        height: 0;
+        border-top-width: 2px;
+        border-top-style: solid;
+        border-top-color: var(--primary-blue);
+    }
+
+    .dm-legend-swatch.inferred {
+        border-top-style: dashed;
+    }
+
+    .dm-legend-swatch.name_heuristic {
+        border-top-style: dotted;
+        border-top-color: var(--text-secondary);
     }
 
     .dm-cards {
@@ -549,13 +595,20 @@
     <div class="warehouse-section">
         <h3>2. Data Model</h3>
         <div class="section-help">
-            Every discovered table, with relationships auto-detected the way Power BI's model view would
-            (a "customer_id"-style column matched to a "customers" table's key) - a suggestion to review, not
-            something you need to fix by hand. This is the map Table-Level Mapping below draws its join-key
-            suggestions from once you combine two related tables.
+            Every discovered table, with relationships drawn from the data sources' own metadata wherever
+            possible - a declared foreign key straight from the source database's schema first, then a join
+            your Metamind router already inferred from actual sample-value overlap (not just naming), and only
+            as a last resort a plain naming-convention guess for tables with no such metadata (spreadsheets).
+            This is the map Table-Level Mapping below draws its join-key suggestions from once you combine two
+            related tables - review it, it isn't something you need to fix by hand.
         </div>
         <div class="toolbar">
             <span class="status" id="dataModelStatus">Loading data model...</span>
+        </div>
+        <div class="dm-legend">
+            <span class="dm-legend-item"><span class="dm-legend-swatch"></span> Declared foreign key (source schema)</span>
+            <span class="dm-legend-item"><span class="dm-legend-swatch inferred"></span> Inferred from sample-value overlap</span>
+            <span class="dm-legend-item"><span class="dm-legend-swatch name_heuristic"></span> Naming convention guess</span>
         </div>
         <div class="dm-container" id="dataModelContainer">
             <svg id="dataModelSvg" class="dm-svg"></svg>
@@ -969,7 +1022,11 @@
             state.dataModelTables = data.tables || [];
             state.dataModelRelationships = data.relationships || [];
             renderDataModel();
-            status.textContent = `${state.dataModelTables.length} table(s), ${state.dataModelRelationships.length} relationship(s) detected.`;
+
+            const bySource = { foreign_key: 0, inferred: 0, name_heuristic: 0 };
+            state.dataModelRelationships.forEach(r => { bySource[r.source] = (bySource[r.source] || 0) + 1; });
+            status.textContent = `${state.dataModelTables.length} table(s) - ${bySource.foreign_key} declared FK, ` +
+                `${bySource.inferred} inferred, ${bySource.name_heuristic} naming-guess relationship(s).`;
         } catch (err) {
             status.textContent = `Failed to load data model: ${err.message}`;
         }
@@ -1040,7 +1097,15 @@
             const midX = (start.x + end.x) / 2;
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('d', `M ${start.x} ${start.y} C ${midX} ${start.y}, ${midX} ${end.y}, ${end.x} ${end.y}`);
-            path.setAttribute('class', 'dm-link');
+            path.setAttribute('class', `dm-link dm-link-${rel.source || 'foreign_key'}`);
+
+            const sourceLabel = rel.source === 'foreign_key' ? 'declared foreign key'
+                : rel.source === 'inferred' ? `inferred from sample-value overlap (${rel.confidence || 'n/a'})`
+                : 'naming convention guess';
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = `${rel.from_table}.${rel.from_column} → ${rel.to_table}.${rel.to_column} - ${sourceLabel}`;
+            path.appendChild(title);
+
             svg.appendChild(path);
 
             const manyLabelX = start.x + (start.x <= end.x ? 8 : -14);

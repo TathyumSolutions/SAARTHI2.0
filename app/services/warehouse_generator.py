@@ -62,17 +62,28 @@ ALLOWED_JOIN_TYPES = {"INNER", "LEFT"}
 # Discovery: merge DB-track and SPREADSHEET-track tables
 # ============================================================
 
-def _load_metamind_tables(user_id: int) -> Dict[str, Dict[str, Any]]:
+def _load_metamind_menu(user_id: int) -> Dict[str, Any]:
     """Computes this user's own router config live (see
-    automated_metamind.generate_router_config) and merges both the DB and
-    SPREADSHEET tracks into one flat table map, each entry tagged with
-    source_type so downstream code knows how to read rows from it."""
+    automated_metamind.generate_router_config). This is also the payload
+    that carries the introspected schema metadata used for relationship
+    detection - each DB table's declared foreign-key constraints (from
+    Postgres's own information_schema, see automated_metamind's
+    _get_table_constraints) and the router's own sample-value-based
+    undeclared-join inference (_infer_db_relations)."""
     from app.services.automated_metamind import generate_router_config
 
     menu = generate_router_config(user_id)
     if not menu:
         raise WarehouseGenerationError("Metamind table metadata not found for this user")
+    return menu
 
+
+def _extract_tables_from_menu(menu: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Merges the DB and SPREADSHEET tracks of a router config menu into
+    one flat table map, each entry tagged with source_type so downstream
+    code knows how to read rows from it. DB table entries retain whatever
+    automated_metamind attached during introspection, including
+    "constraints" (declared primary/foreign keys)."""
     datasources = menu.get("routing_menu", {}).get("datasources", {})
     tables: Dict[str, Dict[str, Any]] = {}
 
@@ -102,6 +113,13 @@ def _load_metamind_tables(user_id: int) -> Dict[str, Dict[str, Any]]:
         raise WarehouseGenerationError("No discovered tables found in Metamind metadata")
 
     return tables
+
+
+def _load_metamind_tables(user_id: int) -> Dict[str, Dict[str, Any]]:
+    """Computes this user's own router config live and merges both the DB
+    and SPREADSHEET tracks into one flat table map, each entry tagged with
+    source_type so downstream code knows how to read rows from it."""
+    return _extract_tables_from_menu(_load_metamind_menu(user_id))
 
 
 def _discovered_list(tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -153,15 +171,80 @@ def _table_name_stems(table_name: str) -> set:
     return stems
 
 
-def detect_relationships(tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Power BI-style auto-detected relationships: a 'foo_id' (or 'fooid')
-    column on one table is matched to a table named 'foo'/'foos' that has an
-    'id' (or the same 'foo_id') column. Best-effort and read-only - nothing
-    here is persisted, it's purely a suggestion surfaced in the Data Model
-    view and used to pre-fill join keys in Table-Level Mapping. Tables that
-    don't follow this naming convention (e.g. SAP-style tables) simply
-    produce no detected relationships, which is fine - the rest of the
-    warehouse flow doesn't depend on this."""
+def _relationship_pair_key(a_table: str, a_column: str, b_table: str, b_column: str) -> frozenset:
+    return frozenset({(a_table, a_column), (b_table, b_column)})
+
+
+def _declared_foreign_key_relationships(tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Real relationships, straight from the source database's own
+    metadata: the FK constraints automated_metamind already introspected
+    via Postgres's information_schema for every DB-sourced table (see
+    _get_table_constraints/_get_table_constraints's callers). This is the
+    strongest possible signal - an actual declared constraint, not a
+    guess - so it always wins over any inference below."""
+    relationships: List[Dict[str, Any]] = []
+    seen = set()
+
+    for table_name, info in sorted(tables.items()):
+        if not isinstance(info, dict):
+            continue
+        constraints = info.get("constraints")
+        if not isinstance(constraints, dict):
+            continue
+        for fk in constraints.get("foreign_keys", []) or []:
+            column = fk.get("column")
+            ref_table = fk.get("references_table")
+            ref_column = fk.get("references_column")
+            if not (column and ref_table and ref_column) or ref_table not in tables:
+                continue
+            key = _relationship_pair_key(table_name, column, ref_table, ref_column)
+            if key in seen:
+                continue
+            seen.add(key)
+            relationships.append({
+                "from_table": table_name,
+                "from_column": column,
+                "to_table": ref_table,
+                "to_column": ref_column,
+                "cardinality": "many_to_one",
+                "source": "foreign_key",
+            })
+
+    return relationships
+
+
+def _inferred_relationships_from_menu(menu: Dict[str, Any], tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Relationships the source database never declared as a real FK but
+    that automated_metamind's own inference engine (_infer_db_relations)
+    found evidence for from this user's live-introspected metadata - column
+    names AND actual sample-value overlap, not just naming convention. This
+    is still "using the data source's metadata", just the router's existing
+    undeclared-join detector rather than a fresh one reinvented here."""
+    relationships: List[Dict[str, Any]] = []
+    for rel in menu.get("routing_menu", {}).get("inferred_relations") or []:
+        from_table, to_table = rel.get("from_table"), rel.get("to_table")
+        from_col, to_col = rel.get("from_column"), rel.get("to_column")
+        if not (from_table in tables and to_table in tables and from_col and to_col):
+            continue
+        relationships.append({
+            "from_table": from_table,
+            "from_column": from_col,
+            "to_table": to_table,
+            "to_column": to_col,
+            "cardinality": "many_to_one",
+            "source": "inferred",
+            "confidence": rel.get("confidence"),
+        })
+    return relationships
+
+
+def _name_heuristic_relationships(tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Last-resort fallback when a table has no introspected metadata to
+    draw on at all (spreadsheet-sourced tables, which carry no FK
+    constraints or sample-value profiling): a 'foo_id' (or 'fooid') column
+    on one table is matched to a table named 'foo'/'foos' that has an 'id'
+    (or the same 'foo_id') column. Best-effort and read-only - nothing here
+    is persisted, it's purely a suggestion."""
     pk_columns: Dict[str, set] = {}
     for name, info in tables.items():
         cols = [c.get("name", "") for c in info.get("columns", []) if isinstance(c, dict)]
@@ -204,7 +287,7 @@ def detect_relationships(tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, An
                 else:
                     continue
 
-                key = (name, col_name, target_table, pk_col)
+                key = _relationship_pair_key(name, col_name, target_table, pk_col)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -214,19 +297,53 @@ def detect_relationships(tables: Dict[str, Dict[str, Any]]) -> List[Dict[str, An
                     "to_table": target_table,
                     "to_column": pk_col,
                     "cardinality": "many_to_one",
+                    "source": "name_heuristic",
                 })
 
     return relationships
 
 
 def get_data_model(user_id: int) -> Dict[str, Any]:
-    """Every discovered table plus auto-detected relationships between
-    them - the "Data Model" overview shown above Table-Level Mapping, akin
-    to a Power BI model diagram."""
-    raw_tables = _load_metamind_tables(user_id)
+    """Every discovered table plus relationships between them, for the
+    "Data Model" overview shown above Table-Level Mapping (akin to a Power
+    BI model diagram). Relationships are layered by how much they're
+    actually backed by the data source's own metadata, highest confidence
+    first, and a pair is only reported once even if more than one layer
+    would have found it:
+
+    1. Declared foreign-key constraints (real DB metadata, from
+       information_schema via automated_metamind's own introspection).
+    2. Undeclared joins automated_metamind's router already infers from
+       column-name normalization AND actual sample-value overlap across
+       this user's live-introspected tables - still metadata-driven, just
+       reusing the app's existing inference engine instead of a new one.
+    3. A plain naming-convention fallback ('foo_id' <-> a 'foo'/'foos'
+       table), used only for pairs neither metadata-backed layer above
+       covers - in practice this only ever fires for spreadsheet-sourced
+       tables, which carry no FK constraints or sample-value profiling at
+       all.
+    """
+    menu = _load_metamind_menu(user_id)
+    tables = _extract_tables_from_menu(menu)
+
+    relationships: List[Dict[str, Any]] = []
+    covered_pairs = set()
+
+    def _add_all(candidates: List[Dict[str, Any]]) -> None:
+        for rel in candidates:
+            key = _relationship_pair_key(rel["from_table"], rel["from_column"], rel["to_table"], rel["to_column"])
+            if key in covered_pairs:
+                continue
+            covered_pairs.add(key)
+            relationships.append(rel)
+
+    _add_all(_declared_foreign_key_relationships(tables))
+    _add_all(_inferred_relationships_from_menu(menu, tables))
+    _add_all(_name_heuristic_relationships(tables))
+
     return {
-        "tables": _discovered_list(raw_tables),
-        "relationships": detect_relationships(raw_tables),
+        "tables": _discovered_list(tables),
+        "relationships": relationships,
     }
 
 

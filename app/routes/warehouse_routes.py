@@ -306,8 +306,12 @@ def warehouse_health_script():
 @bp.route("/api/warehouse/data-model", methods=["GET"])
 @jwt_required()
 def warehouse_data_model():
-    """Every discovered table plus auto-detected relationships between
-    them, for the Data Model overview shown above Table-Level Mapping."""
+    """Every discovered table plus relationships between them, for the Data
+    Model overview shown above Table-Level Mapping. Relationships are
+    sourced from the data sources' own introspected metadata wherever
+    possible (declared FK constraints, then the router's sample-value-based
+    inference) before falling back to a naming-convention guess - see
+    get_data_model()'s docstring for the full priority order."""
     current_user = get_current_user()
     if not current_user:
         return jsonify({"error": "Authentication required", "tables": [], "relationships": []}), 401
