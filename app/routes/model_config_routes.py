@@ -95,24 +95,41 @@ def _list_company_configs(company_code: str):
 
 
 def _seed_default_open_source_models(company_ctx: dict):
+    """Seed the single open-source model installed by default (Llama 2 7B).
+
+    Also drops any configurations this function auto-seeded in the past
+    (e.g. the earlier Llama 3 / Qwen 2.5 3B defaults) that are no longer
+    part of the default set, without touching models a user configured
+    themselves.
+    """
     company_code = company_ctx["company_code"]
     existing = _list_company_configs(company_code=company_code)
-    existing_models = {row.model for row in existing if row.name != "global_default"}
 
     defaults = [
         {
-            "name": "Llama 3",
-            "model": "ollama://llama3",
-            "provider": "ollama",
-        },
-        {
-            "name": "Qwen 2.5 3B",
-            "model": "ollama://qwen2.5:3b",
+            "name": "Llama 2 7B",
+            "model": "ollama://llama2:7b",
             "provider": "ollama",
         },
     ]
+    default_models = {item["model"] for item in defaults}
 
-    created_any = False
+    stale = [
+        row for row in existing
+        if row.name != "global_default"
+        and isinstance(row.settings, dict)
+        and row.settings.get("seeded_default")
+        and row.model not in default_models
+    ]
+    for row in stale:
+        db.session.delete(row)
+
+    existing_models = {
+        row.model for row in existing
+        if row.name != "global_default" and row not in stale
+    }
+
+    created_any = bool(stale)
     for item in defaults:
         if item["model"] in existing_models:
             continue
@@ -146,9 +163,9 @@ def _ensure_default_model_setup(company_ctx: dict):
         return
 
     scoped_models = _list_company_configs(company_ctx["company_code"])
-    llama_cfg = next((row for row in scoped_models if (row.model or "").strip() == "ollama://llama3"), None)
+    llama_cfg = next((row for row in scoped_models if (row.model or "").strip() == "ollama://llama2:7b"), None)
 
-    default_model = llama_cfg.model if llama_cfg else "ollama://llama3"
+    default_model = llama_cfg.model if llama_cfg else "ollama://llama2:7b"
     default_provider = llama_cfg.provider if llama_cfg else "ollama"
 
     seeded_default = ModelConfiguration(

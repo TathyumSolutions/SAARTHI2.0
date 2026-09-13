@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 # Complete Model Registry with metadata
 MODELS_REGISTRY = {
     # ============ OPEN SOURCE MODELS ============
+    # Llama 2 7B is the only open-source model shipped/installed by default.
     "llama2:7b": {
         "name": "llama2:7b",
         "type": "open_source",
@@ -18,64 +19,17 @@ MODELS_REGISTRY = {
         "quality": 0.91,        # accuracy score 0-1
         "cost_per_query": 0.0,  # $/query
         "best_for": {
-            "Query Sense": 1,           # Priority 1 (highest)
-            "Query Validator": 1,
-            "Query Formatter": 2,       # Priority 2
-            "Data Visualizer": 2
-        }
-    },
-    
-    "llama3:8b": {
-        "name": "llama3:8b",
-        "type": "open_source",
-        "provider": "ollama",
-        "display_name": "Llama 3 8B",
-        "overall_score": 0.89,
-        "speed": 3.5,
-        "memory": 4.3,
-        "quality": 0.89,
-        "cost_per_query": 0.0,
-        "best_for": {
+            "Query Sense": 1,
             "Query Simplifier": 1,
+            "Query Validator": 1,
+            "SQL Generator": 1,
+            "Query Formatter": 1,
             "Data Insight Generator": 1,
+            "Data Visualizer": 1,
             "Error Diagnosis": 1
         }
     },
-    
-    "mistral:7b": {
-        "name": "mistral:7b",
-        "type": "open_source",
-        "provider": "ollama",
-        "display_name": "Mistral 7B",
-        "overall_score": 0.87,
-        "speed": 0.9,
-        "memory": 3.8,
-        "quality": 0.90,
-        "cost_per_query": 0.0,
-        "best_for": {
-            "Query Formatter": 1,
-            "Data Visualizer": 1,
-            "Query Sense": 2
-        }
-    },
-    
-    "codellama:7b": {
-        "name": "codellama:7b",
-        "type": "open_source",
-        "provider": "ollama",
-        "display_name": "CodeLlama 7B",
-        "overall_score": 0.86,
-        "speed": 2.5,
-        "memory": 3.8,
-        "quality": 0.87,
-        "cost_per_query": 0.0,
-        "best_for": {
-            "SQL Generator": 1,
-            "Query Validator": 2,
-            "Error Diagnosis": 2
-        }
-    },
-    
+
     # ============ API-BASED MODELS - OpenAI ============
     "gpt-4o": {
         "name": "gpt-4o",
@@ -163,13 +117,13 @@ PIPELINE_STEPS = [
 PRESET_RECOMMENDATIONS = {
     "oss": {
         "Query Sense": "llama2:7b",
-        "Query Simplifier": "llama3:8b",
+        "Query Simplifier": "llama2:7b",
         "Query Validator": "llama2:7b",
-        "SQL Generator": "codellama:7b",
-        "Query Formatter": "mistral:7b",
-        "Data Insight Generator": "llama3:8b",
-        "Data Visualizer": "mistral:7b",
-        "Error Diagnosis": "llama3:8b"
+        "SQL Generator": "llama2:7b",
+        "Query Formatter": "llama2:7b",
+        "Data Insight Generator": "llama2:7b",
+        "Data Visualizer": "llama2:7b",
+        "Error Diagnosis": "llama2:7b"
     },
     "api": {
         "Query Sense": "gpt-4o-mini",
@@ -186,9 +140,9 @@ PRESET_RECOMMENDATIONS = {
         "Query Simplifier": "claude-3-5-haiku",
         "Query Validator": "llama2:7b",
         "SQL Generator": "gpt-4o",
-        "Query Formatter": "mistral:7b",
+        "Query Formatter": "llama2:7b",
         "Data Insight Generator": "claude-3-5-sonnet",
-        "Data Visualizer": "mistral:7b",
+        "Data Visualizer": "llama2:7b",
         "Error Diagnosis": "claude-3-5-sonnet"
     }
 }
