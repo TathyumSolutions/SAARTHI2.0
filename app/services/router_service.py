@@ -1731,6 +1731,14 @@ def _execute_tool_call(call: dict, ctx: dict):
             "answer": None, "steps": [], "sql": None, "table": [],
             "chart": {}, "insights": [], "error": True,
         }
+        # On success, the worker itself pushes this track's own "DONE" as
+        # its last action (e.g. run_data_bridge_agent, answer_from_docs).
+        # When it raises instead, that push never happens, leaving this
+        # track's slot in stream_manager.pending_tracks (see begin_tracks)
+        # permanently open - with no other track left to report in, the SSE
+        # stream never closes and the Chain of Thought UI spins forever.
+        # Push it here so a crashed track still counts as done.
+        _push_router_done(session_id)
 
     if name == "check_data_source_status":
         _push_router_event(
