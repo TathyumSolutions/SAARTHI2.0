@@ -58,6 +58,20 @@ class Config:
         'resources': _derive_db_url(_BASE_DATABASE_URL, 'saarthi_resources_db'),
         'workspace': _derive_db_url(_BASE_DATABASE_URL, 'saarthi_workspace_db'),
     }
+    # Applies to the default engine AND every named bind above. Without
+    # pre-ping, a connection that Postgres (or a container restart) has
+    # already dropped sits in the pool looking healthy until the next
+    # checkout hands it to a request - which then fails with a confusing
+    # "ResourceClosedError: This result object does not return rows" on
+    # its very first query instead of a clear connection error. pre_ping
+    # tests each pooled connection with a cheap SELECT before handing it
+    # out and transparently reconnects if that fails; pool_recycle retires
+    # connections older than 5 minutes so they never get old enough to hit
+    # this in the first place.
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,
+        'pool_recycle': 300,
+    }
 
     # Superadmin emails (comma-separated) allowed to provision new
     # companies via /api/platform/companies - not a signup-able role,
