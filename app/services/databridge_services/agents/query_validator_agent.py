@@ -323,6 +323,17 @@ class QueryValidatorAgent:
         if "steps" not in state or state["steps"] is None:
             state["steps"] = []
 
+        # Recorded before current_step gets overwritten below, so
+        # validation_router can still tell whether this schema-validation
+        # pass (generated_sql falsy) was reached because sql_generator just
+        # ran and failed to produce any SQL, as opposed to the normal
+        # first-time pass coming from query_sense. Without this, the
+        # overwrite a few lines down erases that distinction and a sql
+        # generation failure (e.g. an invalid/unregistered model) loops
+        # back to sql_generator forever instead of ever reaching
+        # error_diagnosis - see validation_router's schema-validation branch.
+        state["_step_before_validator"] = state.get("current_step")
+
         if state.get("generated_sql"):
             validation = self.validate_generated_sql(state["generated_sql"])
             state["sql_validation"] = validation

@@ -518,6 +518,7 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
         "hint_tables": hint_tables or [],
         "_agents": agents,
         "db_config": db_config,
+        "_step_before_validator": None,
         "steps": [],
         "simplified_query": None,
         "query_sense_output": None,
