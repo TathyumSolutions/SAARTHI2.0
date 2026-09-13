@@ -167,6 +167,19 @@ class ErrorDiagnosisAgent:
         
         # Schema Validation Errors
         elif error_step == "query_validator":
+            if "no matching tables or columns" in error_msg_lower:
+                # QuerySense found nothing in the schema for this question at
+                # all - not a wrong table/column pick that a re-analysis
+                # could plausibly fix, but a question the connected data
+                # simply doesn't cover. Retrying query_sense on the exact
+                # same schema tends to find nothing again, so go straight to
+                # a "couldn't retrieve" answer instead of looping.
+                return {
+                    "issue": "No matching data found for this question",
+                    "fix": "Cannot resolve - question doesn't map to any available table/column",
+                    "retry_from_step": "error_handler",
+                    "feedback": f"Schema validation failed: {error_msg}"
+                }
             return {
                 "issue": "Schema validation failed",
                 "fix": "Re-analyze query with correct schema",
