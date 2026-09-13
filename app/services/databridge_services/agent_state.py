@@ -36,6 +36,12 @@ class DataBridgeState(TypedDict):
     # automated_metamind.py. None means "use QueryFormatterAgent's own
     # default", not "no database".
     db_config: Optional[Dict[str, Any]]
+    # Set by QueryValidatorAgent.execute() to whatever current_step held on
+    # entry, before it overwrites current_step to "query_validator" - lets
+    # validation_router tell a schema-validation pass reached because
+    # sql_generator just failed to produce SQL apart from the normal
+    # first-time pass coming from query_sense (see validation_router).
+    _step_before_validator: Optional[str]
 
 
     # ===== Query Processing =====

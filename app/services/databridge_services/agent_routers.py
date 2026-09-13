@@ -54,8 +54,15 @@ def validation_router(state: DataBridgeState) -> Literal["sql_generator", "query
             state["error"] = validation.get("message", "SQL validation failed after max retries")
             return "error_handler"
     else:
-        # Check if SQL generation failed (generated_sql is explicitly None with error)
-        if state.get("error") and state.get("current_step") == "sql_generator":
+        # Check if SQL generation failed (generated_sql is explicitly None with
+        # error). Checked against _step_before_validator, not current_step -
+        # by the time this router runs, QueryValidatorAgent.execute() has
+        # already overwritten state["current_step"] to "query_validator", so
+        # comparing against current_step here always misses and this branch
+        # would fall through to "schema validation passed" below, quietly
+        # sending the SAME state right back to sql_generator forever instead
+        # of ever reaching error_diagnosis.
+        if state.get("error") and state.get("_step_before_validator") == "sql_generator":
             print("🔀 [Router] SQL generation failed → Error Diagnosis")
             return "error_diagnosis"
         
