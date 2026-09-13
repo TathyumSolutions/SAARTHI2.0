@@ -431,7 +431,7 @@ def _build_schema_for_user(user_id: int, router_config: dict = None) -> dict:
     try:
         from app.services.automated_metamind import generate_router_config, to_sql_agent_schema
 
-        menu = router_config if router_config is not None else generate_router_config(user_id)
+        menu = router_config if router_config is not None else generate_router_config(user_id, use_cached_metadata=True)
         if not menu:
             return dict(EMPTY_SCHEMA)
         db_tables = menu.get("routing_menu", {}).get("datasources", {}).get("DB", {}).get("tables", {})

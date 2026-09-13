@@ -205,16 +205,24 @@ def classify_query_heuristic(user_query: str) -> str | None:
 # ============================================================
 def _load_router_config(user_id: int) -> dict:
     """
-    Computes this specific user's router config live, straight from their
-    own DatabaseConnection/ApiConnector/FileResource rows - not a shared
-    file or a cached table, so different users see entirely different
+    Computes this specific user's router config straight from their own
+    DatabaseConnection/ApiConnector/FileResource rows - not a shared file
+    or a cached table, so different users see entirely different
     datasources/tables/tools depending on what they created or were
-    granted via Resource Mapping, and it's always current as of this
-    exact call. Returns an empty routing menu if this user has no visible
-    datasources at all, rather than raising - the router degrades to
-    GENERAL-only routing in that case.
+    granted via Resource Mapping. Returns an empty routing menu if this
+    user has no visible datasources at all, rather than raising - the
+    router degrades to GENERAL-only routing in that case.
+
+    Called on every query that reaches Layer 2 routing, so the DB
+    datasource's schema (tables/columns/row counts) comes from each
+    connection's cached schema_metadata (use_cached_metadata=True) rather
+    than a live COUNT(*) + per-column profiling re-scan of every visible
+    table - that scan already ran, and was persisted, the last time each
+    connection was actually (re)introspected (create/update/test/Process).
+    Resource *visibility* (which connections/files/tools this user can
+    see) is still resolved live on every call, same as before.
     """
-    menu = generate_router_config(user_id)
+    menu = generate_router_config(user_id, use_cached_metadata=True)
     if not menu:
         return {"routing_menu": {"datasources": {}, "routing_rules": {}, "instructions": ""}}
     return menu

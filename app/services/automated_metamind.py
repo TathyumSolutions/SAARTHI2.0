@@ -1,8 +1,7 @@
 """
-Builds each user's personal router config, live, on every call (not a
-shared file, and not cached in any table - DatabaseConnection/
-ApiConnector/FileResource are the single source of truth for MetaMind
-data) by introspecting:
+Builds each user's personal router config (not a shared file, and not
+cached in any table - DatabaseConnection/ApiConnector/FileResource are the
+single source of truth for MetaMind data) by introspecting:
 1. This user's own + resource-mapped PostgreSQL database connections
    (falling back to the legacy DATABRIDGE_TARGET_* env vars if this user
    has none registered) -> DB datasource (SAP-style tables)
@@ -19,6 +18,7 @@ Features:
 import os
 import re
 import json
+import copy
 import datetime
 
 import psycopg2
@@ -778,6 +778,13 @@ def _introspect_visible_databases(user_id, sap_db_config=None):
         if connection.status == 'error':
             connection.status = 'connected'
         connection.error_message = None
+        if tables:
+            # Cache the raw (pre-description-merge) shape so
+            # _load_cached_visible_databases() can apply this connection's
+            # *current* description at read time, same as the live path
+            # below does - a description edited later without
+            # re-introspecting still shows up correctly from cache.
+            connection.schema_metadata = copy.deepcopy(tables)
         db.session.commit()
 
         if tables:
@@ -791,6 +798,46 @@ def _introspect_visible_databases(user_id, sap_db_config=None):
                 for table_data in tables.values():
                     table_data["description"] = f"{connection.description} — {table_data.get('description', '')}".strip(" —")
             merged_tables.update(tables)
+
+    return merged_tables or None
+
+
+def _load_cached_visible_databases(user_id):
+    """
+    Query-time counterpart to _introspect_visible_databases(): same "own +
+    resource-mapped" PostgreSQL connections, but reads each connection's
+    schema_metadata (captured the last time it was actually introspected -
+    create/update/test/Process, or a resource-mapping change) instead of
+    re-scanning the live database. Used by generate_router_config() when
+    called for routing an actual question, so answering a query never pays
+    for a fresh COUNT(*) + per-column profiling pass over every visible
+    table just to route it - that scan already ran, and was persisted,
+    the last time this connection was (re)introspected.
+
+    A connection that has never been introspected yet (schema_metadata
+    still None, e.g. just created and not yet tested/saved) simply
+    contributes no tables here until that first introspection happens -
+    it doesn't fall back to a live scan.
+
+    Doesn't touch connection.status/error_message - that's connection
+    health, established by the explicit test/introspect flows, not
+    something query-time routing should silently overwrite.
+    """
+    connections = _visible_postgresql_connections(user_id)
+    if not connections:
+        return introspect_databridge_db(None)
+
+    merged_tables = {}
+    for connection in connections:
+        cached = connection.schema_metadata
+        if not cached:
+            continue
+
+        tables = copy.deepcopy(cached)
+        if connection.description:
+            for table_data in tables.values():
+                table_data["description"] = f"{connection.description} — {table_data.get('description', '')}".strip(" —")
+        merged_tables.update(tables)
 
     return merged_tables or None
 
@@ -1311,14 +1358,32 @@ def build_routing_menu_summary(menu: dict) -> dict:
     }
 
 
-def generate_router_config(user_id, sap_db_config=None):
+def generate_router_config(user_id, sap_db_config=None, use_cached_metadata=False):
     """
-    Builds this specific user's router config, live, on every call - which
-    datasources/tables/API tools/spreadsheets the smart router considers
-    when answering their questions. Computed fresh each time rather than
-    cached in a shared table, so two users never see each other's private
-    resources through routing, and every datasource here reflects only
-    what this user created or was granted right now, not a stale snapshot.
+    Builds this specific user's router config - which datasources/tables/
+    API tools/spreadsheets the smart router considers when answering their
+    questions. Never cached in a shared table, so two users never see each
+    other's private resources through routing, and every datasource here
+    reflects only what this user created or was granted right now, not a
+    stale snapshot of *which resources are visible*.
+
+    use_cached_metadata controls how the DB datasource's *schema* (tables/
+    columns/row counts) is obtained, not resource visibility:
+    - False (default): live introspection - connects to each visible
+      PostgreSQL connection and re-runs COUNT(*) plus per-column
+      null/unique/sample profiling. Used by callers that just changed
+      something about a connection and need router config to reflect it
+      immediately (create/update/delete a connection, resource-mapping
+      changes, the Process button, etc.).
+    - True: reads each connection's last-captured schema_metadata (see
+      _load_cached_visible_databases()) instead of re-scanning the live
+      database. Used for routing an actual user question
+      (router_service._load_router_config) - answering a query shouldn't
+      pay for a full re-scan of every visible table every single time;
+      the schema was already captured the last time the connection was
+      actually introspected.
+    Ignored when sap_db_config is given explicitly, since that's already
+    an explicit request for a live scan of one specific connection.
 
     The external SAP-style database is resolved from this user's own
     PostgreSQL connections (own + resource-mapped) unless sap_db_config is
@@ -1330,11 +1395,13 @@ def generate_router_config(user_id, sap_db_config=None):
     None if this user has no visible datasources at all - callers that
     need the trimmed version call build_routing_menu_summary(menu)
     themselves. Note this still has real side effects beyond the returned
-    value: _introspect_visible_databases()/introspect_api_db() persist
-    connection status/error_message and each resource's own
-    metamind_summary as they go (see their own docstrings) - callers that
-    only care about those side effects (e.g. after saving a connection)
-    still need to call this even when they discard the return value.
+    value when use_cached_metadata is False: _introspect_visible_databases()/
+    introspect_api_db() persist connection status/error_message and each
+    resource's own metamind_summary as they go (see their own docstrings) -
+    callers that only care about those side effects (e.g. after saving a
+    connection) still need to call this even when they discard the return
+    value. With use_cached_metadata=True, no such side effects occur - it's
+    a pure read of already-persisted data.
     """
     from app.models.user import User
 
@@ -1347,7 +1414,10 @@ def generate_router_config(user_id, sap_db_config=None):
     print(f"🧠 METAMIND ROUTER CONFIG GENERATOR (user_id={user_id})")
     print("=" * 60)
 
-    db_tables = _introspect_visible_databases(user_id, sap_db_config)
+    if use_cached_metadata and sap_db_config is None:
+        db_tables = _load_cached_visible_databases(user_id)
+    else:
+        db_tables = _introspect_visible_databases(user_id, sap_db_config)
     api_tools = introspect_api_db(user_id)
     files_info = introspect_qdrant(user_id)
     spreadsheet_tables = introspect_spreadsheets(user_id)
