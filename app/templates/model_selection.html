@@ -473,6 +473,9 @@
         document.querySelectorAll('input[name="presetType"]').forEach(radio => {
             radio.addEventListener('change', async (e) => {
                 state.currentPreset = e.target.value;
+                // Switching presets should apply the new preset's recommended
+                // models; drop stale per-step overrides saved under the old preset.
+                state.userConfig.step_models = {};
                 await loadRecommendations(e.target.value);
                 rebuildStepGrid();
             });
