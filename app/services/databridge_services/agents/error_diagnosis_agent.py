@@ -127,6 +127,29 @@ class ErrorDiagnosisAgent:
         
         # Query Execution Errors
         elif error_step == "query_formatter":
+            # The database itself is unreachable (down, wrong host/port,
+            # network partition, connection pool exhausted, etc.) rather
+            # than the generated SQL being wrong. Regenerating different SQL
+            # text can never fix this, so - unlike every other branch below
+            # - this must not send it back to sql_generator: that would just
+            # replay the same failing connection attempt over and over
+            # (bounded now by the retry caps, but still a few rounds of
+            # pointless "trying again" in the Chain of Thought before it
+            # eventually gives up). Go straight to error_handler instead.
+            if any(p in error_msg_lower for p in (
+                "could not connect", "connection refused", "connection reset",
+                "could not translate host name", "server closed the connection",
+                "no route to host", "network is unreachable",
+                "name or service not known", "temporary failure in name resolution",
+                "operationalerror", "connection timeout expired", "timeout expired",
+                "too many connections", "connection pool", "is the server running",
+            )):
+                return {
+                    "issue": "Database connection unavailable",
+                    "fix": "Cannot fix - the configured database is unreachable",
+                    "retry_from_step": "error_handler",
+                    "feedback": f"Could not reach the database: {error_msg}. This isn't something regenerating the SQL can fix."
+                }
             if "no results" in error_msg_lower or "returned no results" in error_msg_lower or "may need adjustment" in error_msg_lower:
                 # Get the generated SQL to analyze
                 generated_sql = state.get("generated_sql", "")
