@@ -29,6 +29,15 @@ import re
 
 from app.services import spreadsheet_service
 
+# A genuine code resolution (e.g. "copper" -> one or two material codes) is
+# a handful of values at most. A term that matches more than this many rows
+# isn't resolving anything - it's just a common word (e.g. "branch") that
+# happens to appear in most of the lookup table's labels - and dumping the
+# full match list into the prompt would bury the SQL agent in noise instead
+# of giving it a usable fact. Metadata about the match (how many rows it
+# hit) decides the strategy here: too broad means skip it, not truncate it.
+_MAX_RESOLVED_CODES = 5
+
 _STOPWORDS = {
     "the", "a", "an", "in", "on", "for", "of", "to", "and", "or", "is", "are",
     "was", "were", "what", "how", "many", "much", "last", "over", "current",
@@ -139,7 +148,7 @@ def finalize_data_source_strategy(user_query: str, router_config: dict):
                 result = _resolve_against_lookup(
                     term, hint["lookup_table"], hint["code_column"], hint.get("label_columns", [])
                 )
-                if result:
+                if result and len(result["codes"]) <= _MAX_RESOLVED_CODES:
                     matches.append((term, result))
 
             if not matches:
