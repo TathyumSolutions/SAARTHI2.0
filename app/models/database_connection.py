@@ -40,6 +40,18 @@ class DatabaseConnection(db.Model):
     # every time this connection is (re)introspected.
     metamind_summary = db.Column(db.Text, nullable=True)
 
+    # Full structured introspection result (raw {table_name: {description,
+    # row_count, constraints, columns}} shape - see
+    # automated_metamind.introspect_databridge_db()) captured the last time
+    # this connection was actually introspected against the live database:
+    # connection create/update/test/"Process", or a resource-mapping change
+    # that made it visible somewhere new. Query-time routing
+    # (router_service._load_router_config) reads this cached snapshot
+    # instead of re-scanning the live database (COUNT(*) + per-column
+    # profiling) on every single question - see
+    # automated_metamind._load_cached_visible_databases().
+    schema_metadata = db.Column(db.JSON, nullable=True)
+
     # Tenancy: which company this resource belongs to (NULL = individual
     # user's private resource, never visible to anyone else) and who
     # created it.

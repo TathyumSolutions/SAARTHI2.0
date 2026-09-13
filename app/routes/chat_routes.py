@@ -41,7 +41,9 @@ def _resolve_feedback_user():
 def _resolve_router_snapshot(router_decision: str, user_id: int):
     try:
         from app.services.automated_metamind import generate_router_config
-        menu = generate_router_config(user_id)
+        # Just attaching a snapshot to a feedback record - no need to
+        # re-scan the live database for this, cached schema_metadata is fine.
+        menu = generate_router_config(user_id, use_cached_metadata=True)
         if not menu:
             return None
 

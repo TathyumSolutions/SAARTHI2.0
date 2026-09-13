@@ -6,6 +6,7 @@ import time
 import traceback
 import re
 import io
+import copy
 from flask import Blueprint, request, jsonify, send_file
 from app import db
 from app.models.database_connection import DatabaseConnection
@@ -1087,7 +1088,7 @@ def run_agentic_process(conn_id):
         # Passed explicitly rather than relying on DATABRIDGE_TARGET_* env
         # vars - those were only ever set on the subprocess above, not
         # this parent process's own environment.
-        from app.services.automated_metamind import generate_router_config
+        from app.services.automated_metamind import generate_router_config, introspect_databridge_db
         from app.models.resource_mapping import ResourceMapping
         sap_db_config = {
             "host": connection.host,
@@ -1096,6 +1097,17 @@ def run_agentic_process(conn_id):
             "user": connection.username,
             "password": decrypt(connection.password) if connection.password else "",
         }
+
+        # Persist the freshly (re)introspected schema on this connection so
+        # query-time routing (generate_router_config(..., use_cached_metadata=True))
+        # can read it back instead of re-scanning the live database on every
+        # question - this Process run is the one that actually paid for the
+        # COUNT(*)/profiling scan, so its result should stick.
+        processed_tables = introspect_databridge_db(sap_db_config)
+        if processed_tables:
+            connection.schema_metadata = copy.deepcopy(processed_tables)
+            db.session.commit()
+
         affected_user_ids = {current_user.id, connection.created_by_user_id} | {
             m.user_id for m in ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id).all()
         }
