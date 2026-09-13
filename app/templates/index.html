@@ -918,7 +918,11 @@
         })
         .then(response => {
             if (!response.ok) {
-                throw new Error(`Database registration rejected with status code: ${response.status}`);
+                return response.json()
+                    .catch(() => null)
+                    .then(body => {
+                        throw new Error((body && body.error) || `Database registration rejected with status code: ${response.status}`);
+                    });
             }
             return response.json();
         })

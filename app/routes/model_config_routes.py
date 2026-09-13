@@ -17,6 +17,18 @@ from app.services.model_selection_service import (
     get_global_default_config,
     get_recommended_preset_payload,
 )
+from app.services.llm_providers import validate_dynamic_model_id
+
+
+def _reject_bare_api_model(model_value):
+    """None if `model_value` is fine (or not an 'api://' model at all);
+    otherwise the error message to return to the caller. Catches the
+    'api://gpt' class of mistake at save time instead of letting it 404
+    against the provider on every query afterwards."""
+    value = str(model_value or "").strip()
+    if not value.startswith("api://"):
+        return None
+    return validate_dynamic_model_id(value[len("api://"):])
 
 
 bp = Blueprint('model_config', __name__, url_prefix='/api/model-config')
@@ -205,9 +217,18 @@ def save_global_model_selection():
     if not main_model:
         return jsonify({'error': 'main_model is required'}), 400
 
+    main_model_error = _reject_bare_api_model(main_model)
+    if main_model_error:
+        return jsonify({'error': main_model_error}), 400
+
     step_overrides = data.get('step_overrides', {})
     if not isinstance(step_overrides, dict):
         return jsonify({'error': 'step_overrides must be an object'}), 400
+
+    for step, override_model in step_overrides.items():
+        override_error = _reject_bare_api_model(override_model)
+        if override_error:
+            return jsonify({'error': f"step_overrides['{step}']: {override_error}"}), 400
 
     provider = str(data.get('provider') or '').strip()
     if not provider and str(main_model).startswith('ollama://'):
@@ -312,6 +333,10 @@ def create_configuration():
     if not data.get('name') or not data.get('model') or not data.get('provider'):
         return jsonify({"error": "Missing required fields: name, model, and provider are mandatory."}), 400
 
+    model_error = _reject_bare_api_model(data.get('model'))
+    if model_error:
+        return jsonify({"error": model_error}), 400
+
     settings = data.get('settings', {}) or {}
     if not isinstance(settings, dict):
         return jsonify({"error": "settings must be an object"}), 400
@@ -371,6 +396,9 @@ def update_configuration(config_id):
     if 'name' in data:
         config.name = data['name']
     if 'model' in data:
+        model_error = _reject_bare_api_model(data['model'])
+        if model_error:
+            return jsonify({"error": model_error}), 400
         config.model = data['model']
     if 'provider' in data:
         config.provider = data['provider']
