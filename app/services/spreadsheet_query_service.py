@@ -427,6 +427,7 @@ def answer_from_spreadsheets(
                 "answer": "No spreadsheet data has been uploaded yet.",
                 "sql": None, "table": [], "chart": {}, "insights": [],
                 "steps": master_steps,
+                "error": True,
             }
         push_event("complete", "Matching the Right Data Source", f"Found {len(available_tables)} spreadsheet table(s) to consider.")
 
@@ -450,6 +451,7 @@ def answer_from_spreadsheets(
                 "sql": None, "table": [], "chart": {}, "insights": [],
                 "steps": master_steps,
                 "tables": [table_name],
+                "error": False,
             }
 
         push_event("start", "Building the Data Query", "Working out how to filter, group, and join the relevant tables.")
@@ -467,6 +469,7 @@ def answer_from_spreadsheets(
                 "answer": "I couldn't work out how to answer that from the uploaded spreadsheets. Try rephrasing, or mentioning the sheet/column names involved.",
                 "sql": None, "table": [], "chart": {}, "insights": [],
                 "steps": master_steps,
+                "error": True,
             }
         if feedback_context:
             print(f"🧠 [FEEDBACK-DEBUG] [SPREADSHEET] Plan built with feedback context in scope - filters: {plan.get('filters')}")
@@ -483,6 +486,7 @@ def answer_from_spreadsheets(
                 "answer": "Something went wrong while working through the uploaded spreadsheets for this question. Please try rephrasing it.",
                 "sql": None, "table": [], "chart": {}, "insights": [],
                 "steps": master_steps,
+                "error": True,
             }
         push_event("complete", "Running the Query", f"Retrieved {len(result_df)} row(s).")
 
@@ -535,6 +539,7 @@ def answer_from_spreadsheets(
             "steps": master_steps,
             "tables": plan["tables"],
             "plan": plan,
+            "error": False,
         }
 
     except Exception as e:
@@ -544,4 +549,5 @@ def answer_from_spreadsheets(
             "answer": "Something went wrong while checking your uploaded spreadsheets. Please try again.",
             "sql": None, "table": [], "chart": {}, "insights": [],
             "steps": master_steps,
+            "error": True,
         }

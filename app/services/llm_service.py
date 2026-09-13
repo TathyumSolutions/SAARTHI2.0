@@ -661,7 +661,8 @@ class LLMService:
                     "sql": None,
                     "table": [],
                     "chart": {},
-                    "rag_chain_of_thought": rag_chain_of_thought
+                    "rag_chain_of_thought": rag_chain_of_thought,
+                    "error": True,
                 }
             if hint_document_codes:
                 hinted_and_visible = [c for c in hint_document_codes if c in doc_codes]
@@ -868,7 +869,8 @@ class LLMService:
                     "sql": None,
                     "table": [],
                     "chart": {},
-                    "rag_chain_of_thought": rag_chain_of_thought
+                    "rag_chain_of_thought": rag_chain_of_thought,
+                    "error": True,
                 }
 
             # ========================================================
@@ -1095,6 +1097,7 @@ class LLMService:
                 "chart": {},
                 "rag_chain_of_thought": rag_chain_of_thought,
                 "document_codes": document_codes,
+                "error": False,
             }
 
         except Exception as e:
@@ -1105,8 +1108,9 @@ class LLMService:
                 "sql": None,
                 "table": [],
                 "chart": {},
-                "rag_chain_of_thought": rag_chain_of_thought
-            } 
+                "rag_chain_of_thought": rag_chain_of_thought,
+                "error": True,
+            }
 
 _shared_llm_service = LLMService()
 
