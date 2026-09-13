@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from app import db
 from app.models.user_model_pipeline import UserModelPipeline
+from app.models.model_config import ModelConfiguration
 from app.services.model_registry_service import (
     get_all_models_sorted,
     get_models_by_type,
@@ -31,14 +32,32 @@ def _get_user_id() -> int:
         return 1
 
 
+def _registered_model_slugs(user_id: int) -> set:
+    """Bare (unprefixed) model identifiers the user has already registered
+    with their own credentials via Configure New Model, e.g. a config
+    stored as "api://gpt-4o" yields "gpt-4o"."""
+    configs = ModelConfiguration.query.filter_by(user_id=user_id).all()
+    return {str(row.model or "").split("://", 1)[-1] for row in configs}
+
+
 @bp.route('/models/registry', methods=['GET'])
 def get_models_registry():
     """
     Get all available models sorted by overall score
     Includes metadata for sorting/display in main model dropdown
+
+    Paid API models (GPT, Claude, etc.) only show up once the user has
+    registered their own key for them via Configure New Model - they
+    aren't offered as a selectable option before that. Open-source models
+    that ship pre-installed (Llama 2 7B) are always available.
     """
     try:
-        models = get_all_models_sorted()
+        user_id = _get_user_id()
+        registered = _registered_model_slugs(user_id)
+        models = [
+            m for m in get_all_models_sorted()
+            if m.get('type') != 'api' or m.get('name') in registered
+        ]
         return jsonify({
             'status': 'success',
             'count': len(models),
