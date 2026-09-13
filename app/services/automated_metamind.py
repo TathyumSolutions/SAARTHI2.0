@@ -550,15 +550,26 @@ def _infer_db_relations(db_tables: dict) -> list:
     constraint) - QuerySenseAgent's "NAME THE METRIC" rule can only chase a
     foreign key it's actually told about.
 
-    A candidate pair is accepted when EITHER:
-      - the two column names match once normalized, and the name is
-        specific enough to mean something on its own (e.g. "material_id",
-        not bare "id") - confidence "name_only"; or
-      - their actual sample values overlap strongly (>= 80% of the
-        smaller column's samples also appear in the other), regardless of
-        naming - confidence "value_only".
-    A name match is upgraded to "name+value" when sample values also
-    overlap (>= 50%) - the strongest signal, name and data both agreeing.
+    A candidate pair is accepted only when the two column names match once
+    normalized, and the name is specific enough to mean something on its
+    own (e.g. "material_id", not bare "id") - confidence "name_only",
+    upgraded to "name+value" when sample values also overlap strongly
+    (>= 50% of the smaller column's samples also appear in the other) -
+    the strongest signal, name and data both agreeing.
+
+    Sample-value overlap alone (no name match at all) used to also be
+    accepted as a weaker "value_only" tier, but sample_values are only
+    the first 5 non-null rows returned per column (see
+    introspect_databridge_db), not a random sample - for any two ordinary
+    small-integer surrogate-key columns (agent_id, branch_id, product_id,
+    ...) that's overwhelmingly likely to be 1,2,3,4,5 on both sides
+    regardless of whether the tables are related at all. In practice that
+    flagged dozens of coincidental id-to-id "relations" between entirely
+    unrelated tables (e.g. loan_products.product_id <-> branches.branch_id)
+    that were confident-sounding enough to steer QuerySenseAgent into
+    joining through the wrong table instead of the one the question
+    actually needed. A name match is a real, language-level signal this
+    sampling artifact can't fake, so it's now required.
 
     Returns a list of {"from_table", "from_column", "to_table",
     "to_column", "confidence", "inferred": True} dicts - kept structurally
@@ -596,14 +607,9 @@ def _infer_db_relations(db_tables: dict) -> list:
             name_match = bool(n1) and n1 == n2 and n1 not in _GENERIC_JOIN_COLUMN_NAMES
             overlap = _sample_value_overlap(c1.get("sample_values"), c2.get("sample_values"))
 
-            if name_match and overlap is not None and overlap >= 0.5:
-                confidence = "name+value"
-            elif name_match:
-                confidence = "name_only"
-            elif overlap is not None and overlap >= 0.8:
-                confidence = "value_only"
-            else:
+            if not name_match:
                 continue
+            confidence = "name+value" if overlap is not None and overlap >= 0.5 else "name_only"
 
             seen_pairs.add(pair_key)
             relations.append({
