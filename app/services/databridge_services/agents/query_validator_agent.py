@@ -190,7 +190,24 @@ class QueryValidatorAgent:
                 missing_columns.append(col)
 
         # --- Build validation result ---
-        if missing_tables or missing_columns:
+        if not queriesense_output.get("tables"):
+            # QuerySense resolved zero tables against the schema (e.g. the
+            # question refers to a concept - "branches", "regions" - that
+            # doesn't exist in any connected table/column). An empty tables
+            # list trivially satisfies the loops above with no missing_*
+            # entries, which used to read as "passed" and let a query with
+            # nothing behind it fall through to SQL generation - producing
+            # invented SQL that failed later, retried, and failed again in a
+            # loop. Failing here instead, with a message error_diagnosis
+            # recognizes as unrecoverable (see diagnose_error), lets it go
+            # straight to a "couldn't retrieve" answer instead of retrying.
+            result = {
+                "status": "failed",
+                "message": "⚠️ No matching tables or columns could be identified for this question.",
+                "missing_tables": [],
+                "missing_columns": []
+            }
+        elif missing_tables or missing_columns:
             result = {
                 "status": "failed",
                 "message": "⚠️ Data Insufficient",
