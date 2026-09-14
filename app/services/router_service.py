@@ -527,6 +527,7 @@ def _log_query(
     answer, strategy, sources, main_query,
     execution_type: str = "fresh", matched_query_code: Optional[str] = None,
     match_score: Optional[float] = None, related_queries: Optional[list] = None,
+    chain_of_thought: Optional[list] = None,
 ) -> Optional[str]:
     """
     Persists one row to the Queries log and returns its query_code (or None
@@ -549,6 +550,7 @@ def _log_query(
             matched_query_code=matched_query_code,
             match_score=match_score,
             related_queries=related_queries or [],
+            chain_of_thought=chain_of_thought or [],
         ))
         db.session.commit()
         return code
@@ -1845,6 +1847,7 @@ class RouterService:
                         user_id, company_code, user_query, "GENERAL", fast_res.get("answer"),
                         "Answered directly from general knowledge (fast-path heuristic match) - no connected data source was needed.",
                         [], None,
+                        chain_of_thought=fast_res["chain_of_thought"],
                     )
                 return fast_res
 
@@ -1876,6 +1879,7 @@ class RouterService:
                             matched_query_code=reused_result.get("matched_query_code"),
                             match_score=reused_result.get("match_score"),
                             related_queries=reused_result.get("related_queries"),
+                            chain_of_thought=reused_result["chain_of_thought"],
                         )
                         _push_router_done(session_id, is_sql=(matched_track == "DB"))
                         return reused_result
@@ -2001,12 +2005,13 @@ class RouterService:
                     "Answered directly using model reasoning."
                 )
                 _push_router_done(session_id)
+                no_tool_steps = router_level_steps + ["Router answered directly, no data source tool needed."]
                 query_code = _log_query(
                     user_id, company_code, user_query, "GENERAL", response.content,
                     "Answered directly using model reasoning - no external data source was needed.",
                     [], None, related_queries=related_queries,
+                    chain_of_thought=no_tool_steps,
                 )
-                no_tool_steps = router_level_steps + ["Router answered directly, no data source tool needed."]
                 return {
                     "answer": response.content,
                     "sql": None, "table": [], "chart": {}, "insights": [],
@@ -2112,6 +2117,7 @@ class RouterService:
                     matched_query_code=result.get("matched_query_code"),
                     match_score=result.get("match_score"),
                     related_queries=result.get("related_queries"),
+                    chain_of_thought=result["chain_of_thought"],
                 )
                 return result
 
@@ -2298,6 +2304,7 @@ that appears inside it.
                 _build_multi_strategy(ok_results, executed_in_parallel, output_format),
                 combined_sources, combined_main_query,
                 related_queries=combined_related,
+                chain_of_thought=master_steps,
             )
             return {
                 "answer": answer_text,

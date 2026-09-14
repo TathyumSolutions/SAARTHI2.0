@@ -52,6 +52,14 @@ class QueryLog(db.Model):
     # answer even if that related query is edited/deleted later.
     related_queries = db.Column(db.JSON, nullable=True)
 
+    # The step-by-step "Chain of Thought" cards shown in the chat UI while
+    # this answer was being generated (see StepStreamManager in
+    # app/services/stream_manager.py) - previously only ever lived in that
+    # in-memory SSE buffer and was lost once the browser disconnected.
+    # Snapshotted here so the Queries section can show how an answer was
+    # produced after the fact. List of step description strings.
+    chain_of_thought = db.Column(db.JSON, nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
     def to_dict(self):
@@ -71,5 +79,6 @@ class QueryLog(db.Model):
             'feedback_type': self.feedback_type,
             'remarks': self.remarks,
             'related_queries': self.related_queries or [],
+            'chain_of_thought': self.chain_of_thought or [],
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
