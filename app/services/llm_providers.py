@@ -9,6 +9,28 @@ temperature, key-fallback, and unrecognized-provider handling by passing
 those in explicitly.
 """
 import os
+from typing import Optional
+
+# Bare provider-family names a user can type into "Configure New Model" that
+# will always 404 against the provider's API (e.g. "gpt" instead of
+# "gpt-4o") - resolve_dynamic_llm's substring match ("gpt" in actual_model)
+# lets these through, so they must be rejected before they're ever saved.
+_BARE_PROVIDER_NAMES = {"gpt", "openai", "claude", "anthropic", "gemini", "google", "deepseek"}
+
+
+def validate_dynamic_model_id(model_id: str) -> Optional[str]:
+    """Returns an error message if `model_id` (the part after the
+    "api://" prefix, as passed to resolve_dynamic_llm) is a bare
+    provider-family name rather than an actual deployable model id -
+    None if it looks usable."""
+    bare = (model_id or "").strip().lower()
+    if bare in _BARE_PROVIDER_NAMES:
+        return (
+            f"'{model_id}' is a provider family name, not a specific model. "
+            "Enter the exact model id your API key can call, e.g. 'gpt-4o', "
+            "'claude-3-5-sonnet', 'gemini-1.5-pro', or 'deepseek-chat'."
+        )
+    return None
 
 
 def resolve_dynamic_llm(actual_model: str, custom_key: str, temperature: float = 0,
