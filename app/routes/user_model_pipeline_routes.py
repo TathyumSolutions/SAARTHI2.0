@@ -14,6 +14,7 @@ from app.services.model_registry_service import (
     PIPELINE_STEPS,
     model_exists
 )
+from app.services.model_selection_service import _is_open_source_model
 
 bp = Blueprint('user_model_pipeline', __name__, url_prefix='/api')
 
@@ -32,12 +33,29 @@ def _get_user_id() -> int:
         return 1
 
 
+def _registered_model_configs(user_id: int) -> dict:
+    """Maps bare (unprefixed) model identifier -> provider for every model
+    the user has registered with their own credentials via Configure New
+    Model, e.g. a config stored as "api://gpt-4o" yields {"gpt-4o": "..."}."""
+    configs = ModelConfiguration.query.filter_by(user_id=user_id).all()
+    return {
+        str(row.model or "").split("://", 1)[-1]: (row.provider or "")
+        for row in configs
+    }
+
+
 def _registered_model_slugs(user_id: int) -> set:
     """Bare (unprefixed) model identifiers the user has already registered
     with their own credentials via Configure New Model, e.g. a config
     stored as "api://gpt-4o" yields "gpt-4o"."""
-    configs = ModelConfiguration.query.filter_by(user_id=user_id).all()
-    return {str(row.model or "").split("://", 1)[-1] for row in configs}
+    return set(_registered_model_configs(user_id))
+
+
+def _model_available(model: str, registered: set) -> bool:
+    """A model is a valid pipeline selection if it's one of the built-in
+    models (registry) or a model the user has configured themselves via
+    Configure New Model (i.e. it exists in the database)."""
+    return model_exists(model) or model in registered
 
 
 @bp.route('/models/registry', methods=['GET'])
@@ -153,9 +171,12 @@ def save_user_model_pipeline():
         if model_type_preference not in ['oss', 'api', 'hybrid']:
             model_type_preference = 'oss'
         
-        # Validate step_models - ensure all selected models exist
+        # Validate step_models - ensure all selected models exist, either as
+        # a built-in registry model or as a model the user has configured
+        # themselves via Configure New Model (stored in the database).
+        registered = set(_registered_model_configs(user_id))
         for step, model in step_models.items():
-            if not model_exists(model):
+            if not _model_available(model, registered):
                 return jsonify({
                     'status': 'error',
                     'message': f"Unknown model '{model}' for step '{step}'"
@@ -208,18 +229,26 @@ def auto_fill_pipeline():
         if action == 'use_main_model':
             # Fill all steps with the same main model
             main_model = data.get('main_model')
-            if not main_model or not model_exists(main_model):
+            registered_configs = _registered_model_configs(user_id)
+            if not main_model or not _model_available(main_model, set(registered_configs)):
                 return jsonify({
                     'status': 'error',
                     'message': f"Invalid main model: {main_model}"
                 }), 400
-            
+
             step_models = {step: main_model for step in PIPELINE_STEPS}
-            
-            # Determine preference from model type
+
+            # Determine preference from model type - registry models carry
+            # their own type; a model the user configured themselves (found
+            # in the database but not the registry) is classified from its
+            # stored provider instead.
             from app.services.model_registry_service import MODELS_REGISTRY
-            model_info = MODELS_REGISTRY.get(main_model, {})
-            model_type_preference = 'api' if model_info.get('type') == 'api' else 'oss'
+            model_info = MODELS_REGISTRY.get(main_model)
+            if model_info is not None:
+                model_type_preference = 'api' if model_info.get('type') == 'api' else 'oss'
+            else:
+                provider = registered_configs.get(main_model, '')
+                model_type_preference = 'oss' if _is_open_source_model(main_model, provider) else 'api'
         
         elif action == 'use_preset':
             # Use preset recommendations
