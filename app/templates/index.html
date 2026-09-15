@@ -1711,6 +1711,7 @@
                     }
 
                     let extraOutput = ``;
+                    let pendingChartInit = null;
 
                     const isNaValue = (value) => typeof value === 'string' && /^n\/a\b/i.test(value.trim());
                     const visibleRows = (ui.table || []).filter(row => !Object.values(row).every(isNaValue));
@@ -1722,12 +1723,18 @@
                                 <canvas id="${chartId}" style="max-height:240px; width:100%;"></canvas>
                             </div>`;
 
-                        setTimeout(() => {
+                        // Deferred rather than a fixed setTimeout: the canvas above
+                        // is only a string until extraOutput is actually inserted
+                        // into the DOM (further down, after the answer text has
+                        // finished typing out), so any fixed delay guessed here
+                        // could fire before that element exists. Instead this is
+                        // run right after that insertion actually happens.
+                        pendingChartInit = () => {
                             const canvasEl = document.getElementById(chartId);
                             if (canvasEl) {
                                 new Chart(canvasEl.getContext('2d'), ui.chart[ui.chart.recommended]);
                             }
-                        }, 350);
+                        };
                     }
                     else if (visibleRows.length > 0) {
                         // A single remaining row is rendered as the KPI card
@@ -1806,6 +1813,11 @@
 
                     if (extraOutput) {
                         shell.extrasEl.innerHTML = `<div style="font-family: 'Inter', sans-serif; display: flex; flex-direction: column; gap: 15px;">${extraOutput}</div>`;
+                        if (pendingChartInit) {
+                            // The canvas now genuinely exists in the DOM; wait one
+                            // frame so layout/size is settled before Chart.js reads it.
+                            requestAnimationFrame(pendingChartInit);
+                        }
                     }
 
                     chatContainer.scrollTop = chatContainer.scrollHeight;

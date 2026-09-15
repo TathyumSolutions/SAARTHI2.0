@@ -176,7 +176,14 @@ class DataVisualizerAgent:
         return dates[0] if dates else None
 
     def _pick_dimension_columns(self, columns_info: Dict[str, Dict[str, Any]], exclude: str) -> List[str]:
-        return [c for c, i in columns_info.items() if c != exclude and not i["numeric"] and not i["date"]]
+        # A numeric column that looks like an id (branch_id, customer_id, ...)
+        # is still a legitimate grouping key even though it fails the numeric
+        # "measure" test - only genuinely numeric measures (amounts, counts)
+        # should be excluded here.
+        return [
+            c for c, i in columns_info.items()
+            if c != exclude and not i["date"] and (not i["numeric"] or i["looks_like_id"])
+        ]
 
     # -----------------------------
     # Aggregation helpers
