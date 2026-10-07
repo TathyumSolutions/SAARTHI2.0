@@ -208,6 +208,10 @@ JOIN RULES:
 - NEVER change join columns.
 - NEVER join columns with different data types.
 - If joins field is empty, use single table query.
+- READABLE LABELS: when group_by holds both an ID/key column and a readable
+  label column (e.g. employees.branch_id and branches.branch_name), SELECT the
+  label column FIRST and GROUP BY both - never return the bare ID in place of
+  the planned label.
 
 AGGREGATION RULES:
 - Use GROUP BY only if aggregations exist in Query Sense Output.

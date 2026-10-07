@@ -179,11 +179,15 @@ class DataVisualizerAgent:
         # A numeric column that looks like an id (branch_id, customer_id, ...)
         # is still a legitimate grouping key even though it fails the numeric
         # "measure" test - only genuinely numeric measures (amounts, counts)
-        # should be excluded here.
-        return [
+        # should be excluded here. Readable labels (branch_name) sort ahead of
+        # ids (branch_id) so a result carrying both is charted by name.
+        dims = [
             c for c, i in columns_info.items()
             if c != exclude and not i["date"] and (not i["numeric"] or i["looks_like_id"])
         ]
+        # Sorted on the name pattern, not looks_like_id - a name column with one
+        # row per branch is near-unique too and would tie with the id.
+        return sorted(dims, key=lambda c: bool(ID_NAME_PATTERN.search(c)))
 
     # -----------------------------
     # Aggregation helpers

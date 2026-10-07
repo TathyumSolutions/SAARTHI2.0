@@ -174,7 +174,7 @@ You are QuerySense — an expert SQL planner.
 
 Use ONLY the tables, columns, and foreign-key relationships from the schema.
 Do NOT invent names.
-1. PRINCIPLE OF MINIMAL SELECTION: Include ONLY the tables absolutely required to resolve the user's specific question. If a query can be answered using columns from a single table (e.g., just 'mara'), you must ONLY list that table in the "tables" array and leave the "joins" array completely empty `[]`. Do NOT add extra tables just because they are linked in the schema.
+1. PRINCIPLE OF MINIMAL SELECTION: Include ONLY the tables absolutely required to resolve the user's specific question. If a query can be answered using columns from a single table (e.g., just 'mara'), you must ONLY list that table in the "tables" array and leave the "joins" array completely empty `[]`. Do NOT add extra tables just because they are linked in the schema. The one exception is rule 3 below.
 {hint_block}{self_learning_block}{system_instructions_block}
 2. NAME THE METRIC, DON'T SWAP IT SILENTLY: if the user's question names a
 specific metric or value (e.g. "net value", "price", "cost", "revenue")
@@ -188,6 +188,14 @@ relation; (b) if truly nothing in the schema matches, still return your
 best-effort plan using the closest available column, but explain the
 substitution in the "assumption_note" field below so the user is told what
 was actually computed instead of what they asked for.
+3. SHOW NAMES, NOT IDS: business users read the answer, so an ID or code
+(branch_id, customer_id, product_code) is not a meaningful label on its own.
+When you group by, or display, such a key column and a table reachable via
+the FOREIGN-KEY RELATIONS below has a readable column for it (e.g.
+branches.branch_name, customers.name), add that table, add the join on the
+key, and put the readable column in "columns" and "group_by" - keep the ID
+in "group_by" too so two rows sharing a name are not merged. Skip this when
+the user explicitly asks for the ID itself.
 
 Return a concise JSON with:
 - tables: list of table names
@@ -219,6 +227,23 @@ Output:
   "limit": 3,
   "assumption_note": ""
 }}
+
+EXAMPLE (rule 3 - the key is replaced by its readable name via a join):
+Query: "Number of employees by branch"
+Output:
+{{
+  "tables": ["employees", "branches"],
+  "columns": ["branches.branch_name"],
+  "intent": "GROUPED_ANALYSIS",
+  "aggregations": [{{"function": "count", "column": "*"}}],
+  "group_by": ["employees.branch_id", "branches.branch_name"],
+  "joins": [{{"left": "employees.branch_id", "right": "branches.branch_id"}}],
+  "filters": [],
+  "order_by": [],
+  "limit": 0,
+  "assumption_note": ""
+}}
+(These table names are illustrative - always use the real ones from the schema below.)
 
 Now output JSON for the user query above.
 SCHEMA STRUCTURE:
@@ -506,6 +531,158 @@ USER QUESTION:
 
         #    return sanitized
         
+        # -------------------- PLAN RESOLUTION HELPERS ----------------
+        # Join keys too generic to trust on name alone - every table has its
+        # own "id", so employees.id = branches.id is almost never a real join.
+        _GENERIC_KEY_NAMES = {"id", "code", "key", "name", "description", "type", "status", "no"}
+        _KEY_SUFFIXES = ("_id", "_code", "_no", "_key", "id")
+
+        def _resolve_table(self, name: Any):
+            if not isinstance(name, str):
+                return None
+            return next((t for t in self.schema.get("tables", {}) if t.lower() == name.strip().lower()), None)
+
+        def _resolve_column(self, ref: Any):
+            """'Table.Col' in any case -> 'table.col' as spelled in the schema, or None."""
+            if not isinstance(ref, str) or "." not in ref:
+                return None
+            t_llm, c_llm = ref.strip().split(".", 1)
+            real_t = self._resolve_table(t_llm)
+            if not real_t:
+                return None
+            real_c = next((rc for rc in self.schema["tables"][real_t].get("columns", {})
+                           if rc.lower() == c_llm.strip().lower()), None)
+            return f"{real_t}.{real_c}" if real_c else None
+
+        def _known_relation_pairs(self) -> set:
+            """Every declared FK and inferred relation, as unordered lowercase 'table.col' pairs."""
+            pairs = set()
+            for t, meta in self.schema.get("tables", {}).items():
+                for fk in meta.get("foreign_keys", []) or []:
+                    if fk.get("column") and fk.get("references"):
+                        pairs.add(frozenset({f"{t}.{fk['column']}".lower(), fk["references"].lower()}))
+            for rel in self.schema.get("relations", []) or []:
+                if all(rel.get(k) for k in ("from_table", "from_column", "to_table", "to_column")):
+                    pairs.add(frozenset({
+                        f"{rel['from_table']}.{rel['from_column']}".lower(),
+                        f"{rel['to_table']}.{rel['to_column']}".lower(),
+                    }))
+            return pairs
+
+        def _is_valid_join(self, left: str, right: str, relation_pairs: set) -> bool:
+            """A join is kept only if the schema backs it: a declared/inferred
+            relation, or a shared, specific key name (branch_id = branch_id)
+            for schemas that were never annotated with FKs."""
+            lt, lc = left.split(".", 1)
+            rt, rc = right.split(".", 1)
+            if lt == rt:
+                return False
+            if frozenset({left.lower(), right.lower()}) in relation_pairs:
+                return True
+            return lc.lower() == rc.lower() and lc.lower() not in self._GENERIC_KEY_NAMES
+
+        @staticmethod
+        def _singular(table: str) -> str:
+            t = table.lower()
+            if t.endswith("ies"):
+                return t[:-3] + "y"
+            if t.endswith(("ches", "shes", "sses", "xes")):
+                return t[:-2]
+            if t.endswith("s") and not t.endswith("ss"):
+                return t[:-1]
+            return t
+
+        def _key_stem(self, col: str) -> str:
+            """'branch_id' -> 'branch'. '' for columns that aren't key-like."""
+            c = col.lower()
+            for suffix in self._KEY_SUFFIXES:
+                if c.endswith(suffix) and len(c) > len(suffix):
+                    return c[: -len(suffix)].rstrip("_")
+            return ""
+
+        def _label_column_for(self, table: str, stem: str):
+            """The human-readable column of `table` (branch_name, name, title,
+            ...), or None if there isn't an obvious one. Deliberately narrow:
+            a generic *_name like first_name is only used when it's the
+            table's only *_name column."""
+            cols = self.schema["tables"][table].get("columns", {}) or {}
+            lower_map = {c.lower(): c for c in cols}
+            singular = self._singular(table)
+            candidates = [
+                f"{stem}_name", f"{singular}_name", "name", "full_name",
+                f"{stem}_title", "title", "label",
+                f"{stem}_description", f"{stem}_desc", "description",
+            ]
+            for cand in candidates:
+                real = lower_map.get(cand)
+                if real and self._is_text_column(cols[real]):
+                    return real
+            name_cols = [c for c in cols if c.lower().endswith("_name") and self._is_text_column(cols[c])]
+            return name_cols[0] if len(name_cols) == 1 else None
+
+        @staticmethod
+        def _is_text_column(props: Any) -> bool:
+            col_type = str((props or {}).get("type") or "").lower() if isinstance(props, dict) else ""
+            if not col_type:
+                return True  # schema carries no type info - trust the name
+            return any(k in col_type for k in ("char", "text", "string", "varchar", "object"))
+
+        def _owner_of_key(self, table: str, col: str, stem: str):
+            """For a foreign-key-like column (employees.branch_id), the table it
+            identifies and that table's matching key column - ('branches',
+            'branch_id') - or None if it can't be pinned to exactly one table."""
+            for fk in self.schema["tables"][table].get("foreign_keys", []) or []:
+                if (fk.get("column") or "").lower() == col.lower() and "." in (fk.get("references") or ""):
+                    ref = self._resolve_column(fk["references"])
+                    if ref:
+                        return tuple(ref.split(".", 1))
+            owners = []
+            for other, meta in self.schema.get("tables", {}).items():
+                if other == table or self._singular(other) != stem:
+                    continue
+                key = next((c for c in meta.get("columns", {}) if c.lower() == col.lower()), None)
+                if key:
+                    owners.append((other, key))
+            return owners[0] if len(owners) == 1 else None
+
+        def _add_display_labels(self, sanitized: Dict[str, Any]) -> Dict[str, Any]:
+            """When the plan groups by an ID (employees.branch_id), also group
+            by - and select - the readable label it stands for (branches.branch_name),
+            adding the join if needed. Done in code rather than trusted to the
+            prompt because models follow that instruction inconsistently, and an
+            answer keyed by "branch 77" is useless to a business user. The ID
+            stays in GROUP BY so two branches sharing a name aren't merged."""
+            for gb in list(sanitized["group_by"]):
+                table, col = gb.split(".", 1)
+                stem = self._key_stem(col)
+                if not stem:
+                    continue
+                if self._singular(table) == stem:
+                    owner, owner_key = table, col  # grouping by the table's own key
+                else:
+                    found = self._owner_of_key(table, col, stem)
+                    if not found:
+                        continue
+                    owner, owner_key = found
+                label = self._label_column_for(owner, stem)
+                if not label:
+                    continue
+                label_ref = f"{owner}.{label}"
+                if label_ref in sanitized["group_by"]:
+                    continue
+                if owner != table:
+                    already_joined = any(owner in (j["left"].split(".", 1)[0], j["right"].split(".", 1)[0])
+                                         for j in sanitized["joins"])
+                    if not already_joined:
+                        sanitized["joins"].append({"left": gb, "right": f"{owner}.{owner_key}"})
+                    if owner not in sanitized["tables"]:
+                        sanitized["tables"].append(owner)
+                sanitized["group_by"].append(label_ref)
+                if label_ref not in sanitized["columns"]:
+                    sanitized["columns"].append(label_ref)
+                print(f"🏷️ [QuerySense] Grouping by {gb} - added readable label {label_ref}")
+            return sanitized
+
         def _validate_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
             sanitized = {
                 "tables": [], "columns": [], "intent": "SELECTION",
@@ -516,33 +693,70 @@ USER QUESTION:
             if not isinstance(plan, dict):
                 return sanitized
 
-            # --- KEY FIX: Case-Insensitive Table Mapping ---
-            for t_llm in plan.get("tables", []):
-                # Look for a match in schema regardless of case
-                match = next((real_t for real_t in self.schema.get("tables", {}) 
-                             if real_t.lower() == t_llm.lower()), None)
-                if match:
-                    sanitized["tables"].append(match)
+            # Case-insensitive mapping onto the real schema spelling throughout -
+            # the LLM often writes 'Mara' for 'mara'.
+            for t_llm in plan.get("tables", []) or []:
+                real_t = self._resolve_table(t_llm)
+                if real_t and real_t not in sanitized["tables"]:
+                    sanitized["tables"].append(real_t)
 
-            # --- KEY FIX: Case-Insensitive Column Mapping ---
-            for c_llm in plan.get("columns", []):
-                if isinstance(c_llm, str) and "." in c_llm:
-                    t_llm, col_llm = c_llm.split(".", 1)
-                    # Find the real table name
-                    real_t = next((rt for rt in self.schema.get("tables", {}) 
-                                 if rt.lower() == t_llm.lower()), None)
-                    if real_t:
-                        # Find the real column name
-                        real_col = next((rc for rc in self.schema["tables"][real_t].get("columns", {}) 
-                                       if rc.lower() == col_llm.lower()), None)
-                        if real_col:
-                            sanitized["columns"].append(f"{real_t}.{real_col}")
+            for c_llm in plan.get("columns", []) or []:
+                real = self._resolve_column(c_llm)
+                if real and real not in sanitized["columns"]:
+                    sanitized["columns"].append(real)
 
-            # Keep the rest of your intent/limit logic as is...
             sanitized["intent"] = (plan.get("intent") or "SELECTION").upper()
-            sanitized["limit"] = int(plan.get("limit") or 0)
-            
-            return sanitized
+
+            for a in plan.get("aggregations", []) or []:
+                if not isinstance(a, dict):
+                    continue
+                fn = (a.get("function") or "").lower()
+                col = a.get("column")
+                if fn not in ("sum", "avg", "min", "max", "count"):
+                    continue
+                if col == "*":
+                    sanitized["aggregations"].append({"function": fn, "column": "*"})
+                elif self._resolve_column(col):
+                    sanitized["aggregations"].append({"function": fn, "column": self._resolve_column(col)})
+
+            for gb in plan.get("group_by", []) or []:
+                real = self._resolve_column(gb)
+                if real and real not in sanitized["group_by"]:
+                    sanitized["group_by"].append(real)
+
+            # Joins were previously never copied across here at all, so the SQL
+            # generator (which only joins when this list is non-empty) could
+            # never produce a multi-table query, whatever the LLM planned.
+            relation_pairs = self._known_relation_pairs()
+            for j in plan.get("joins", []) or []:
+                if not isinstance(j, dict):
+                    continue
+                left, right = self._resolve_column(j.get("left")), self._resolve_column(j.get("right"))
+                if not (left and right) or not self._is_valid_join(left, right, relation_pairs):
+                    print(f"⚠️ [QuerySense] Dropping join not backed by the schema: {j}")
+                    continue
+                if any({left, right} == {x["left"], x["right"]} for x in sanitized["joins"]):
+                    continue
+                sanitized["joins"].append({"left": left, "right": right})
+                for t in (left.split(".", 1)[0], right.split(".", 1)[0]):
+                    if t not in sanitized["tables"]:
+                        sanitized["tables"].append(t)
+
+            for f in plan.get("filters", []) or []:
+                if not isinstance(f, str) or not f.strip():
+                    continue
+                refs = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b", f)
+                if all(self._resolve_column(f"{t}.{c}") for t, c in refs):
+                    sanitized["filters"].append(f)
+
+            sanitized["order_by"] = [o for o in plan.get("order_by", []) or [] if isinstance(o, str) and o.strip()]
+
+            try:
+                sanitized["limit"] = int(plan.get("limit") or 0)
+            except (TypeError, ValueError):
+                sanitized["limit"] = 0
+
+            return self._add_display_labels(sanitized)
 
         def _build_table_context(self, tables: List[str]) -> Dict[str, str]:
             return {t: self.schema["tables"][t].get("description", "") for t in tables}
