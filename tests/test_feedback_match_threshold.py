@@ -1,12 +1,12 @@
 """
-Tests for self-learning matching: only LIKED past questions count as a
-match, and only at or above the match threshold (80% by default, or the
-value in the user's Query Instructions).
+Tests for self-learning matching: a past question counts only at or above
+the match threshold (80% by default, or the value in the user's Query
+Instructions). Liked matches guide the STRATEGY (their SQL is offered as
+an approach); disliked matches contribute FEEDBACK (their remark).
 
-Before this, any liked OR disliked question with similarity above 0% was
+Before this, any liked or disliked question with similarity above 0% was
 matched - so a disliked loans question at 25% similarity had its remark
-injected into "Number of employees by branch" and was listed in Chain of
-Thought / Related Queries as a match.
+injected into "Number of employees by branch".
 """
 import os
 import sys
@@ -51,8 +51,9 @@ def test_match_threshold_from_instructions(instructions, expected):
 # ---------------- _build_feedback_context ----------------
 
 class _Row:
-    def __init__(self, question, feedback_type="like", remarks=None, query_code="QUERY00001"):
+    def __init__(self, question, feedback_type="like", remarks=None, query_code="QUERY00001", sql_query=None):
         self.question = question
+        self.sql_query = sql_query
         self.answer = "an answer"
         self.feedback_type = feedback_type
         self.remarks = remarks
@@ -78,10 +79,36 @@ def _run(rows, scores, min_score=DEFAULT_MATCH_THRESHOLD):
         return result, fb
 
 
-def test_only_liked_feedback_is_queried():
-    _, fb = _run([], {})
-    # the SQLAlchemy expression ResponseFeedback.feedback_type == "like"
-    fb.feedback_type.__eq__.assert_called_with("like")
+def test_liked_guides_strategy_and_disliked_gives_feedback():
+    rows = [
+        _Row("Headcount by branch", query_code="Q1",
+             sql_query="SELECT b.branch_name, COUNT(*)\n  FROM employees e JOIN branches b ON e.branch_id = b.branch_id GROUP BY 1"),
+        _Row("Employees per branch", feedback_type="dislike", query_code="Q2",
+             remarks="Show branch names, not ids"),
+    ]
+    (context, related), _ = _run(rows, {"Headcount by branch": 0.91, "Employees per branch": 0.88})
+
+    strategy, feedback = context.split("FEEDBACK - DISLIKED")
+    assert "STRATEGY - LIKED" in strategy
+    assert '"Headcount by branch" (91% similar) was LIKED' in strategy
+    assert "FROM employees e JOIN branches b" in strategy  # its SQL, whitespace collapsed
+    assert '"Show branch names, not ids"' in feedback
+    assert {r["query_code"]: r["role"] for r in related} == {"Q1": "strategy", "Q2": "feedback"}
+
+
+def test_disliked_below_threshold_is_not_used():
+    """The screenshot case: disliked loan questions at 25-29% must not be
+    applied to "Number of employees by branch"."""
+    rows = [_Row("Total number of loans?", feedback_type="dislike",
+                 remarks="do not consider loans where branch is null")]
+    (context, related), _ = _run(rows, {"Total number of loans?": 0.29})
+    assert context == "" and related == []
+
+
+def test_only_one_kind_gives_only_that_section():
+    rows = [_Row("Employees per branch", feedback_type="dislike", remarks="wrong join")]
+    (context, _), _ = _run(rows, {"Employees per branch": 0.9})
+    assert "FEEDBACK - DISLIKED" in context and "STRATEGY" not in context
 
 
 def test_matches_below_threshold_are_dropped():
@@ -90,7 +117,7 @@ def test_matches_below_threshold_are_dropped():
     (context, related), _ = _run(rows, {"Total number of loans?": 0.29, "Headcount by branch": 0.86})
     assert [r["query_code"] for r in related] == ["Q2"]
     assert "Total number of loans" not in context
-    assert "LIKED" in context and "DISLIKED" not in context
+    assert "STRATEGY - LIKED" in context and "FEEDBACK - DISLIKED" not in context
 
 
 def test_nothing_above_threshold_gives_no_context():

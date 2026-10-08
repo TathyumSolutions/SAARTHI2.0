@@ -432,12 +432,16 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
 def _build_feedback_context(company_code: Optional[str], user_id: Optional[int], user_query: str, top_k: int = 4,
                             min_score: float = DEFAULT_MATCH_THRESHOLD) -> tuple:
     """
-    Only LIKED past questions are matched, and only when their similarity
-    to this question is at least min_score (default 80%, or the threshold
-    in the user's Query Instructions - see match_threshold_from_instructions).
-    Disliked questions are never matched: a low-similarity disliked remark
-    (e.g. about loans) used to be injected into an unrelated question
-    (e.g. employees by branch) and listed as a match.
+    Past questions count only when their similarity to this question is at
+    least min_score (default 80%, or the threshold in the user's Query
+    Instructions - see match_threshold_from_instructions). Below that, a
+    disliked remark about loans used to be injected into an unrelated
+    question like "employees by branch".
+
+    The two kinds of feedback play different roles:
+      - LIKED  -> STRATEGY: the SQL that answered the similar question is
+                  offered as an approach to reuse when it fits.
+      - DISLIKED -> FEEDBACK: the user's remark is a problem to avoid.
 
     company_code is only what makes feedback SHARED across a company's
     users - it is not a precondition for self-learning itself. A user with
@@ -461,7 +465,6 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
         ResponseFeedback.query
         .filter(ResponseFeedback.question.isnot(None))
         .filter(ResponseFeedback.answer.isnot(None))
-        .filter(ResponseFeedback.feedback_type == "like")
     )
     candidates_query = (
         candidates_query.filter(ResponseFeedback.company_code == company_code)
@@ -498,21 +501,41 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
         print(f"🧠 [FEEDBACK-DEBUG] None of the top candidates reached the {min_score:.0%} match threshold - no context injected.")
         return "", []
 
-    lines = []
+    strategy_lines = []
+    feedback_lines = []
     related_queries = []
     for score, item in best:
-        lines.append(
-            f"- A similar question (\"{(item.question or '').strip()}\") was LIKED before - this style of answer worked well."
-        )
+        question = (item.question or "").strip()
+        if item.feedback_type == "dislike":
+            remark = (item.remarks or "No remark provided").strip()
+            feedback_lines.append(f"- \"{question}\" ({score:.0%} similar) was DISLIKED: \"{remark}\" - avoid this problem.")
+            role = "feedback"
+        else:
+            sql = " ".join((item.sql_query or "").split())
+            approach = f" It was answered with: {sql[:800]}" if sql else ""
+            strategy_lines.append(f"- \"{question}\" ({score:.0%} similar) was LIKED.{approach}")
+            role = "strategy"
         related_queries.append({
             "query_code": item.query_code,
             "question": item.question,
             "feedback_type": item.feedback_type,
             "remarks": item.remarks,
             "score": round(score, 4),
+            "role": role,
         })
 
-    context = "COMPANY FEEDBACK CONTEXT:\n" + "\n".join(lines)
+    sections = []
+    if strategy_lines:
+        sections.append(
+            "STRATEGY - LIKED answers to similar questions (reuse their approach when it fits this question):\n"
+            + "\n".join(strategy_lines)
+        )
+    if feedback_lines:
+        sections.append(
+            "FEEDBACK - DISLIKED answers to similar questions (fix these problems in this answer):\n"
+            + "\n".join(feedback_lines)
+        )
+    context = "COMPANY FEEDBACK CONTEXT:\n" + "\n\n".join(sections)
     print(f"🧠 [FEEDBACK-DEBUG] Built context from {len(best)} matched row(s):\n{context}")
     return context, related_queries
 
@@ -1918,20 +1941,23 @@ class RouterService:
                 scope_label = f"company {company_code}" if company_code else f"user {user_id}"
                 _push_router_event(
                     session_id, "start", "Checking Self-Learning Feedback",
-                    f"Looking for liked past questions at least {match_threshold:.0%} similar to this one for {scope_label}."
+                    f"Looking for past questions at least {match_threshold:.0%} similar to this one for {scope_label} "
+                    f"- liked ones to guide the strategy, disliked ones for feedback."
                 )
                 feedback_context, related_queries = _build_feedback_context(
                     company_code, user_id, user_query, min_score=match_threshold,
                 )
                 if feedback_context:
                     print(f"🧠 [SELF-LEARNING] Injected feedback context for {scope_label}")
-                    best_match = max(q["score"] for q in related_queries)
-                    feedback_step_desc = (
-                        f"Found {len(related_queries)} liked similar question(s) (best match {best_match:.0%}) "
-                        f"- used them to guide this answer."
-                    )
+                    parts = []
+                    for role, kind, use in (("strategy", "liked", "to guide the strategy"),
+                                            ("feedback", "disliked", "whose feedback was applied")):
+                        scores = [q["score"] for q in related_queries if q.get("role") == role]
+                        if scores:
+                            parts.append(f"{len(scores)} {kind} similar question(s) (best match {max(scores):.0%}) {use}")
+                    feedback_step_desc = "Found " + " and ".join(parts) + "."
                 else:
-                    feedback_step_desc = f"No liked past question is at least {match_threshold:.0%} similar to this one."
+                    feedback_step_desc = f"No past question is at least {match_threshold:.0%} similar to this one."
                 _push_router_event(session_id, "complete", "Checking Self-Learning Feedback", feedback_step_desc)
                 router_level_steps.append(f"Checking Self-Learning Feedback - {feedback_step_desc}")
 
