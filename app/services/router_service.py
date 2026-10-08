@@ -47,6 +47,7 @@ from app.models.feedback import ResponseFeedback
 from app.models.query_log import QueryLog
 from app.models.file_resource import FileResource
 from app.utils.query_codes import generate_query_code
+from app.utils.instruction_settings import match_threshold_from_instructions, DEFAULT_MATCH_THRESHOLD
 from app.services.rag_config import load_rag_config
 
 # Import individual track execution services (unchanged from before)
@@ -428,8 +429,16 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def _build_feedback_context(company_code: Optional[str], user_id: Optional[int], user_query: str, top_k: int = 4) -> tuple:
+def _build_feedback_context(company_code: Optional[str], user_id: Optional[int], user_query: str, top_k: int = 4,
+                            min_score: float = DEFAULT_MATCH_THRESHOLD) -> tuple:
     """
+    Only LIKED past questions are matched, and only when their similarity
+    to this question is at least min_score (default 80%, or the threshold
+    in the user's Query Instructions - see match_threshold_from_instructions).
+    Disliked questions are never matched: a low-similarity disliked remark
+    (e.g. about loans) used to be injected into an unrelated question
+    (e.g. employees by branch) and listed as a match.
+
     company_code is only what makes feedback SHARED across a company's
     users - it is not a precondition for self-learning itself. A user with
     no company_code is working in an individual capacity, and their own
@@ -452,6 +461,7 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
         ResponseFeedback.query
         .filter(ResponseFeedback.question.isnot(None))
         .filter(ResponseFeedback.answer.isnot(None))
+        .filter(ResponseFeedback.feedback_type == "like")
     )
     candidates_query = (
         candidates_query.filter(ResponseFeedback.company_code == company_code)
@@ -483,21 +493,17 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
     ) or "(none)"
     print(f"🧠 [FEEDBACK-DEBUG] Top {top_k} scored candidates: {top_preview}")
 
-    best = [(score, row) for score, row in scored[:top_k] if score > 0]
+    best = [(score, row) for score, row in scored[:top_k] if score >= min_score]
     if not best:
-        print(f"🧠 [FEEDBACK-DEBUG] None of the top candidates cleared the score > 0 threshold - no context injected.")
+        print(f"🧠 [FEEDBACK-DEBUG] None of the top candidates reached the {min_score:.0%} match threshold - no context injected.")
         return "", []
 
     lines = []
     related_queries = []
     for score, item in best:
-        if item.feedback_type == "dislike":
-            remark = (item.remarks or "No remark provided").strip()
-            lines.append(
-                f"- A similar question was DISLIKED before, with this remark: \"{remark}\" - avoid this problem."
-            )
-        else:
-            lines.append("- A similar question was LIKED before - this style of answer worked well.")
+        lines.append(
+            f"- A similar question (\"{(item.question or '').strip()}\") was LIKED before - this style of answer worked well."
+        )
         related_queries.append({
             "query_code": item.query_code,
             "question": item.question,
@@ -568,7 +574,8 @@ def _log_query(
 REUSABLE_TRACKS = ("DB", "SPREADSHEET")
 
 
-def _find_reusable_query(company_code: Optional[str], user_id: Optional[int], user_query: str):
+def _find_reusable_query(company_code: Optional[str], user_id: Optional[int], user_query: str,
+                         min_score: float = REUSE_MATCH_THRESHOLD):
     """
     Looks for a previously-accepted (liked) query - DB or SPREADSHEET - that
     is a near-duplicate of user_query. Scoped to the company (shared across
@@ -582,7 +589,8 @@ def _find_reusable_query(company_code: Optional[str], user_id: Optional[int], us
     generation inside one track.
 
     Returns (QueryLog row, score, router_decision) if one clears
-    REUSE_MATCH_THRESHOLD, else (None, 0.0, None).
+    min_score (REUSE_MATCH_THRESHOLD, or a stricter threshold from the
+    user's Query Instructions), else (None, 0.0, None).
     """
     if not user_query or (not company_code and not user_id):
         return None, 0.0, None
@@ -614,7 +622,7 @@ def _find_reusable_query(company_code: Optional[str], user_id: Optional[int], us
         if score > best_score:
             best_row, best_score = row, score
 
-    if best_row and best_score >= REUSE_MATCH_THRESHOLD:
+    if best_row and best_score >= min_score:
         return best_row, best_score, best_row.router_decision
     return None, 0.0, None
 
@@ -1859,8 +1867,17 @@ class RouterService:
             # routing decision, not just one track's own generation step.
             # ------------------------------------------------
             self_learning_enabled = bool(load_rag_config().get("self_learning", {}).get("enabled", False))
+            # Minimum similarity for a past liked question to count as a
+            # match - 80% unless the user's Query Instructions set another
+            # (e.g. "Query match threshold 90%"). Reusing a past query's SQL
+            # outright never goes below REUSE_MATCH_THRESHOLD, since two
+            # questions at 80% similarity can still need different SQL.
+            match_threshold = match_threshold_from_instructions(system_instructions)
             if self_learning_enabled:
-                matched, score, matched_track = _find_reusable_query(company_code, user_id, user_query)
+                matched, score, matched_track = _find_reusable_query(
+                    company_code, user_id, user_query,
+                    min_score=max(REUSE_MATCH_THRESHOLD, match_threshold),
+                )
                 if matched:
                     reuse_ctx = {
                         "session_id": session_id, "model_name": model_name,
@@ -1901,14 +1918,20 @@ class RouterService:
                 scope_label = f"company {company_code}" if company_code else f"user {user_id}"
                 _push_router_event(
                     session_id, "start", "Checking Self-Learning Feedback",
-                    f"Looking for past like/dislike feedback on similar questions for {scope_label}."
+                    f"Looking for liked past questions at least {match_threshold:.0%} similar to this one for {scope_label}."
                 )
-                feedback_context, related_queries = _build_feedback_context(company_code, user_id, user_query)
+                feedback_context, related_queries = _build_feedback_context(
+                    company_code, user_id, user_query, min_score=match_threshold,
+                )
                 if feedback_context:
                     print(f"🧠 [SELF-LEARNING] Injected feedback context for {scope_label}")
-                    feedback_step_desc = "Found relevant past feedback - added it to the prompt to guide this answer."
+                    best_match = max(q["score"] for q in related_queries)
+                    feedback_step_desc = (
+                        f"Found {len(related_queries)} liked similar question(s) (best match {best_match:.0%}) "
+                        f"- used them to guide this answer."
+                    )
                 else:
-                    feedback_step_desc = "No relevant past feedback found for a question like this yet."
+                    feedback_step_desc = f"No liked past question is at least {match_threshold:.0%} similar to this one."
                 _push_router_event(session_id, "complete", "Checking Self-Learning Feedback", feedback_step_desc)
                 router_level_steps.append(f"Checking Self-Learning Feedback - {feedback_step_desc}")
 
