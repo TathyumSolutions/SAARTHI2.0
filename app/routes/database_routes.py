@@ -20,6 +20,7 @@ import pandas as pd
 import psycopg2
 from flask_jwt_extended import jwt_required
 from app.services import spreadsheet_service
+from app.services.spreadsheet_header_detection import read_tabular_upload
 from app.utils.auth_helpers import get_current_user
 from app.services.audit_service import log_event
 
@@ -219,15 +220,13 @@ def create_excel_database():
         if not file or file.filename == '':
             return jsonify({'error': 'An Excel or CSV file is required'}), 400
 
-        filename_lower = file.filename.lower()
-        if filename_lower.endswith('.csv'):
-            sheets = {None: pd.read_csv(file)}
-        elif filename_lower.endswith(('.xlsx', '.xls')):
-            # sheet_name=None reads every sheet in the workbook, not just
-            # the first - each one becomes its own connection below.
-            sheets = pd.read_excel(file, sheet_name=None)
-        else:
-            return jsonify({'error': 'Only .xlsx, .xls, or .csv files are supported'}), 400
+        # Every sheet in the workbook is read (each becomes its own
+        # connection below), with its real header row detected rather than
+        # assumed to be row 1 - see spreadsheet_header_detection.py.
+        try:
+            sheets, sheet_info = read_tabular_upload(file.read(), file.filename)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
 
         sheets = {sheet_name: df for sheet_name, df in sheets.items() if not df.empty}
         if not sheets:
@@ -269,7 +268,9 @@ def create_excel_database():
                 username=None,
                 password=None,
                 config={'source_tables': []},
-                description=custom_description,
+                # Without a description from the user, the title/description
+                # rows found above the sheet's header describe it instead.
+                description=custom_description or (sheet_info.get(sheet_name, {}).get('title') or None),
                 company_code=current_user.company_code,
                 created_by_user_id=current_user.id,
                 status='connected'
@@ -298,6 +299,12 @@ def create_excel_database():
                        resource_type='database', resource_id=connection.id, details={'name': connection.name, 'type': 'Excel'})
 
         table_summary = ', '.join(f'"{t["table"]}" ({t["row_count"]} rows)' for t in created_tables)
+        header_notes = [
+            f'headers found on row {i["header_row"]}' + (f' of sheet "{sn}"' if sn is not None and multi_sheet else '')
+            for sn, i in sheet_info.items() if sn in sheets and i.get('header_row', 1) > 1
+        ]
+        if header_notes:
+            table_summary += ' (' + '; '.join(header_notes) + ', title rows above skipped)'
         return jsonify({
             'database': serialize_connection(created_connections[0]),
             'databases': [serialize_connection(c) for c in created_connections],
@@ -576,13 +583,10 @@ def update_excel_connection(db_id):
                              'isn\'t supported here. Delete this connection and re-upload instead.'
                 }), 400
 
-            filename_lower = file.filename.lower()
-            if filename_lower.endswith('.csv'):
-                sheets = {None: pd.read_csv(file)}
-            elif filename_lower.endswith(('.xlsx', '.xls')):
-                sheets = pd.read_excel(file, sheet_name=None)
-            else:
-                return jsonify({'error': 'Only .xlsx, .xls, or .csv files are supported'}), 400
+            try:
+                sheets, _ = read_tabular_upload(file.read(), file.filename)
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
 
             sheets = {sheet_name: df for sheet_name, df in sheets.items() if not df.empty}
             if not sheets:
