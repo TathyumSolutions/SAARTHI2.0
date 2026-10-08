@@ -707,6 +707,62 @@
             .replace(/>/g, '&gt;');
     }
 
+    // Rows shown inline for a table answer - the rest is offered as Excel.
+    const TABLE_PREVIEW_ROWS = 10;
+
+    // Follow-up offered under a chart/table whose full result was saved for
+    // download (response.export). Worded as a question when the chat is
+    // only showing part of the result, as a plain link otherwise.
+    function buildExportFollowUp(exportInfo, shownText) {
+        if (!exportInfo || !exportInfo.id) return '';
+        const total = Number(exportInfo.row_count) || 0;
+        const prompt = shownText
+            ? `${escapeAttr(shownText)} Would you like all ${total} records?`
+            : `All ${total} records are available as a spreadsheet.`;
+        return `
+            <div class="export-followup" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 14px; border-radius:10px; background:rgba(124, 58, 237, 0.08); border:1px solid rgba(124, 58, 237, 0.35);">
+                <span style="color:#E2E8F0; font-size:13px;">${prompt}</span>
+                <button type="button" class="export-download-btn" data-export-id="${escapeAttr(exportInfo.id)}" style="padding:6px 12px; border-radius:8px; border:none; background:linear-gradient(135deg, #7c3aed, #2563eb); color:#fff; font-size:13px; font-weight:600; cursor:pointer;">⬇ Download Excel</button>
+            </div>`;
+    }
+
+    async function downloadResultExport(btn) {
+        const exportId = btn.dataset.exportId;
+        const originalLabel = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Preparing…';
+        try {
+            const res = await authFetch(`/api/export/results/${encodeURIComponent(exportId)}`);
+            if (!res.ok) {
+                btn.textContent = res.status === 404 ? 'Download expired - ask again' : 'Download failed - retry';
+                btn.disabled = res.status === 404;
+                return;
+            }
+            const disposition = res.headers.get('Content-Disposition') || '';
+            const match = disposition.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+            const filename = match ? decodeURIComponent(match[1]) : 'saarthi_results.xlsx';
+            const url = URL.createObjectURL(await res.blob());
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            btn.textContent = originalLabel;
+            btn.disabled = false;
+        } catch (e) {
+            btn.textContent = 'Download failed - retry';
+            btn.disabled = false;
+        }
+    }
+
+    // Delegated so buttons restored from saved chat history keep working.
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.export-download-btn');
+        if (btn && !btn.disabled) downloadResultExport(btn);
+    });
+
     async function loadSelfLearningMode() {
         try {
             const res = await authFetch('/api/settings/rag-config');
@@ -1718,10 +1774,22 @@
 
                     if (ui.chart && ui.chart.recommended && ui.chart[ui.chart.recommended]) {
                         const chartId = 'chart-' + Date.now();
+                        const chartCfg = ui.chart[ui.chart.recommended];
+                        const chartHeight = Number(chartCfg.height) || 280;
                         extraOutput += `
                             <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; border-top:3px solid #7c3aed; box-shadow:0 4px 15px rgba(124, 58, 237, 0.15);">
-                                <canvas id="${chartId}" style="max-height:240px; width:100%;"></canvas>
+                                <div style="position:relative; height:${chartHeight}px; width:100%;">
+                                    <canvas id="${chartId}"></canvas>
+                                </div>
                             </div>`;
+                        if (ui.chart.truncated && ui.export) {
+                            const shownCount = ((chartCfg.data || {}).labels || []).length;
+                            extraOutput += buildExportFollowUp(
+                                ui.export, `The chart shows the top ${shownCount} of ${ui.chart.total_categories}.`
+                            );
+                        } else if (ui.export) {
+                            extraOutput += buildExportFollowUp(ui.export, '');
+                        }
 
                         // Deferred rather than a fixed setTimeout: the canvas above
                         // is only a string until extraOutput is actually inserted
@@ -1732,7 +1800,17 @@
                         pendingChartInit = () => {
                             const canvasEl = document.getElementById(chartId);
                             if (canvasEl) {
-                                new Chart(canvasEl.getContext('2d'), ui.chart[ui.chart.recommended]);
+                                // Labels arrive shortened for readability; show the
+                                // untruncated name (full_labels) in the tooltip.
+                                const cfg = ui.chart[ui.chart.recommended];
+                                if (Array.isArray(cfg.full_labels)) {
+                                    cfg.options = cfg.options || {};
+                                    cfg.options.plugins = cfg.options.plugins || {};
+                                    cfg.options.plugins.tooltip = Object.assign({}, cfg.options.plugins.tooltip, {
+                                        callbacks: { title: (items) => items.length ? (cfg.full_labels[items[0].dataIndex] ?? items[0].label) : '' }
+                                    });
+                                }
+                                new Chart(canvasEl.getContext('2d'), cfg);
                             }
                         };
                     }
@@ -1744,8 +1822,9 @@
                         // clearly as a single highlighted value.
                         if (visibleRows.length > 1) {
                             const headers = Object.keys(visibleRows[0]);
+                            const previewRows = visibleRows.slice(0, TABLE_PREVIEW_ROWS);
                             const headerHtml = headers.map(key => `<th style="padding:10px; text-align:left; background:linear-gradient(135deg, #7c3aed, #2563eb); color:#fff; font-weight:600;">${escapeAttr(key)}</th>`).join('');
-                            const rowsHtml = visibleRows.map((row, rowIndex) => `<tr style="background:${rowIndex % 2 === 0 ? 'rgba(124, 58, 237, 0.08)' : 'transparent'};">${headers.map(h => `<td style="padding:10px; border-bottom:1px solid rgba(255,255,255,0.1); color:#E2E8F0;">${escapeAttr(row[h])}</td>`).join('')}</tr>`).join('');
+                            const rowsHtml = previewRows.map((row, rowIndex) => `<tr style="background:${rowIndex % 2 === 0 ? 'rgba(124, 58, 237, 0.08)' : 'transparent'};">${headers.map(h => `<td style="padding:10px; border-bottom:1px solid rgba(255,255,255,0.1); color:#E2E8F0;">${escapeAttr(row[h])}</td>`).join('')}</tr>`).join('');
 
                             extraOutput += `
                                 <div style="padding:15px; border-radius:14px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.12); box-shadow:0 4px 15px rgba(0,0,0,0.15); overflow-x:auto;">
@@ -1754,6 +1833,12 @@
                                         <tbody>${rowsHtml}</tbody>
                                     </table>
                                 </div>`;
+                            if (ui.export) {
+                                const shownText = visibleRows.length > previewRows.length
+                                    ? `Showing the first ${previewRows.length} of ${visibleRows.length} rows.`
+                                    : '';
+                                extraOutput += buildExportFollowUp(ui.export, shownText);
+                            }
                         }
                     }
 

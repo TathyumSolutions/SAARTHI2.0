@@ -154,6 +154,7 @@ class DataVisualizerAgent:
             looks_like_id = bool(ID_NAME_PATTERN.search(c)) or (n > 1 and distinct >= max(2, int(n * 0.9)))
             info[c] = {
                 "numeric": is_numeric,
+                "fractional": is_numeric and any(isinstance(v, float) and not v.is_integer() for v in non_null),
                 "date": is_date,
                 "distinct": distinct,
                 "looks_like_id": looks_like_id,
@@ -161,7 +162,18 @@ class DataVisualizerAgent:
         return info
 
     def _pick_measure_column(self, columns_info: Dict[str, Dict[str, Any]]) -> Optional[str]:
-        candidates = [c for c, i in columns_info.items() if i["numeric"] and not i["looks_like_id"]]
+        # The near-unique "shape" test can't disqualify a column whose name
+        # says it's a measure, or one holding fractional values (ids are
+        # whole numbers): grouped totals are usually all different, so
+        # "amount by region" over 3 regions would otherwise have no measure.
+        def is_measure(c: str, i: Dict[str, Any]) -> bool:
+            if not i["numeric"] or ID_NAME_PATTERN.search(c):
+                return False
+            if any(h in c.lower() for h in MEASURE_NAME_HINTS) or i.get("fractional"):
+                return True
+            return not i["looks_like_id"]
+
+        candidates = [c for c, i in columns_info.items() if is_measure(c, i)]
         if not candidates:
             return None
 
@@ -198,25 +210,21 @@ class DataVisualizerAgent:
         except (TypeError, ValueError):
             return 0.0
 
-    def _aggregate_topn(self, data: List[Dict[str, Any]], dim_col: str, measure_col: str, top_n: int = 15, agg: str = "sum"):
-        """Group rows by dim_col, aggregate measure_col, and keep only the
-        top N groups by aggregate value (descending), folding the rest into
-        a single 'Others' bucket - rather than rendering one bar per raw row
-        for a high-cardinality dimension like a unique customer name."""
+    def _aggregate_topn(self, data: List[Dict[str, Any]], dim_col: str, measure_col: str, top_n: int = 5, agg: str = "sum"):
+        """Group rows by dim_col, aggregate measure_col, and keep only the top
+        N groups by value (descending, ties broken by label so the cut is
+        stable). Returns (labels, values, total_group_count). No 'Others'
+        bucket: one bar summing 100+ categories dwarfs the real bars and
+        reads as the biggest category - the full list goes to the Excel
+        download instead."""
         groups: Dict[str, float] = {}
         for row in data:
             raw_key = row.get(dim_col)
             key = str(raw_key) if raw_key is not None else "Unknown"
             groups[key] = groups.get(key, 0.0) + (1.0 if agg == "count" else self._numeric(row.get(measure_col)))
 
-        items = sorted(groups.items(), key=lambda kv: kv[1], reverse=True)
-        if len(items) > top_n:
-            top = items[:top_n]
-            others_total = sum(v for _, v in items[top_n:])
-            if others_total:
-                top.append(("Others", others_total))
-            items = top
-        return [k for k, _ in items], [v for _, v in items]
+        items = sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))
+        return [k for k, _ in items[:top_n]], [v for _, v in items[:top_n]], len(items)
 
     def _aggregate_by_date(self, data: List[Dict[str, Any]], date_col: str, measure_col: str):
         groups: Dict[str, float] = {}
@@ -229,6 +237,28 @@ class DataVisualizerAgent:
     # -----------------------------
     # Chart generation logic
     # -----------------------------
+    # Readability guidelines, applied to every chart built here:
+    #  - Categorical bars show only the top CHART_TOP_N categories, sorted
+    #    descending; the rest is offered as an Excel download in the chat.
+    #  - One series = one color, no legend (the axis titles say what it is).
+    #  - Axis titles and a chart title in plain words ("Branch Name", not
+    #    "branch_name"); long category labels are shortened, with the full
+    #    text kept in the tooltip.
+    #  - Long labels or many bars go horizontal so labels stay readable.
+    #  - Pie only for a complete set of <= CHART_TOP_N slices - a pie of the
+    #    top 5 out of 110 would misrepresent the shares.
+    #  - Time series keep every period (dropping months would be misleading).
+    CHART_TOP_N = 5
+    MAX_LABEL_CHARS = 24
+    SERIES_COLOR = "rgba(124, 58, 237, 0.85)"
+    SERIES_BORDER = "rgba(124, 58, 237, 1)"
+    AXIS_TEXT_COLOR = "#CBD5E1"
+    GRID_COLOR = "rgba(255, 255, 255, 0.08)"
+
+    @staticmethod
+    def _pretty(col: str) -> str:
+        return re.sub(r"[_\s]+", " ", str(col or "")).strip().title()
+
     def generate_multiple_chart_configs(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "", target_model: str = None) -> Dict[str, Any]:
         not_chart_worthy = {"bar": {}, "line": {}, "pie": {}, "recommended": None, "chart_worthy": False}
 
@@ -257,51 +287,52 @@ class DataVisualizerAgent:
 
         date_col = self._pick_date_column(columns_info)
         dim_candidates = self._pick_dimension_columns(columns_info, exclude=measure_col)
-        non_id_dims = [c for c in dim_candidates if not columns_info[c]["looks_like_id"]]
-        # Prefer a dimension whose cardinality is meaningfully below the row
-        # count (a real grouping column); fall back to any non-identifier
-        # dimension (even high-cardinality, like a unique customer name) so
-        # it can still be aggregated/top-N'd below rather than dropped.
-        low_card_dims = [c for c in non_id_dims if columns_info[c]["distinct"] < row_count]
-        usable_dims = low_card_dims or non_id_dims
+        # A text column is a label unless its NAME says it's an identifier.
+        # Its shape can't be trusted here: a grouped result has exactly one
+        # row per branch, so branch_name is unique per row and would
+        # otherwise be mistaken for an id - leaving nothing to chart by.
+        label_dims = [c for c in dim_candidates
+                      if not columns_info[c]["numeric"] and not ID_NAME_PATTERN.search(c)]
+        usable_dims = label_dims or dim_candidates
 
         configs: Dict[str, Any] = {}
+        measure_label = self._pretty(measure_col)
+        truncated = False
+        total_categories = None
 
         if date_col:
             labels, values = self._aggregate_by_date(data, date_col, measure_col)
-            configs["line"] = self._generate_line_chart(labels, values, date_col, measure_col)
-            configs["bar"] = self._generate_bar_chart(labels, values, date_col, measure_col)
+            title = f"{measure_label} by {self._pretty(date_col)}"
+            configs["line"] = self._generate_line_chart(labels, values, date_col, measure_col, title=title)
+            configs["bar"] = self._generate_bar_chart(labels, values, date_col, measure_col, title=title)
             configs["pie"] = {}
             recommended = "line"
             note = f"Aggregated {measure_col} over {date_col} across {len(labels)} time bucket(s)."
 
         elif usable_dims:
             dim_col = usable_dims[0]
-            distinct = columns_info[dim_col]["distinct"]
-            if distinct <= 20:
-                labels, values = self._aggregate_topn(data, dim_col, measure_col, top_n=20)
-                configs["bar"] = self._generate_bar_chart(labels, values, dim_col, measure_col)
-                configs["line"] = self._generate_line_chart(labels, values, dim_col, measure_col)
-                configs["pie"] = self._generate_pie_chart(labels, values, dim_col, measure_col) if distinct <= 8 else {}
-                recommended = "bar"
-                note = f"Grouped {row_count} row(s) by {dim_col} and aggregated {measure_col} across {distinct} categories, sorted descending."
-            else:
-                labels, values = self._aggregate_topn(data, dim_col, measure_col, top_n=15)
-                configs["bar"] = self._generate_bar_chart(labels, values, dim_col, measure_col)
-                configs["line"] = {}
-                configs["pie"] = {}
-                recommended = "bar"
+            labels, values, total_categories = self._aggregate_topn(data, dim_col, measure_col, top_n=self.CHART_TOP_N)
+            truncated = total_categories > len(labels)
+            dim_label = self._pretty(dim_col)
+            title = (f"Top {len(labels)} {dim_label} by {measure_label}" if truncated
+                     else f"{measure_label} by {dim_label}")
+            configs["bar"] = self._generate_bar_chart(labels, values, dim_col, measure_col, title=title)
+            configs["line"] = {}
+            configs["pie"] = {} if truncated else self._generate_pie_chart(labels, values, dim_col, measure_col, title=title)
+            recommended = "bar"
+            if truncated:
                 note = (
-                    f"{dim_col} has {distinct} distinct values, so rows were grouped by {dim_col} and "
-                    f"aggregated on {measure_col}, keeping only the top {min(15, len(labels))} plus an "
-                    f"'Others' bucket instead of charting all {row_count} raw rows."
+                    f"Showing the top {len(labels)} of {total_categories} {dim_label} values by "
+                    f"{measure_label} to keep the chart readable."
                 )
+            else:
+                note = f"Grouped {row_count} row(s) by {dim_col} and aggregated {measure_col} across {total_categories} categories, sorted descending."
         else:
             # Only a measure column, no usable grouping dimension - plot it
             # across rows rather than forcing a bar-per-row chart.
             labels = [f"Row {i + 1}" for i in range(row_count)]
             values = [self._numeric(row.get(measure_col)) for row in data]
-            configs["line"] = self._generate_line_chart(labels, values, "Row", measure_col)
+            configs["line"] = self._generate_line_chart(labels, values, "Row", measure_col, title=measure_label)
             configs["bar"] = {}
             configs["pie"] = {}
             recommended = "line"
@@ -311,83 +342,138 @@ class DataVisualizerAgent:
         configs["chart_worthy"] = True
         configs["measure"] = measure_col
         configs["note"] = note
+        # Read by the chat UI to offer the full result as an Excel download
+        # when the chart only shows part of it.
+        configs["truncated"] = truncated
+        configs["total_categories"] = total_categories
         return configs
 
     # -----------------------------
     # Helper chart generators
     # -----------------------------
-    # A wider, more vibrant palette than the old 4-color list, so charts
-    # with more than a handful of categories don't run out of colors (which
-    # left later slices/bars undefined/blank) and don't read as flat and
-    # monochrome. Cycled with modulo so any number of labels is covered.
+    # Multi-color palette, only for pie slices - where color is the only way
+    # to tell categories apart. Bars use the single SERIES_COLOR.
     PALETTE = [
-        'rgba(255, 99, 132, 0.85)',   # red/pink
+        'rgba(124, 58, 237, 0.85)',   # violet
         'rgba(54, 162, 235, 0.85)',   # blue
-        'rgba(255, 206, 86, 0.85)',   # yellow
         'rgba(75, 192, 192, 0.85)',   # teal
-        'rgba(153, 102, 255, 0.85)',  # purple
         'rgba(255, 159, 64, 0.85)',   # orange
+        'rgba(255, 99, 132, 0.85)',   # pink
+        'rgba(255, 206, 86, 0.85)',   # yellow
         'rgba(46, 204, 113, 0.85)',   # green
-        'rgba(231, 76, 60, 0.85)',    # dark red
-        'rgba(52, 152, 219, 0.85)',   # light blue
-        'rgba(241, 196, 15, 0.85)',   # gold
-        'rgba(155, 89, 182, 0.85)',   # violet
-        'rgba(26, 188, 156, 0.85)',   # turquoise
+        'rgba(155, 89, 182, 0.85)',   # purple
     ]
 
     def _palette(self, n: int) -> List[str]:
         return [self.PALETTE[i % len(self.PALETTE)] for i in range(n)]
 
-    def _generate_bar_chart(self, labels: List[str], values: List[float], label_col: str, data_col: str) -> Dict[str, Any]:
+    def _short_label(self, label: Any) -> str:
+        text = str(label)
+        return text if len(text) <= self.MAX_LABEL_CHARS else text[: self.MAX_LABEL_CHARS - 1] + "…"
+
+    @staticmethod
+    def _all_integers(values: List[float]) -> bool:
+        return all(float(v).is_integer() for v in values)
+
+    def _axis(self, title: str, integer_ticks: bool = False, begin_at_zero: bool = False) -> Dict[str, Any]:
+        axis: Dict[str, Any] = {
+            "title": {"display": bool(title), "text": title, "color": self.AXIS_TEXT_COLOR},
+            "ticks": {"color": self.AXIS_TEXT_COLOR},
+            "grid": {"color": self.GRID_COLOR},
+        }
+        if begin_at_zero:
+            axis["beginAtZero"] = True
+        if integer_ticks:
+            axis["ticks"]["precision"] = 0
+        return axis
+
+    def _title_plugin(self, title: str) -> Dict[str, Any]:
+        return {"display": bool(title), "text": title, "color": "#F1F5F9", "font": {"size": 14, "weight": "600"}}
+
+    def _generate_bar_chart(self, labels: List[str], values: List[float], label_col: str, data_col: str, title: str = "") -> Dict[str, Any]:
         if not labels or not values:
             return {}
-        dynamic_height = max(400, len(labels) * 25)
-        colors = self._palette(len(labels))
+        full_labels = [str(l) for l in labels]
+        short_labels = [self._short_label(l) for l in full_labels]
+        horizontal = len(labels) > 8 or any(len(l) > 12 for l in full_labels)
+        value_axis = self._axis(self._pretty(data_col), integer_ticks=self._all_integers(values), begin_at_zero=True)
+        category_axis = self._axis(self._pretty(label_col))
         return {
             "type": "bar",
-            "data": {"labels": labels, "datasets": [{
-                "label": f"{data_col}",
+            "data": {"labels": short_labels, "datasets": [{
+                "label": self._pretty(data_col),
                 "data": values,
-                "backgroundColor": colors,
-                "borderColor": [c.replace(', 0.85)', ', 1)') for c in colors],
+                "backgroundColor": self.SERIES_COLOR,
+                "borderColor": self.SERIES_BORDER,
                 "borderWidth": 1,
                 "borderRadius": 4,
+                "maxBarThickness": 36,
             }]},
-            "options": {"indexAxis": "y" if len(labels) > 10 else "x", "responsive": True, "maintainAspectRatio": False},
-            "height": dynamic_height
+            "options": {
+                "indexAxis": "y" if horizontal else "x",
+                "responsive": True,
+                "maintainAspectRatio": False,
+                "plugins": {"legend": {"display": False}, "title": self._title_plugin(title)},
+                "scales": {
+                    "x": value_axis if horizontal else category_axis,
+                    "y": category_axis if horizontal else value_axis,
+                },
+            },
+            # Untruncated labels for tooltips - Chart.js options are plain
+            # JSON here, so the frontend reads this to show the full name.
+            "full_labels": full_labels,
+            "height": max(240, len(labels) * 40) if horizontal else 280,
         }
 
-    def _generate_line_chart(self, labels: List[str], values: List[float], label_col: str, data_col: str) -> Dict[str, Any]:
+    def _generate_line_chart(self, labels: List[str], values: List[float], label_col: str, data_col: str, title: str = "") -> Dict[str, Any]:
         if not labels or not values:
             return {}
         return {
             "type": "line",
-            "data": {"labels": labels, "datasets": [{
-                "label": f"{data_col}",
+            "data": {"labels": [str(l) for l in labels], "datasets": [{
+                "label": self._pretty(data_col),
                 "data": values,
                 "fill": True,
-                "backgroundColor": "rgba(153, 102, 255, 0.15)",
-                "borderColor": "rgba(153, 102, 255, 1)",
-                "pointBackgroundColor": "rgba(255, 99, 132, 1)",
+                "backgroundColor": "rgba(124, 58, 237, 0.15)",
+                "borderColor": self.SERIES_BORDER,
+                "pointBackgroundColor": self.SERIES_BORDER,
                 "pointBorderColor": "#fff",
-                "pointRadius": 4,
+                "pointRadius": 3,
                 "tension": 0.3,
             }]},
-            "options": {"responsive": True, "maintainAspectRatio": True}
+            "options": {
+                "responsive": True,
+                "maintainAspectRatio": False,
+                "plugins": {"legend": {"display": False}, "title": self._title_plugin(title)},
+                "scales": {
+                    "x": self._axis(self._pretty(label_col)),
+                    "y": self._axis(self._pretty(data_col), integer_ticks=self._all_integers(values)),
+                },
+            },
+            "height": 280,
         }
 
-    def _generate_pie_chart(self, labels: List[str], values: List[float], label_col: str, data_col: str) -> Dict[str, Any]:
-        if not labels or not values:
+    def _generate_pie_chart(self, labels: List[str], values: List[float], label_col: str, data_col: str, title: str = "") -> Dict[str, Any]:
+        if not labels or not values or len(labels) > self.CHART_TOP_N:
             return {}
         colors = self._palette(len(labels))
         return {
             "type": "pie",
-            "data": {"labels": labels, "datasets": [{
-                "label": f"{data_col}",
+            "data": {"labels": [self._short_label(l) for l in labels], "datasets": [{
+                "label": self._pretty(data_col),
                 "data": values,
                 "backgroundColor": colors,
                 "borderColor": "#1E1E1E",
                 "borderWidth": 2,
             }]},
-            "options": {"responsive": True, "maintainAspectRatio": True}
+            "options": {
+                "responsive": True,
+                "maintainAspectRatio": False,
+                "plugins": {
+                    "legend": {"display": True, "position": "right", "labels": {"color": self.AXIS_TEXT_COLOR}},
+                    "title": self._title_plugin(title),
+                },
+            },
+            "full_labels": [str(l) for l in labels],
+            "height": 280,
         }

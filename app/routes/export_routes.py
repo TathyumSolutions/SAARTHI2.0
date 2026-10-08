@@ -7,6 +7,31 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 
 bp = Blueprint('export', __name__, url_prefix='/api/export')
 
+
+@bp.route('/results/<string:export_id>', methods=['GET'])
+@jwt_required()
+def download_result_export(export_id):
+    """
+    Download every record behind a chat answer as Excel. The export_id is
+    returned with the answer (response.export.id) - see
+    app/services/result_export_service.py. Only the user who asked the
+    question can download it.
+    Response: .xlsx file download
+    """
+    from app.services.result_export_service import (
+        load_result_export, build_result_workbook, export_filename,
+    )
+    export = load_result_export(export_id, get_jwt_identity())
+    if not export:
+        return jsonify({"error": "This download has expired or is not available."}), 404
+    return send_file(
+        build_result_workbook(export),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=export_filename(export),
+    )
+
+
 @bp.route('/csv', methods=['POST'])
 @jwt_required()
 def export_to_csv():

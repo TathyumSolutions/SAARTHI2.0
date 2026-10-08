@@ -454,6 +454,17 @@ def send_message():
         )
         print(f"DEBUG: AI Response from Service: {ai_response}")
 
+        # Keep the full result set so the chat can show a readable slice
+        # (top 5 bars / first rows) and still offer every record as Excel.
+        if isinstance(ai_response, dict) and ai_response.get("table"):
+            try:
+                from app.services.result_export_service import save_result_export
+                export = save_result_export(ai_response.get("table"), user_id, user_query)
+                if export:
+                    ai_response["export"] = export
+            except Exception as e:
+                print(f"⚠️ Could not save result export: {e}")
+
         # STEP 2: Return the response in the format the frontend expects
         return jsonify({
             "status": "success",
