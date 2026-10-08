@@ -70,6 +70,10 @@ services:
   ollama:
     image: ollama/ollama
     container_name: ollama
+    # Keep Ollama's request log (incl. the healthcheck's HEAD / + GET
+    # /api/tags every 5s) out of the `docker compose up` terminal. Logs are
+    # still kept - view them with: docker compose logs -f ollama
+    attach: false
     ports:
       - "11434:11434"
     volumes:
