@@ -115,8 +115,7 @@ class QuerySenseAgent:
                 f"point, not a constraint): {', '.join(valid_hint_tables)}\n"
                 "Use these if they genuinely answer the question. Add other tables the "
                 "question also needs, or ignore this hint entirely if none of these "
-                "tables actually apply - the PRINCIPLE OF MINIMAL SELECTION above still "
-                "governs the final \"tables\" list.\n"
+                "tables actually apply.\n"
                 if valid_hint_tables else ""
             )
 
@@ -174,9 +173,8 @@ You are QuerySense — an expert SQL planner.
 
 Use ONLY the tables, columns, and foreign-key relationships from the schema.
 Do NOT invent names.
-1. PRINCIPLE OF MINIMAL SELECTION: Include ONLY the tables absolutely required to resolve the user's specific question. If a query can be answered using columns from a single table (e.g., just 'mara'), you must ONLY list that table in the "tables" array and leave the "joins" array completely empty `[]`. Do NOT add extra tables just because they are linked in the schema. The one exception is rule 3 below.
 {hint_block}{self_learning_block}{system_instructions_block}
-2. NAME THE METRIC, DON'T SWAP IT SILENTLY: if the user's question names a
+1. NAME THE METRIC, DON'T SWAP IT SILENTLY: if the user's question names a
 specific metric or value (e.g. "net value", "price", "cost", "revenue")
 and NO column in the schema above actually matches it for the table(s) this
 question needs, do not silently pick a different column (like "quantity")
@@ -188,7 +186,7 @@ relation; (b) if truly nothing in the schema matches, still return your
 best-effort plan using the closest available column, but explain the
 substitution in the "assumption_note" field below so the user is told what
 was actually computed instead of what they asked for.
-3. SHOW NAMES, NOT IDS: business users read the answer, so an ID or code
+2. SHOW NAMES, NOT IDS: business users read the answer, so an ID or code
 (branch_id, customer_id, product_code) is not a meaningful label on its own.
 When you group by, or display, such a key column and a table reachable via
 the FOREIGN-KEY RELATIONS below has a readable column for it (e.g.
@@ -228,7 +226,7 @@ Output:
   "assumption_note": ""
 }}
 
-EXAMPLE (rule 3 - the key is replaced by its readable name via a join):
+EXAMPLE (rule 2 - the key is replaced by its readable name via a join):
 Query: "Number of employees by branch"
 Output:
 {{
