@@ -1462,7 +1462,7 @@ def _decide_output_format(table: list) -> str:
     return "table" if row_count < 50 else "chart"
 
 
-def _generate_chart_for_merged_table(table: list, user_query: str) -> dict:
+def _generate_chart_for_merged_table(table: list, user_query: str, system_instructions: str = "") -> dict:
     """
     Runs the same deterministic, no-LLM-call chart-config generator the DB
     track's own pipeline uses (DataVisualizerAgent - column classification,
@@ -1488,7 +1488,9 @@ def _generate_chart_for_merged_table(table: list, user_query: str) -> dict:
     from .databridge_services.agents import DataVisualizerAgent
 
     visualizer = DataVisualizerAgent()
-    state = {"data": table, "columns": list(table[0].keys()), "user_query": user_query}
+    state = {"data": table, "columns": list(table[0].keys()), "user_query": user_query,
+             # carries the user's chart preferences (e.g. "top 10 in charts")
+             "system_instructions": system_instructions or ""}
     return visualizer.execute(state).get("chart_configs", {})
 
 
@@ -2268,7 +2270,7 @@ that appears inside it.
             # contradicts format="chart".
             merged_chart = primary_result.get("chart") or {}
             if output_format == "chart" and not merged_chart:
-                merged_chart = _generate_chart_for_merged_table(primary_result.get("table") or [], user_query)
+                merged_chart = _generate_chart_for_merged_table(primary_result.get("table") or [], user_query, system_instructions)
 
             combined_sources = []
             for _, r in ok_results:

@@ -92,8 +92,9 @@
             <div class="settings-section" style="margin-left: 0;">
                 <div class="setting-desc" style="margin-bottom: 4px;">
                     Standing rules applied to every question you ask Saarthi &mdash; not just this session. For example: <em>&ldquo;For &lsquo;top N&rsquo; questions, rank by total sales amount unless I say otherwise.&rdquo;</em>
+                    Charts show the top 5 categories by default (all records stay downloadable as Excel); to change that, add e.g. <em>&ldquo;Show top 10 in charts.&rdquo;</em>
                 </div>
-                <textarea id="queryInstructions" placeholder="e.g. For &quot;top N&quot; questions, rank by total sales amount unless told otherwise. Always show currency in USD."></textarea>
+                <textarea id="queryInstructions" placeholder="e.g. For &quot;top N&quot; questions, rank by total sales amount unless told otherwise. Always show currency in USD. Show top 10 in charts."></textarea>
                 <div class="instructions-save-row">
                     <span class="instructions-save-status" id="instructionsSaveStatus"></span>
                     <button class="btn btn-primary" type="button" onclick="saveQueryInstructions()">Save Instructions</button>

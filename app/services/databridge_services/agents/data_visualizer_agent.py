@@ -98,8 +98,9 @@ class DataVisualizerAgent:
         user_query = state.get("user_query", "")
 
         chosen_model = state.get("model_name", self.model)
+        top_n = self.chart_top_n_from_instructions(state.get("system_instructions", ""))
 
-        chart_configs = self.generate_multiple_chart_configs(data, columns, user_query, target_model=chosen_model)
+        chart_configs = self.generate_multiple_chart_configs(data, columns, user_query, target_model=chosen_model, top_n=top_n)
         state["chart_configs"] = chart_configs
         state["current_step"] = "data_visualizer"
 
@@ -238,28 +239,59 @@ class DataVisualizerAgent:
     # Chart generation logic
     # -----------------------------
     # Readability guidelines, applied to every chart built here:
-    #  - Categorical bars show only the top CHART_TOP_N categories, sorted
-    #    descending; the rest is offered as an Excel download in the chat.
+    #  - Categorical bars show only the top N categories (CHART_TOP_N, or
+    #    the number in the user's Query Instructions - see
+    #    chart_top_n_from_instructions), sorted descending; the rest is
+    #    offered as an Excel download in the chat.
     #  - One series = one color, no legend (the axis titles say what it is).
     #  - Axis titles and a chart title in plain words ("Branch Name", not
     #    "branch_name"); long category labels are shortened, with the full
     #    text kept in the tooltip.
     #  - Long labels or many bars go horizontal so labels stay readable.
-    #  - Pie only for a complete set of <= CHART_TOP_N slices - a pie of the
-    #    top 5 out of 110 would misrepresent the shares.
+    #  - Pie only for a complete set of <= PIE_MAX_SLICES slices - a pie of
+    #    the top 5 out of 110 would misrepresent the shares.
     #  - Time series keep every period (dropping months would be misleading).
-    CHART_TOP_N = 5
+    CHART_TOP_N = 5          # default; a user's Query Instructions can override it
+    CHART_TOP_N_MAX = 50
+    PIE_MAX_SLICES = 5       # more slices than this stop being comparable
     MAX_LABEL_CHARS = 24
     SERIES_COLOR = "rgba(124, 58, 237, 0.85)"
     SERIES_BORDER = "rgba(124, 58, 237, 1)"
     AXIS_TEXT_COLOR = "#CBD5E1"
     GRID_COLOR = "rgba(255, 255, 255, 0.08)"
 
+    _NUMBER_WORDS = {
+        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+        "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20,
+    }
+    _CHART_WORDS = re.compile(r"\b(chart|charts|graph|graphs|bar|bars|visual|visuals|visualization|plot|plots)\b", re.I)
+    _TOP_N = re.compile(r"\btop[\s-]+(\d{1,3}|" + "|".join(_NUMBER_WORDS) + r")\b", re.I)
+    _N_BARS = re.compile(r"\b(\d{1,3}|" + "|".join(_NUMBER_WORDS) + r")\s+(bars|categories|items)\b", re.I)
+
+    @classmethod
+    def chart_top_n_from_instructions(cls, instructions: str) -> int:
+        """How many categories a bar chart shows, read from the user's Query
+        Instructions (Settings page) - e.g. "Show top 10 in charts" or
+        "Charts: 8 bars". Only a sentence that talks about charts counts, so
+        "For top 3 questions, rank by sales" doesn't change the chart.
+        Falls back to CHART_TOP_N when nothing applies."""
+        for sentence in re.split(r"[.;\n]+", instructions or ""):
+            if not cls._CHART_WORDS.search(sentence):
+                continue
+            match = cls._TOP_N.search(sentence) or cls._N_BARS.search(sentence)
+            if match:
+                raw = match.group(1).lower()
+                n = int(raw) if raw.isdigit() else cls._NUMBER_WORDS[raw]
+                if n >= 1:
+                    return min(n, cls.CHART_TOP_N_MAX)
+        return cls.CHART_TOP_N
+
     @staticmethod
     def _pretty(col: str) -> str:
         return re.sub(r"[_\s]+", " ", str(col or "")).strip().title()
 
-    def generate_multiple_chart_configs(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "", target_model: str = None) -> Dict[str, Any]:
+    def generate_multiple_chart_configs(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "", target_model: str = None, top_n: Optional[int] = None) -> Dict[str, Any]:
+        top_n = top_n or self.CHART_TOP_N
         not_chart_worthy = {"bar": {}, "line": {}, "pie": {}, "recommended": None, "chart_worthy": False}
 
         if not data or not columns:
@@ -311,14 +343,14 @@ class DataVisualizerAgent:
 
         elif usable_dims:
             dim_col = usable_dims[0]
-            labels, values, total_categories = self._aggregate_topn(data, dim_col, measure_col, top_n=self.CHART_TOP_N)
+            labels, values, total_categories = self._aggregate_topn(data, dim_col, measure_col, top_n=top_n)
             truncated = total_categories > len(labels)
             dim_label = self._pretty(dim_col)
             title = (f"Top {len(labels)} {dim_label} by {measure_label}" if truncated
                      else f"{measure_label} by {dim_label}")
             configs["bar"] = self._generate_bar_chart(labels, values, dim_col, measure_col, title=title)
             configs["line"] = {}
-            configs["pie"] = {} if truncated else self._generate_pie_chart(labels, values, dim_col, measure_col, title=title)
+            configs["pie"] = {} if truncated or len(labels) > self.PIE_MAX_SLICES else self._generate_pie_chart(labels, values, dim_col, measure_col, title=title)
             recommended = "bar"
             if truncated:
                 note = (
@@ -454,7 +486,7 @@ class DataVisualizerAgent:
         }
 
     def _generate_pie_chart(self, labels: List[str], values: List[float], label_col: str, data_col: str, title: str = "") -> Dict[str, Any]:
-        if not labels or not values or len(labels) > self.CHART_TOP_N:
+        if not labels or not values or len(labels) > self.PIE_MAX_SLICES:
             return {}
         colors = self._palette(len(labels))
         return {

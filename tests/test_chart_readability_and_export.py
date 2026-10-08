@@ -156,3 +156,35 @@ def test_expired_exports_are_pruned(app_ctx):
 
     exports.save_result_export(_branch_rows(3), user_id=1)
     assert not os.path.exists(path)
+
+
+# ---------------- top N from Query Instructions ----------------
+
+@pytest.mark.parametrize("instructions, expected", [
+    ("", 5),
+    ("Show top 10 in charts.", 10),
+    ("Always show currency in USD.\nBar charts: top 8 categories", 8),
+    ("Charts should show 12 bars", 12),
+    ("Show the top three in every chart", 3),
+    ("For top 3 questions, rank by total sales amount.", 5),  # not about charts
+    ("For 'top N' questions, rank by sales. Use bar charts.", 5),  # no number for charts
+    ("Show top 500 in charts", DataVisualizerAgent.CHART_TOP_N_MAX),
+    ("Show top 0 in charts", 5),
+])
+def test_chart_top_n_read_from_instructions(instructions, expected):
+    assert DataVisualizerAgent.chart_top_n_from_instructions(instructions) == expected
+
+
+def test_execute_uses_instruction_top_n():
+    state = {"data": _branch_rows(), "columns": ["branch_id", "branch_name", "count"],
+             "system_instructions": "Show top 10 in charts."}
+    cfg = _viz().execute(state)["chart_configs"]
+    assert len(cfg["bar"]["data"]["labels"]) == 10
+    assert "top 10 of 110" in cfg["note"]
+    assert cfg["pie"] == {}
+
+
+def test_pie_still_capped_when_top_n_is_raised():
+    rows = [{"region": f"R{i}", "amount": i * 1.5} for i in range(8)]
+    cfg = _viz().generate_multiple_chart_configs(rows, ["region", "amount"], top_n=10)
+    assert cfg["truncated"] is False and cfg["pie"] == {}

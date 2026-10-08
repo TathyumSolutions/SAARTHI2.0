@@ -57,6 +57,7 @@ def test_generates_chart_from_merged_table_via_data_visualizer_agent():
         "data": merged_table,
         "columns": ["material_group", "group_name", "net_value"],
         "user_query": "show net value by material group",
+        "system_instructions": "",
     })
     assert result == fake_chart_configs
 
@@ -72,7 +73,7 @@ def _run_real_gating_block(primary_result, user_query):
     src = open(os.path.join(ROOT_DIR, "app", "services", "router_service.py")).read()
     m = re.search(
         r'^ *output_format = _decide_output_format\(primary_result\.get\("table"\)\)\n'
-        r'.*?merged_chart = _generate_chart_for_merged_table\(primary_result\.get\("table"\) or \[\], user_query\)\n',
+        r'.*?merged_chart = _generate_chart_for_merged_table\(primary_result\.get\("table"\) or \[\], user_query, system_instructions\)\n',
         src, re.S | re.M,
     )
     block = textwrap.dedent(m.group(0))
@@ -81,6 +82,7 @@ def _run_real_gating_block(primary_result, user_query):
         "_generate_chart_for_merged_table": router_service._generate_chart_for_merged_table,
         "primary_result": primary_result,
         "user_query": user_query,
+        "system_instructions": "",
     }
     exec(block, ns)
     return ns["output_format"], ns["merged_chart"]
@@ -96,7 +98,7 @@ def test_multi_synthesis_calls_chart_generator_only_when_format_is_chart_and_non
         output_format, merged_chart = _run_real_gating_block(
             {"table": [{"a": 1}], "chart": {}}, "some question"
         )
-    mocked_gen.assert_called_once_with([{"a": 1}], "some question")
+    mocked_gen.assert_called_once_with([{"a": 1}], "some question", "")
     assert output_format == "chart"
     assert merged_chart == {"bar": {}}
 
