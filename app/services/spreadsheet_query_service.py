@@ -21,6 +21,7 @@ import pandas as pd
 from app.services.stream_manager import stream_manager
 from app.services import spreadsheet_service
 from app.models.model_config import ModelConfiguration
+from app.services.llm_call_logger import tracked_invoke, record_ollama_call
 
 ALLOWED_FILTER_OPS = {"==", "!=", ">", "<", ">=", "<=", "in", "contains", "not_contains"}
 ALLOWED_AGG_FUNCS = {"sum", "mean", "count", "min", "max", "median", "nunique"}
@@ -101,6 +102,7 @@ def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_cont
     from app.services.llm_providers import resolve_dynamic_llm
 
     messages = [SystemMessage(content=system_content), HumanMessage(content=user_content)]
+    _t0 = _time.monotonic()
 
     cfg = ModelConfiguration.query.filter_by(model=model_name).order_by(ModelConfiguration.id.desc()).first()
     cfg_settings = cfg.settings if cfg and isinstance(cfg.settings, dict) else {}
@@ -184,9 +186,14 @@ def _build_plan_prompt(available_tables: dict, feedback_context: str = "") -> st
         for c in info.get("columns", []):
             samples = [str(v) for v in (c.get("sample_values") or [])][:5]
             sample_note = f" e.g. {', '.join(samples)}" if samples else ""
-            col_lines.append(f"{c['name']} ({c['type']}){sample_note}")
+            extras = [f'header "{c["label"]}"' if c.get("label") else "",
+                      f"unit {c['unit']}" if c.get("unit") else "",
+                      c.get("meaning") or ""]
+            extra_note = f" [{'; '.join(e for e in extras if e)}]" if any(extras) else ""
+            col_lines.append(f"{c['name']} ({c['type']}){extra_note}{sample_note}")
         cols = "; ".join(col_lines)
-        tables_desc.append(f"- {table_name}: {info.get('description', '')}\n  columns: {cols}")
+        notes = f"\n  notes: {info['notes']}" if info.get("notes") else ""
+        tables_desc.append(f"- {table_name}: {info.get('description', '')}\n  columns: {cols}{notes}")
     tables_block = "\n".join(tables_desc) if tables_desc else "(no tables available)"
 
     feedback_block = ""

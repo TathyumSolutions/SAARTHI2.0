@@ -59,6 +59,7 @@ from app.services.general_service import answer_general_knowledge
 from app.services.stream_manager import stream_manager
 from app.services.spreadsheet_query_service import answer_from_spreadsheets
 from app.services.data_source_finaliser import finalize_data_source_strategy
+from app.services.result_combiner import combine_results
 from app.services.llm_call_logger import tracked_invoke
 
 # Token counting is best-effort: fall back to a rough estimate if tiktoken
@@ -1003,6 +1004,18 @@ to a source you have actual evidence holds it (from its schema/columns in
 the metadata below), otherwise keep it in the same sub-question as the
 entity it describes so the source's own join logic can try to resolve it.
 
+When the answer needs a value from one source applied to data in another
+(e.g. disbursed amounts in a database table x commission rates in an
+uploaded spreadsheet, quantities x a price list, sales x targets), call
+BOTH sources - a Result Combiner joins their rows on the values they share
+and does the arithmetic afterwards. For that to work, ask each source for
+rows at the SAME grain, including the column the other source can be
+matched on: e.g. "total disbursed amount by product, with product name and
+product code" for the database and "commission slab rates by product" for
+the spreadsheet - not just a single grand total from either. Never ask
+either source to compute the cross-source figure itself; it doesn't have
+the other source's data.
+
 When you do call more than one tool for the same question, give EACH tool
 call its own focused `question` argument, rewritten for what that specific
 source should answer - never just resend the original question unmodified
@@ -1470,7 +1483,8 @@ def _decide_output_format(table: list) -> str:
     return "table" if row_count < 50 else "chart"
 
 
-def _generate_chart_for_merged_table(table: list, user_query: str, system_instructions: str = "") -> dict:
+def _generate_chart_for_merged_table(table: list, user_query: str, system_instructions: str = "",
+                                     preferred_measure: str = None) -> dict:
     """
     Runs the same deterministic, no-LLM-call chart-config generator the DB
     track's own pipeline uses (DataVisualizerAgent - column classification,
@@ -1498,7 +1512,9 @@ def _generate_chart_for_merged_table(table: list, user_query: str, system_instru
     visualizer = DataVisualizerAgent()
     state = {"data": table, "columns": list(table[0].keys()), "user_query": user_query,
              # carries the user's chart preferences (e.g. "top 10 in charts")
-             "system_instructions": system_instructions or ""}
+             "system_instructions": system_instructions or "",
+             # the combined figure the question asked for, when there is one
+             "preferred_measure": preferred_measure}
     return visualizer.execute(state).get("chart_configs", {})
 
 
@@ -1520,113 +1536,8 @@ def _pick_primary_tabular_result(ok_results: list):
     return None, {}
 
 
-def _merge_tabular_results(ok_results: list):
-    """Combines the tables from *every* contributing track that returned
-    rows, instead of keeping only one track's table and silently dropping
-    the rest (what _pick_primary_tabular_result alone used to do). E.g. a
-    spreadsheet lookup (group_code/group_name) plus a DB aggregate
-    (material_group/net_value) answering the same MULTI question used to
-    surface only whichever track _pick_primary_tabular_result preferred -
-    so a question asking for both a spreadsheet attribute and a DB metric
-    (like a per-group net value) would show the groups but never the
-    number the user actually asked for, even though the DB track computed
-    it and it's right there in the query log.
-
-    Joins on the strongest shared key column when the tracks' tables have
-    one in common; falls back to a positional (row-by-row) merge when row
-    counts line up but no shared column name exists; otherwise falls back
-    to the single richest table, same as before.
-
-    A shared *column name* is not proof the two tracks share an ID space -
-    e.g. a DB table's material_id values ("M00123") and a Spreadsheet
-    lookup's ("MAT-00123") can both be called "material_id" while never
-    matching a single row (different seed data, different systems of
-    record). Joining on the name alone and getting zero matches used to
-    still mark the merge as done (new_columns folded into known_columns
-    even though not one row actually got those values), so downstream
-    synthesis saw what looked like a completed enrichment and had no
-    signal that the "real name" for an ID was actually just some other,
-    unrelated column from the base table - producing a confident-sounding
-    but fabricated-feeling answer instead of admitting the two sources
-    couldn't be cross-referenced. Zero-match shared-key joins are now
-    treated the same as "no reliable way to align" (skipped, not counted
-    as merged), and recorded in merged_result["merge_notes"] so the caller
-    can tell the synthesis step the alignment failed instead of staying
-    silent about it."""
-    tabular = [(name, result) for name, result in ok_results if result.get("table")]
-    if not tabular:
-        return _pick_primary_tabular_result(ok_results)
-    if len(tabular) == 1:
-        return tabular[0]
-
-    # Start from whichever table _pick_primary_tabular_result would have
-    # picked, so the base row shape/order stays exactly what it always
-    # was when a merge isn't possible.
-    base_name, base_result = _pick_primary_tabular_result(ok_results)
-    merged_table = [dict(row) for row in base_result.get("table") or []]
-    known_columns = set(merged_table[0].keys()) if merged_table else set()
-    merge_notes = []
-
-    for name, result in tabular:
-        if name == base_name:
-            continue
-        other_table = result.get("table") or []
-        if not other_table or not merged_table:
-            continue
-        other_columns = set(other_table[0].keys())
-        new_columns = other_columns - known_columns
-        if not new_columns:
-            continue  # nothing this track adds that the base doesn't already have
-
-        # Two tracks can share more than one same-named column (e.g. both
-        # "material_id" and "description") where only one is a genuine
-        # join key for this pair of tables - so every shared name is tried
-        # and the one that actually matches the most rows by real value
-        # overlap wins, rather than an arbitrary first pick out of a
-        # Python set (undefined iteration order, and blind to whether the
-        # values themselves ever line up).
-        shared_key, matched_rows, match_index = None, -1, None
-        for candidate in sorted(known_columns & other_columns):
-            index = {str(row.get(candidate)): row for row in other_table}
-            matches = sum(1 for row in merged_table if str(row.get(candidate)) in index)
-            if matches > matched_rows:
-                shared_key, matched_rows, match_index = candidate, matches, index
-
-        if shared_key:
-            for row in merged_table:
-                match = match_index.get(str(row.get(shared_key)))
-                if match:
-                    for col in new_columns:
-                        row[col] = match.get(col)
-            if matched_rows == 0:
-                merge_notes.append(
-                    f"Could not align {name} with {base_name}: both have a "
-                    f"'{shared_key}' column, but none of their values actually "
-                    f"matched, so {', '.join(sorted(new_columns))} from {name} "
-                    f"could NOT be attached to any {base_name} row. Do not "
-                    f"treat any {base_name} column as a stand-in for the "
-                    f"missing {', '.join(sorted(new_columns))} - if a "
-                    f"human-readable name isn't available, say so rather than "
-                    f"presenting an unrelated field as if it were one."
-                )
-                continue
-        elif len(other_table) == len(merged_table):
-            for row, extra in zip(merged_table, other_table):
-                for col in new_columns:
-                    row[col] = extra.get(col)
-        else:
-            continue  # no reliable way to align these two tables row-for-row
-
-        known_columns |= new_columns
-
-    merged_result = dict(base_result)
-    merged_result["table"] = merged_table
-    if merge_notes:
-        merged_result["merge_notes"] = merge_notes
-    return base_name, merged_result
-
-
-def _build_multi_strategy(ok_results: list, parallel: bool, output_format: str) -> str:
+def _build_multi_strategy(ok_results: list, parallel: bool, output_format: str,
+                          combine_strategy: str = "") -> str:
     """Narrates a MULTI-track answer's actual sequence: the sub-query sent
     to each data source, in the order they were dispatched (or "in
     parallel" if they were), and how the results were merged and formatted
@@ -1639,7 +1550,12 @@ def _build_multi_strategy(ok_results: list, parallel: bool, output_format: str) 
     merged the results from all sources and rendered them as a table."
     Previously this was just a flat "Combined answers from X, Y." with no
     sense of what was actually asked, in what order, or how the merged
-    output's format (table/chart/plain text) was decided."""
+    output's format (table/chart/plain text) was decided.
+
+    combine_strategy is the Result Combiner's own account of how the
+    sources' tables were joined and what was computed from them (join key,
+    rows matched, formulas, totals - see result_combiner.py), so the
+    stored strategy says exactly how the final figures were produced."""
     if not ok_results:
         return "Combined answers from multiple sources."
 
@@ -1672,7 +1588,10 @@ def _build_multi_strategy(ok_results: list, parallel: bool, output_format: str) 
         "kpi": "rendered them as a single summary value",
         "text": "summarized them as a plain-text answer",
     }.get(output_format, "merged them into a single answer")
-    merge_clause = f"Finally, merged the results from all sources and {format_note}."
+    if combine_strategy:
+        merge_clause = f"Then the Result Combiner: {combine_strategy} Finally, {format_note}."
+    else:
+        merge_clause = f"Finally, merged the results from all sources and {format_note}."
 
     return f"{intro} {merge_clause}"
 
@@ -2068,7 +1987,11 @@ class RouterService:
             # to expect so the first one to finish doesn't prematurely
             # close the Chain of Thought stream while the others are
             # still running (see stream_manager.begin_tracks).
-            stream_manager.begin_tracks(session_id, len(tool_calls))
+            # More than one track means a Result Combiner step runs after
+            # them all (LAYER 5) - one extra slot keeps the Chain of Thought
+            # stream open for it, closed by its own DONE below.
+            combiner_slot = len(tool_calls) > 1
+            stream_manager.begin_tracks(session_id, len(tool_calls) + (1 if combiner_slot else 0))
             outcomes = (
                 _execute_tool_calls_parallel(tool_calls, ctx)
                 if len(tool_calls) > 1
@@ -2115,11 +2038,14 @@ class RouterService:
 
             # Single tool selected — return its result directly, unmodified.
             if len(results) == 1:
+                if combiner_slot:
+                    _push_router_done(session_id)
                 tool_name, result = results[0]
                 router_map = {
                     "query_database": "DB",
                     "search_documents": "FILES",
                     "call_external_api": "API",
+                    "query_spreadsheet_data": "SPREADSHEET",
                     "answer_general_knowledge_tool": "GENERAL",
                     "check_data_source_status": "GENERAL",
                 }
@@ -2164,17 +2090,62 @@ class RouterService:
                     "router_decision": "MULTI",
                 }
 
-            # Merge every contributing track's table (not just pick one and
-            # drop the rest) *before* building the synthesis context, so
-            # the actual row data - not just each track's own paraphrased
-            # "answer" text - is available to the model. A track's prose
-            # answer (e.g. "Retrieved 8 rows across 2 columns") often
-            # doesn't restate the concrete figures a user asked for (like
-            # a per-group net value), so without the raw rows the
-            # synthesis model has nothing but a vague summary to work
-            # from and ends up deflecting instead of reporting numbers.
-            _, primary_result = _merge_tabular_results(ok_results)
+            # ------------------------------------------------
+            # Result Combiner - one DataFrame per source, joined
+            # on the column whose VALUES they share, with any cross-source
+            # figure the question asks for (e.g. disbursed amount x lowest
+            # slab rate) computed by code, not left to the synthesis LLM.
+            # See result_combiner.py.
+            # ------------------------------------------------
+            combination = None
+            if sum(1 for _, r in ok_results if r.get("table")) >= 2:
+                _push_router_event(
+                    session_id, "start", "Combining Results",
+                    "Matching the results from each source on the values they share and working out the combined figures."
+                )
+                combiner_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0, openai_api_key=openai_api_key)
+
+                def _combiner_invoke(prompt: str) -> str:
+                    return tracked_invoke(
+                        combiner_llm, [SystemMessage(content=prompt)],
+                        purpose="router.result_combiner", model_name="gpt-4o-mini", provider="openai",
+                        user_id=user_id, session_id=session_id, company_code=company_code,
+                    ).content
+
+                try:
+                    combination = combine_results(ok_results, user_query, llm_invoke=_combiner_invoke)
+                except Exception as e:
+                    print(f"⚠️ [COMBINER] Failed, falling back to the primary table: {e}")
+                    combination = None
+                if combination:
+                    stats = combination.get("join_stats") or []
+                    combine_desc = (
+                        "; ".join(f"joined on {s['left_on']} = {s['right_on']} ({s['matched']} of {s['left_rows']} matched)" for s in stats)
+                        or "the sources share no matching values, so they could not be joined"
+                    )
+                    if combination.get("totals"):
+                        combine_desc += ". Totals: " + ", ".join(
+                            f"{k} = {v:,.2f}" for k, v in combination["totals"].items()
+                        )
+                else:
+                    combine_desc = "Could not combine the results; showing the main source's table."
+                _push_router_event(session_id, "complete", "Combining Results", combine_desc[:400] + ".")
+                master_steps.append(f"Combining Results - {combine_desc}")
+            if combiner_slot:
+                _push_router_done(session_id)
+
+            if combination:
+                primary_result = dict(dict(ok_results)[combination["base"]])
+                primary_result["table"] = combination["table"]
+                # The base track's own chart describes its own rows only,
+                # not the combined table - rebuilt from the combined rows below.
+                primary_result["chart"] = {}
+                merge_notes = [] if combination.get("join_stats") else combination.get("notes") or []
+            else:
+                _, primary_result = _pick_primary_tabular_result(ok_results)
+                merge_notes = []
             merged_table = primary_result.get("table") or []
+
             table_context = ""
             if merged_table:
                 sample_rows = merged_table[:25]
@@ -2182,16 +2153,21 @@ class RouterService:
                     "\n\n[Actual data rows retrieved - use these exact values when the "
                     "answer calls for specific figures]:\n" + json.dumps(sample_rows, default=str)
                 )
+            combined_context = ""
+            if combination and combination.get("join_stats"):
+                totals = combination.get("totals") or {}
+                combined_context = (
+                    "\n\n[Combined result - computed exactly by code from the sources above; report "
+                    "these figures as they are, do not recompute or estimate them]:\n"
+                    + combination["strategy"]
+                    + ("\nGrand totals: " + json.dumps(totals) if totals else "")
+                )
 
-            # Surfaced when _merge_tabular_results found a same-named "shared
-            # key" column across two tracks (e.g. material_id) that never
-            # actually matched a single row between them - without this, the
-            # synthesis model below sees only the base track's own table (a
-            # DB lookup column that may itself be meaningless placeholder
-            # data) with no signal that a second source's real values
-            # existed but couldn't be tied to it, and ends up presenting the
-            # base track's raw field as if it were the missing information.
-            merge_notes = primary_result.get("merge_notes") or []
+            # Surfaced when the combiner found no value shared between two
+            # sources' tables - without this, the synthesis model sees only
+            # the base track's table with no signal that a second source's
+            # values existed but couldn't be tied to it, and ends up
+            # presenting an unrelated field as if it were the missing data.
             merge_notes_context = (
                 "\n\n[Data alignment note - could NOT be cross-referenced]:\n"
                 + "\n".join(merge_notes)
@@ -2199,19 +2175,23 @@ class RouterService:
             )
 
             _log_strategy_event(
-                "results_merged",
+                "results_combined",
                 session_id=session_id,
                 user_query=user_query,
                 tracks=[name for name, _ in ok_results],
                 failed_tracks=[name for name, _ in failed_results],
                 merged_row_count=len(merged_table),
                 merged_columns=sorted({k for row in merged_table[:1] for k in row.keys()}) if merged_table else [],
+                combine_plan=(combination or {}).get("plan"),
+                planned_by=(combination or {}).get("planned_by"),
+                join_stats=(combination or {}).get("join_stats"),
+                totals=(combination or {}).get("totals"),
                 merge_notes=merge_notes,
             )
 
             accumulated_context = "\n".join(
                 f"[Context from {name}]: {result.get('answer')}" for name, result in ok_results
-            ) + table_context + merge_notes_context
+            ) + combined_context + table_context + merge_notes_context
             # accumulated_context is built from database rows, document
             # content, and external API responses - none of it is
             # trusted. Delimit it clearly and tell the model explicitly to
@@ -2235,6 +2215,11 @@ user's question asks for specific figures (amounts, totals, counts, prices,
 etc.), state those exact values from that data - don't just describe the
 data's shape (e.g. never answer with only "N rows were retrieved" or offer
 to share the numbers "if you'd like them"; give them directly).
+
+If the context includes a "Combined result" section, its figures (per-row
+derived values and grand totals) were computed exactly by code from the
+other sources - lead with them, state them as given, and never redo or
+approximate that arithmetic yourself.
 
 If the context includes a "Data alignment note" section, it means two of
 the sources above could NOT be cross-referenced (e.g. a database record and
@@ -2279,8 +2264,8 @@ that appears inside it.
             if failed_results:
                 answer_text += f"\n\n(Note: I couldn't get data from {_friendly_track_list(failed_results)} for this request, so the above may be incomplete.)"
 
-            # primary_result was already computed above (merged across every
-            # contributing track's table) so the synthesis prompt could see
+            # primary_result was already computed above (the combined table,
+            # when the sources could be combined) so the synthesis prompt could see
             # the real data - reused here for the table/chart/format passed
             # back to the chat UI, instead of picking it a second time.
             output_format = _decide_output_format(primary_result.get("table"))
@@ -2292,8 +2277,17 @@ that appears inside it.
             # merged table instead of returning an empty {} that
             # contradicts format="chart".
             merged_chart = primary_result.get("chart") or {}
-            if output_format == "chart" and not merged_chart:
-                merged_chart = _generate_chart_for_merged_table(primary_result.get("table") or [], user_query, system_instructions)
+            combined_ok = bool(combination and combination.get("join_stats"))
+            if (output_format == "chart" or combined_ok) and not merged_chart:
+                # A combined table always gets the visualizer's chart-worthiness
+                # check (the base track's own chart was dropped above, since it
+                # only described that track's rows), plotting the figure the
+                # combiner computed for the question when there is one.
+                derived = ((combination or {}).get("plan") or {}).get("derived") or []
+                merged_chart = _generate_chart_for_merged_table(
+                    primary_result.get("table") or [], user_query, system_instructions,
+                    preferred_measure=derived[-1]["as"] if derived else None,
+                )
 
             combined_sources = []
             for _, r in ok_results:
@@ -2305,6 +2299,9 @@ that appears inside it.
                 f"{FRIENDLY_TRACK_NAMES.get(n, n)}: {r['main_query']}"
                 for n, r in ok_results if r.get("main_query")
             ) or None
+            if combination and combination.get("plan", {}).get("joins"):
+                combine_plan_text = f"Result Combiner plan: {json.dumps(combination['plan'], default=str)}"
+                combined_main_query = f"{combined_main_query}; {combine_plan_text}" if combined_main_query else combine_plan_text
 
             # Related queries can repeat across tracks (each track carries
             # the same router-level feedback_context match) - dedup by
@@ -2320,7 +2317,8 @@ that appears inside it.
 
             query_code = _log_query(
                 user_id, company_code, user_query, "MULTI", answer_text,
-                _build_multi_strategy(ok_results, executed_in_parallel, output_format),
+                _build_multi_strategy(ok_results, executed_in_parallel, output_format,
+                                      (combination or {}).get("strategy", "")),
                 combined_sources, combined_main_query,
                 related_queries=combined_related,
             )
@@ -2329,6 +2327,7 @@ that appears inside it.
                 "sql": primary_result.get("sql"), "table": primary_result.get("table", []),
                 "chart": merged_chart, "insights": primary_result.get("insights", []),
                 "format": output_format,
+                "totals": (combination or {}).get("totals") or {},
                 "steps": master_steps,
                 "chain_of_thought": master_steps,
                 "router_decision": "MULTI",

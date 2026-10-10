@@ -100,7 +100,10 @@ class DataVisualizerAgent:
         chosen_model = state.get("model_name", self.model)
         top_n = self.chart_top_n_from_instructions(state.get("system_instructions", ""))
 
-        chart_configs = self.generate_multiple_chart_configs(data, columns, user_query, target_model=chosen_model, top_n=top_n)
+        chart_configs = self.generate_multiple_chart_configs(
+            data, columns, user_query, target_model=chosen_model, top_n=top_n,
+            preferred_measure=state.get("preferred_measure"),
+        )
         state["chart_configs"] = chart_configs
         state["current_step"] = "data_visualizer"
 
@@ -290,7 +293,8 @@ class DataVisualizerAgent:
     def _pretty(col: str) -> str:
         return re.sub(r"[_\s]+", " ", str(col or "")).strip().title()
 
-    def generate_multiple_chart_configs(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "", target_model: str = None, top_n: Optional[int] = None) -> Dict[str, Any]:
+    def generate_multiple_chart_configs(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "", target_model: str = None, top_n: Optional[int] = None,
+                                        preferred_measure: Optional[str] = None) -> Dict[str, Any]:
         top_n = top_n or self.CHART_TOP_N
         not_chart_worthy = {"bar": {}, "line": {}, "pie": {}, "recommended": None, "chart_worthy": False}
 
@@ -300,6 +304,11 @@ class DataVisualizerAgent:
         row_count = len(data)
         columns_info = self._classify_columns(data, columns)
         measure_col = self._pick_measure_column(columns_info)
+        # A caller that knows which figure the question is about (e.g. the
+        # Result Combiner's computed commission column) can ask for it to be
+        # the one plotted, as long as it's genuinely numeric.
+        if preferred_measure and columns_info.get(preferred_measure, {}).get("numeric"):
+            measure_col = preferred_measure
 
         # ---- Chart-worthiness gate ----
         # No genuine numeric measure column (aggregate/amount/quantity/price)

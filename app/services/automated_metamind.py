@@ -75,6 +75,71 @@ def _persist_metamind_summary(resource, summary_text):
         print(f"⚠️ Could not persist metamind_summary for {resource.__class__.__name__} id={getattr(resource, 'id', None)}: {e}")
 
 
+def _apply_db_column_intelligence(tables: dict, connection=None) -> dict:
+    """Adds a deterministic role/unit to every introspected DB column (see
+    column_intelligence.profile_column), then the LLM column meanings
+    stored for this connection by enrich_db_column_semantics(), if any -
+    so the router, the SQL agent and the result combiner all see what a
+    column means, not just its name and a handful of sample values."""
+    from app.services.column_intelligence import apply_profiles, merge_semantics
+
+    stored = ((getattr(connection, "config", None) or {}).get("column_semantics") or {}) if connection else {}
+    for table_name, table_data in (tables or {}).items():
+        columns = table_data.get("columns") or []
+        apply_profiles(columns, row_count=table_data.get("row_count"))
+        table_semantics = stored.get(table_name)
+        if table_semantics and table_semantics.get("signature") == sorted(c.get("name") for c in columns):
+            merge_semantics(columns, table_semantics)
+    return tables
+
+
+def enrich_db_column_semantics(connection, llm_invoke=None, max_tables: int = 40) -> int:
+    """For a PostgreSQL connection's last-introspected tables
+    (schema_metadata), asks an LLM - once per table - what each column
+    means, from its name, type, sample values and the table/connection
+    descriptions. Stored on connection.config["column_semantics"] keyed by
+    table, with the column-name signature it was made for (a table whose
+    columns change is re-done, never mis-applied), and applied onto
+    schema_metadata straight away. Run from Process; tables already done
+    are skipped, so repeated runs cost nothing. Returns tables enriched."""
+    from app import db
+    from app.services.column_intelligence import enrich_table_semantics
+
+    tables = copy.deepcopy(connection.schema_metadata or {})
+    if not tables:
+        return 0
+    config = copy.deepcopy(connection.config or {})
+    stored = config.get("column_semantics") or {}
+    enriched = 0
+    for table_name, table_data in list(tables.items())[:max_tables]:
+        columns = table_data.get("columns") or []
+        signature = sorted(c.get("name") for c in columns)
+        if stored.get(table_name, {}).get("signature") == signature:
+            continue
+        sample_rows = []
+        for i in range(5):
+            row = {c["name"]: c["sample_values"][i]
+                   for c in columns if i < len(c.get("sample_values") or [])}
+            if row:
+                sample_rows.append(row)
+        semantics = enrich_table_semantics(
+            table_name, columns, sample_rows,
+            title=table_data.get("description") or "", context=connection.description or "",
+            llm_invoke=llm_invoke,
+        )
+        if not semantics.get("columns"):
+            continue
+        stored[table_name] = {"signature": signature, "columns": semantics["columns"]}
+        enriched += 1
+    if not enriched:
+        return 0
+    config["column_semantics"] = stored
+    connection.config = config
+    connection.schema_metadata = _apply_db_column_intelligence(tables, connection)
+    db.session.commit()
+    return enriched
+
+
 # These are Saarthi's own internal application tables - never show them
 # to the AI as if they were customer/business data.
 INTERNAL_SYSTEM_TABLES = {
@@ -480,6 +545,7 @@ def to_sql_agent_schema(db_tables: dict, relations: list = None) -> dict:
                 "nullable": col.get("nullable"),
                 "example_values": col.get("sample_values", []),
                 **({"lookup_hint": col["lookup_hint"]} if col.get("lookup_hint") else {}),
+                **{k: col[k] for k in ("meaning", "role", "unit") if col.get(k)},
             }
             for col in table_data.get("columns", [])
         }
@@ -785,6 +851,7 @@ def _introspect_visible_databases(user_id, sap_db_config=None):
             connection.status = 'connected'
         connection.error_message = None
         if tables:
+            _apply_db_column_intelligence(tables, connection)
             # Cache the raw (pre-description-merge) shape so
             # _load_cached_visible_databases() can apply this connection's
             # *current* description at read time, same as the live path
@@ -839,7 +906,7 @@ def _load_cached_visible_databases(user_id):
         if not cached:
             continue
 
-        tables = copy.deepcopy(cached)
+        tables = _apply_db_column_intelligence(copy.deepcopy(cached), connection)
         if connection.description:
             for table_data in tables.values():
                 table_data["description"] = f"{connection.description} — {table_data.get('description', '')}".strip(" —")
@@ -1069,6 +1136,48 @@ def introspect_qdrant(user_id):
 # STEP 3.5: INTROSPECT spreadsheet-backed tables -> SPREADSHEET datasource
 # ============================================================
 
+def _sync_spreadsheet_connection_records(connections_by_id: dict, tables_by_connection: dict) -> None:
+    """Keeps each visible Excel connection's own database row honest:
+    - schema_metadata mirrors its tables' metadata (columns, original
+      headers, types, units, roles, meanings, sample values, notes) -
+      previously only a PostgreSQL connection ever had this filled in, and
+      an Excel connection's schema lived solely in a JSON file on disk;
+    - a connection with no table left behind it (its uploaded file/manifest
+      entry is gone, e.g. the uploads volume wasn't kept across a rebuild)
+      is marked status='error' with a re-upload message, instead of sitting
+      there with an empty description/summary looking like it's fine.
+    Only writes when something actually changed."""
+    from app import db
+    from app.services.spreadsheet_service import schema_metadata_for
+
+    missing_message = "The uploaded file for this connection is missing. Please delete this connection and re-upload the file."
+    changed = False
+    for connection_id, connection in connections_by_id.items():
+        if (connection.type or '').lower() != 'excel':
+            continue
+        tables = tables_by_connection.get(connection_id)
+        if tables:
+            metadata = schema_metadata_for(tables)
+            if connection.schema_metadata != metadata:
+                connection.schema_metadata = metadata
+                changed = True
+            if connection.status == 'error' and connection.error_message == missing_message:
+                connection.status = 'connected'
+                connection.error_message = None
+                changed = True
+        elif connection.status != 'error' or connection.error_message != missing_message:
+            connection.status = 'error'
+            connection.error_message = missing_message
+            connection.metamind_summary = "No data available - the uploaded file is missing and needs to be re-uploaded."
+            changed = True
+    if changed:
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"⚠️ [SPREADSHEET] Could not update spreadsheet connection records: {e}")
+
+
 def introspect_spreadsheets(user_id):
     """
     Reads the Parquet-backed table manifest (spreadsheet_service.py) - not
@@ -1090,9 +1199,6 @@ def introspect_spreadsheets(user_id):
         print(f"⚠️ [SPREADSHEET] Could not read spreadsheet manifest: {e}")
         return None
 
-    if not tables:
-        return None
-
     from app.models.database_connection import DatabaseConnection
     granted_ids = _visible_resource_ids(user_id, 'database')
     connections_by_id = {
@@ -1104,10 +1210,12 @@ def introspect_spreadsheets(user_id):
 
     tables_out = {}
     summary_parts_by_connection = {}
-    for table in tables:
+    tables_by_connection = {}
+    for table in tables or []:
         connection_id = table.get("connection_id")
         if connection_id not in visible_connection_ids:
             continue
+        tables_by_connection.setdefault(connection_id, []).append(table)
         auto_description = table.get("description") or f"Spreadsheet table storing {table['table']} records."
         summary_parts_by_connection.setdefault(connection_id, []).append(
             f"{table['table']} ({table.get('row_count')} rows): {auto_description}"
@@ -1121,10 +1229,13 @@ def introspect_spreadsheets(user_id):
             "description": description,
             "row_count": table.get("row_count"),
             "columns": table.get("columns", []),
+            **({"notes": table["notes"]} if table.get("notes") else {}),
         }
 
     for connection_id, parts in summary_parts_by_connection.items():
         _persist_metamind_summary(connections_by_id[connection_id], "; ".join(parts))
+
+    _sync_spreadsheet_connection_records(connections_by_id, tables_by_connection)
 
     if not tables_out:
         print(f"⚠️ [SPREADSHEET] No spreadsheet-backed tables visible to user {user_id}.")
