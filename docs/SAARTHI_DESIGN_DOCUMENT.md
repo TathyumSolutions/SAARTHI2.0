@@ -142,6 +142,8 @@ app/services/
    api_services.py               API track (tool-calling + HTTP execution)
    general_service.py            GENERAL track
    data_source_finaliser.py      resolves business terms via lookup spreadsheets (pre-DB track)
+   column_intelligence.py        numeric-text normalisation, column role/unit, LLM column meanings
+   result_combiner.py            joins multi-source tables by value-verified keys + plan-driven arithmetic
    bi_semantics_service.py       default measure/aggregation hints for SQL generation
    model_selection_service.py    which model runs each pipeline step
    model_config_access_service   LLM grants + daily budgets
@@ -196,7 +198,7 @@ erDiagram
 
 | Table (model) | Key columns | Purpose |
 |---|---|---|
-| `database_connections` (`DatabaseConnection`) | `name`, `type` (`PostgreSQL`/`MySQL`/…/**`Excel`**), `host/port/database/username/password`, `config` JSON, **`status`** (`connected`/`processed`/`error`/…), `error_message`, `description` (user), **`metamind_summary`** (AI), **`schema_metadata`** JSON (cached introspection), `company_code`, `created_by_user_id`, `last_tested` | Every structured data source. Excel/CSV uploads are rows here too (`type='Excel'`, **one row per sheet**), but their data lives in Parquet. |
+| `database_connections` (`DatabaseConnection`) | `name`, `type` (`PostgreSQL`/`MySQL`/…/**`Excel`**), `host/port/database/username/password`, `config` JSON, **`status`** (`connected`/`processed`/`error`/…), `error_message`, `description` (user), **`metamind_summary`** (AI), **`schema_metadata`** JSON (cached introspection, and for Excel rows a mirror of the manifest columns), `company_code`, `created_by_user_id`, `last_tested`; `config` also holds `column_semantics` (LLM column meanings per PG table) and warehouse mapping | Every structured data source. Excel/CSV uploads are rows here too (`type='Excel'`, **one row per sheet**), but their data lives in Parquet. |
 | `files` (`FileResource`) | `document_code` (unique, e.g. `DOC-POL-20260101-101500`), `file_name`, `file_type`, `file_size`, `file_path`, `description` (user), **`status`** (`uploaded`→`processing`→`processed`/`error`), `error_message`, **`metamind_summary`** (AI topic summary), `company_code`, `created_by_user_id` | Unstructured documents. Chunks live in Qdrant tagged with `metadata.document_code`. |
 | `api_connectors` (`ApiConnector`) | `integration_name` (unique), `base_url`, `endpoint`, `method`, `auth_type`, `api_token` (Fernet-encrypted), `api_description` (required), `status` (`Active`), **`metamind_summary`** (redacted router-visible text), `company_code`, `created_by_user_id` | Registered REST tools for the API track. |
 
@@ -218,7 +220,7 @@ erDiagram
 |---|---|---|---|
 | Uploaded documents | `./uploads/<file>` | `POST /api/upload/unstructured` | Process (embedding), view/download |
 | **Spreadsheet Parquet files** | `./uploads/spreadsheets/<connection_id>/<table>.parquet` | `POST /api/databases/excel`, `PUT /<id>/excel` | SPREADSHEET track, lookup hints, finaliser, preview/download |
-| **Spreadsheet manifest** | `./uploads/spreadsheets/spreadsheet_metadata.json` | `spreadsheet_service.save_table`, `set_table_description` (**Process**), `delete_connection_tables` | `introspect_spreadsheets`, SPREADSHEET track |
+| **Spreadsheet manifest** | `./uploads/spreadsheets/spreadsheet_metadata.json`. Per table: columns with type/stats, original header `label`, `unit`, `role`, `meaning`; plus `title`, `notes`, `description` | `spreadsheet_service.save_table`, `set_table_semantics` (**Process**), `delete_connection_tables`, `scripts/backfill_spreadsheet_metadata.py` | `introspect_spreadsheets`, SPREADSHEET track |
 | **Qdrant collection** `saarthi_unstructured` | Qdrant service | Document **Process** (`llm_service.process_to_embeddings`) | FILES track, `introspect_qdrant` |
 | **External DB table comments** | `COMMENT ON TABLE` in the customer's Postgres | PostgreSQL **Process** (`enrich_table_descriptions_with_llm`) | `introspect_databridge_db` (table descriptions) |
 | Result exports | `<instance>/result_exports/<uuid>.json` (7-day TTL) | `chat_routes.send_message` → `save_result_export` | `GET /api/export/results/<id>` (Excel download) |
@@ -276,6 +278,7 @@ For each `public` base table, skipping Saarthi's own tables and any `_`-prefixed
 * `row_count`: `COUNT(*)`
 * `constraints`: primary key, foreign keys, unique columns
 * per column: `data_type`, `nullable`, and, when `row_count ≤ 100,000`, also `unique_values`, `null_count` and up to 5 `sample_values`
+* then `_apply_db_column_intelligence` adds a deterministic `role` (identifier/measure/dimension/date/flag/text) and `unit` per column (`column_intelligence.profile_column`), and merges any LLM column `meaning` stored in `connection.config.column_semantics`. A stored meaning is only applied if the table's column-name signature still matches.
 
 This is the shape stored in **`DatabaseConnection.schema_metadata`**. The connection's free-text `description` is prefixed onto each table description at read time, so editing the description takes effect without re-introspecting.
 
@@ -360,6 +363,12 @@ sequenceDiagram
         MM->>EXT: re-introspect (now picks up new COMMENTs)
         MM->>RES: ✎ schema_metadata, metamind_summary, status
     end
+    R->>MM: enrich_db_column_semantics(connection) — up to 40 tables, skips tables already done
+    MM->>LLM: per table: meaning of each column (metamind.column_semantics)
+    MM->>RES: ✎ config.column_semantics (+ signature), schema_metadata
+    opt anything enriched
+        R->>MM: generate_router_config(uid) again for each affected user
+    end
     R->>RES: ✎ status='processed' (or keeps 'error' → HTTP 502)
 ```
 
@@ -367,6 +376,7 @@ sequenceDiagram
 
 * The cached `schema_metadata` (tables, columns, samples, constraints) is now fresh. **This is the schema the router and the SQL agents see.**
 * Table descriptions improve, because LLM-written COMMENTs replace the generic "Table storing X records." The router uses these descriptions to pick tables.
+* Every column gets a role/unit and an LLM-written meaning. The router, SQL agents and result combiner all see these.
 * `metamind_summary` is refreshed. It appears in the Knowledge Base list and Details popup.
 
 **Edit** (`PUT /api/databases/<id>`) re-runs the live config for owner, editor and grantees. **Delete** removes the `resource_mapping` rows and the connection row. Nothing else needs cleaning up, because routing is computed live and the connection simply disappears from the next query.
@@ -391,12 +401,15 @@ sequenceDiagram
     participant FS as uploads/spreadsheets
 
     U->>R: POST /api/databases/excel (multipart: name, file, description?)
-    R->>HD: read_tabular_upload(bytes) → {sheet: df}, header row + title rows per sheet
+    R->>HD: read_tabular_upload(bytes) → {sheet: df}, header row + title/notes rows per sheet
     loop each non-empty sheet
-        R->>RES: ✎ database_connections (type='Excel', database=<table_name>, status='connected',<br/>description = user text or sheet title)
-        R->>SS: save_table(conn_id, table, sheet, df)
+        R->>RES: ✎ database_connections (type='Excel', database=<table_name>, status='connected',<br/>description = user text or sheet title, whitespace-cleaned)
+        R->>R: _save_sheet: sanitize headers (<, >, % → lt/gt/pct), keep originals as labels
+        R->>SS: save_table(conn_id, table, sheet, df, labels, title, notes)
+        SS->>SS: normalize_numeric_text ("0.64%" → 0.64 + unit), apply_profiles (role)
         SS->>FS: ✎ <conn_id>/<table>.parquet
-        SS->>FS: ✎ manifest: columns(type,unique,null,samples), row_count, description=None
+        SS->>FS: ✎ manifest: columns(type,stats,label,unit,role), title, notes, row_count, description=None
+        R->>RES: ✎ schema_metadata = schema_metadata_for(record)
         R->>RES: ✎ config={source_tables,original_filename,row_count}
     end
     R->>MM: generate_router_config(user) [LIVE]  → ✎ metamind_summary
@@ -408,10 +421,11 @@ sequenceDiagram
         R->>RES: ✎ status='error' ("file may be missing — re-upload")
     else
         loop each table of the connection
-            R->>SS: get_table_df → columns + 5 sample rows
-            R->>LLM: "describe this table in one sentence"
-            R->>SS: set_table_description → ✎ manifest.description
+            R->>SS: manifest record (title, notes, labels) + 15 sample rows
+            R->>LLM: enrich_table_semantics: table description + meaning per column (metamind.column_semantics)
+            R->>SS: set_table_semantics → ✎ manifest.description + columns[].meaning
         end
+        R->>RES: ✎ schema_metadata = schema_metadata_for(tables)
         loop every affected user
             R->>MM: generate_router_config(uid) → ✎ metamind_summary (now includes description)
         end
@@ -419,7 +433,7 @@ sequenceDiagram
     end
 ```
 
-**What Process changes for later queries:** the manifest `description` fills `SPREADSHEET.tables[t].description` in the routing menu. That description is the main signal the router uses to choose `query_spreadsheet_data`, and it also feeds the **lookup-hint** cross-reference (§9.1) that lets DB questions use spreadsheet code tables.
+**What Process changes for later queries:** the manifest `description` (and per-column meanings) fills `SPREADSHEET.tables[t].description` in the routing menu. That description is the main signal the router uses to choose `query_spreadsheet_data`, and it also feeds the **lookup-hint** cross-reference (§9.1) that lets DB questions use spreadsheet code tables.
 
 **Edit** (`PUT /api/databases/<id>/excel`) renames, changes the description, and/or replaces the data with a single-sheet file. On a data replace it overwrites the Parquet file and manifest entry, **sets `metamind_summary=NULL` and `status='connected'`** (so Process must be run again), then regenerates config. **Delete** removes the mapping rows, the connection row, the Parquet files and the manifest entries. **Preview/Download** read the Parquet data.
 
@@ -591,7 +605,7 @@ sequenceDiagram
                 TR->>SM: push_step(...) … "DONE"
             end
             opt ≥2 successful tracks
-                RS->>RS: L5 _merge_tabular_results
+                RS->>LLM: L5 result_combiner plan (router.result_combiner) → pandas join + arithmetic
                 RS->>LLM: synthesis prompt (router.multi_source_synthesis)
             end
             RS->>WS: ✎ query_logs (fresh)
@@ -613,7 +627,7 @@ sequenceDiagram
 | **L2 context** | `_load_router_config` → `generate_router_config(cached)`; `fetch_and_translate_tools`; `_build_feedback_context`; `_build_router_messages` | `database_connections.schema_metadata/description`, `resource_mapping`, `files`, Qdrant scroll, manifest, Parquet (lookup hints), `api_connectors`, `response_feedback` | – | 0 |
 | **L3 routing** | `ChatOpenAI("gpt-4o-mini").bind_tools(_ALL_TOOLS)` via `tracked_invoke` | – | `llm_call_logs` | 1 |
 | **L4 dispatch** | `_execute_tool_call(s)` / `TOOL_DISPATCH`, using a `ThreadPoolExecutor` with its own Flask app context when >1 | see §9 | see §9 | per track |
-| **L5 synthesis** | `_merge_tabular_results`, `_decide_output_format`, `_generate_chart_for_merged_table`, `_build_multi_strategy` | `answer_guidelines.md` | `query_logs` (MULTI), `llm_call_logs` | 1 (+1 chart if needed) |
+| **L5 combine + synthesis** | `result_combiner.combine_results` (or `_pick_primary_tabular_result`), `_decide_output_format`, `_generate_chart_for_merged_table`, `_build_multi_strategy` | `answer_guidelines.md` | `query_logs` (MULTI), `llm_call_logs` | 1 combiner plan + 1 synthesis (+1 chart if needed) |
 
 **Router tools** (the LLM chooses one or more, and each call carries a rewritten sub-question):
 
@@ -621,7 +635,7 @@ sequenceDiagram
 |---|---|---|---|
 | `check_data_source_status` | `track` | `_answer_status_check` (reads the config only) | *not logged* |
 | `query_database` | `question`, `tables[]` | `_run_db_track` | `DB` |
-| `query_spreadsheet_data` | `question`, `tables[]` | `_run_spreadsheet_track` | `GENERAL` ⚠ when it is the only tool (see §16); part of `MULTI` otherwise |
+| `query_spreadsheet_data` | `question`, `tables[]` | `_run_spreadsheet_track` | `SPREADSHEET` |
 | `search_documents` | `question`, `document_codes[]` | `_run_files_track` | `FILES` |
 | `call_external_api` | `question`, `tool_name` | `_run_api_track` | `API` |
 | `answer_general_knowledge_tool` | `question` | `_run_general_track` | `GENERAL` |
@@ -742,9 +756,20 @@ return {answer, tool_call:{tool_name, method, url}, steps}
 * `general_service.answer_general_knowledge`: a system prompt with today's date/time, the user's instructions and feedback context → the chosen model. Logged as `GENERAL`.
 * `_answer_status_check`: reads the routing menu only and describes which tracks have data (e.g. "2 database tables, 3 documents…"). No agents run, and nothing is written to `query_logs`.
 
-### 9.6 Multi-source merge (`_merge_tabular_results`)
+### 9.6 Multi-source combine (`result_combiner.combine_results`)
 
-For each successful track, in order of preference: join tables on a shared key column whose values actually overlap → otherwise row-align equal-length tables → otherwise pick the richest table. When a same-named key never matches, it emits a `merge_notes` "Data alignment note" so the synthesis LLM does not substitute one source's field for another. The output format is decided by row and column counts. If the format is `chart` and no track supplied one, a chart is generated from the merged table.
+Runs when at least two successful tracks returned rows. Example: "total disbursed amount, and the commission at the lowest slab rate" needs DB rows × spreadsheet rates.
+
+```
+for each track table → _clean_frame: numbers-as-text → numbers + units, drop stray note rows; alias db/sheet/api/docs
+find_key_candidates: join keys verified by VALUE overlap (≥ 30%), not just same column names
+LLM (router.result_combiner) proposes a small JSON plan: join key pair + how (left/inner/outer),
+    row-wise min/max/mean/sum, arithmetic (multiply/divide/add/subtract/percent_of)
+validate_plan against the real columns and verified keys     → on failure: _fallback_plan (best key, no derived columns)
+execute_plan with fixed pandas code (the LLM never writes code) → combined table + grand totals + join_stats
+```
+
+The result feeds the synthesis prompt as "[Combined result - computed exactly by code …]", so the LLM reports figures instead of computing them. With no combination (fewer than 2 tables, or the combiner fails) the router falls back to `_pick_primary_tabular_result`. When the sources share no matching values, the combiner's notes become a "Data alignment note" so the LLM does not substitute one source's field for another. The output format is decided by row and column counts. If it is `chart` and no track supplied a chart, one is generated from the combined table.
 
 ---
 
@@ -788,7 +813,7 @@ Disliked rows are stored but **never** matched. This is deliberate, to avoid inj
 | `llm_call_logs` | `llm_call_logger.tracked_invoke` (LangChain) / `track_ollama_call` / `record_ollama_call` (raw Ollama) | 1 row per LLM call, with tokens, cost from `rag_config.llm_logging.pricing`, duration, prompt/response previews | **LLM Calls** page `/llm_calls` → `GET /api/llm-calls/`, `/summary` (grouped by `purpose`) |
 | `audit_logs` | `audit_service.log_event` | Security/tenant events: register, login(_blocked), approve/reject, resource created/updated/deleted/processed, mapping grant/revoke, agentic run | Audit Logs page |
 
-Common `purpose` values: `router.decision`, `router.multi_source_synthesis`, `query_simplifier.simplify`, `query_sense.plan`, `sql_generator.generate_sql`, `sql_generator.narration`, `data_insight.generate`, `spreadsheet.plan`, `spreadsheet.answer`, `rag.intent_analysis`, `rag.answer`, `rag.hyde`, `rag.multi_query`, `rag.document_summary`, `rag.image_caption`, `metamind.table_description`.
+Common `purpose` values: `router.decision`, `router.result_combiner`, `router.multi_source_synthesis`, `query_simplifier.simplify`, `query_sense.plan`, `sql_generator.generate_sql`, `sql_generator.narration`, `data_insight.generate`, `spreadsheet.plan`, `spreadsheet.answer`, `rag.intent_analysis`, `rag.answer`, `rag.hyde`, `rag.multi_query`, `rag.document_summary`, `rag.image_caption`, `metamind.table_description`, `metamind.column_semantics`.
 
 ---
 
@@ -829,9 +854,9 @@ C = create, R = read, U = update, D = delete. "Manifest" and "Qdrant" are the no
 | Provision company | C | | | | | | | | | | | | | | | |
 | Register / verify / login / approve | R | C U | | C | | | | | | | | | | | | |
 | DB connection save/edit | | R | R | C | C U (schema_metadata, summary, status) | | | | | | | | | | | |
-| **DB Process** | | R | R | | U (status, schema_metadata, summary) + COMMENT ON TABLE on external DB | | | | | | | | | | | C |
+| **DB Process** | | R | R | | U (status, schema_metadata, summary, config.column_semantics) + COMMENT ON TABLE on external DB | | | | | | | | | | | C |
 | Excel upload / edit | | R | R | C | C U | | | C U | | | | | | | | |
-| **Excel Process** | | R | R | | U (status, summary) | | | U (description) | | | | | | | | – ¹ |
+| **Excel Process** | | R | R | | U (status, summary, schema_metadata) | | | U (description, column meanings) | | | | | | | | C |
 | Document upload | | R | | C | | C | | | | | | | | | | |
 | **Document Process** | | R | R | C | | U (status, summary) | | | C | | | | | | | C |
 | API save / **Process** | | R | R | C | | | C U (summary) | | | | | | | | | |
@@ -845,7 +870,6 @@ C = create, R = read, U = update, D = delete. "Manifest" and "Qdrant" are the no
 | Model config / pipeline / BI semantics | | R | | | | | | | | | | | C U D | C U | C U D | |
 | Queries / LLM Calls pages | | R | | | | | | | | | R | | | | | R |
 
-¹ The Excel Process summariser calls `llm.invoke` directly (not `tracked_invoke`), so it leaves no `llm_call_logs` row.
 
 ---
 
@@ -878,16 +902,15 @@ These came up while tracing the flows above. They are recorded here so the desig
 | # | Area | Observation | Impact |
 |---|---|---|---|
 | 1 | API track | `_run_api_track` calls `ask_dynamic_model_with_tools(..., feedback_context=…, hint_tool_name=…)`, but the function signature (`api_services.py:90`) accepts neither keyword. Its body also references `hint_tool_name`. | Every API-track call raises `TypeError`. `_execute_tool_call` catches it and returns an error result, so the API track effectively never answers. |
-| 2 | Query log / reuse | The single-tool `router_map` in `get_smart_response` has no `query_spreadsheet_data` entry, so spreadsheet-only answers are logged as `router_decision='GENERAL'`. | Spreadsheet answers can never be **reused** (reuse filters on `DB`/`SPREADSHEET`), and the Queries page "SPREADSHEET" filter misses them. |
-| 3 | Tenancy | `fetch_and_translate_tools()` loads **all** Active `api_connectors`, and `answer_from_spreadsheets` uses the **whole** manifest (`list_all_tables()`). Neither is scoped by "own + granted". | Router context is scoped, but these execution paths can reach other tenants' API tools and spreadsheet tables. |
-| 4 | Conversation memory | `chat_routes.send_message` never passes `chat_history` to `get_smart_response`. | The router is stateless per message; follow-up questions ("and for last year?") lack context. |
-| 5 | Credentials | `database_connections.password` is stored **as typed**. `create`/`update` never call `encrypt()`, although the model docstring says it is encrypted (`decrypt()` passes plaintext through). | DB passwords are stored in plaintext. |
-| 6 | Multi-DB | `resolve_query_execution_config` executes SQL against the **first** visible PG connection, while the schema merges tables from **all** of them. | With 2+ PG connections, SQL for tables of the 2nd connection fails. |
-| 7 | Non-PG connections | Only `type == 'PostgreSQL'` is introspected or executed. | MySQL/Oracle/… connections can be saved and "processed" but are never queryable. |
-| 8 | Re-processing documents | Process re-indexes without first deleting the old points for that `document_code`. | Duplicate chunks in Qdrant, skewing retrieval and chunk counts. |
-| 9 | Agentic process | `run-agentic-process` invokes `databridge_services/metamind.py`, which no longer exists. | Endpoint fails at step 2 (UI no longer calls it). |
-| 10 | LLM budgets | No caller passes `model_configuration_id` (or `query_code`) to `tracked_invoke`. | Daily LLM budgets never accrue spend, and LLM calls cannot be joined to their query. |
-| 11 | Identity fallback | `_resolve_feedback_user` falls back to **user id 1** when the JWT cannot be resolved. | Activity could be attributed to user 1. |
-| 12 | Details popup | `/api/datasources/<type>/<id>/metadata` runs a **live** introspection (COUNT(*) and profiling) for all of the user's PG connections on every open. | Slow on large schemas, and it rewrites status as a side effect. |
-| 13 | Stream manager | In-process memory, keyed by `session_id`. | With several gunicorn workers, the SSE request and the POST can land on different workers, and steps are lost. Needs Redis pub/sub for multi-worker setups. |
-| 14 | Debug logging | `get_smart_response` prints the full inputs, including a preview of the `custom_key`. | Secrets and PII in stdout logs. |
+| 2 | Tenancy | `fetch_and_translate_tools()` loads **all** Active `api_connectors`, and `answer_from_spreadsheets` uses the **whole** manifest (`list_all_tables()`). Neither is scoped by "own + granted". | Router context is scoped, but these execution paths can reach other tenants' API tools and spreadsheet tables. |
+| 3 | Conversation memory | `chat_routes.send_message` never passes `chat_history` to `get_smart_response`. | The router is stateless per message; follow-up questions ("and for last year?") lack context. |
+| 4 | Credentials | `database_connections.password` is stored **as typed**. `create`/`update` never call `encrypt()`, although the model docstring says it is encrypted (`decrypt()` passes plaintext through). | DB passwords are stored in plaintext. |
+| 5 | Multi-DB | `resolve_query_execution_config` executes SQL against the **first** visible PG connection, while the schema merges tables from **all** of them. | With 2+ PG connections, SQL for tables of the 2nd connection fails. |
+| 6 | Non-PG connections | Only `type == 'PostgreSQL'` is introspected or executed. | MySQL/Oracle/… connections can be saved and "processed" but are never queryable. |
+| 7 | Re-processing documents | Process re-indexes without first deleting the old points for that `document_code`. | Duplicate chunks in Qdrant, skewing retrieval and chunk counts. |
+| 8 | Agentic process | `run-agentic-process` invokes `databridge_services/metamind.py`, which no longer exists. | Endpoint fails at step 2 (UI no longer calls it). |
+| 9 | LLM budgets | No caller passes `model_configuration_id` (or `query_code`) to `tracked_invoke`. | Daily LLM budgets never accrue spend, and LLM calls cannot be joined to their query. |
+| 10 | Identity fallback | `_resolve_feedback_user` falls back to **user id 1** when the JWT cannot be resolved. | Activity could be attributed to user 1. |
+| 11 | Details popup | `/api/datasources/<type>/<id>/metadata` runs a **live** introspection (COUNT(*) and profiling) for all of the user's PG connections on every open. | Slow on large schemas, and it rewrites status as a side effect. |
+| 12 | Stream manager | In-process memory, keyed by `session_id`. | With several gunicorn workers, the SSE request and the POST can land on different workers, and steps are lost. Needs Redis pub/sub for multi-worker setups. |
+| 13 | Debug logging | `get_smart_response` prints the full inputs, including a preview of the `custom_key`. | Secrets and PII in stdout logs. |
