@@ -45,7 +45,7 @@ Saarthi is a multi-tenant "ask your company data" assistant. A user types a natu
 A data source is only answerable after it goes through **setup**: register/upload → **Process** (introspect, summarise, index) → optionally **share** with colleagues through Resource Mapping. Setup writes the metadata that the router reads at question time. That metadata is called *MetaMind*.
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph Setup["SETUP (admin / owner actions)"]
         A1[Register DB connection] --> P1[Process]
         A2[Upload Excel/CSV] --> P2[Process]
@@ -324,10 +324,10 @@ sequenceDiagram
     U->>A: GET /api/auth/verify-email?token
     A->>DB: ✎ users.email_verified=true
     U->>A: POST /api/auth/login
-    A->>DB: read users; ✎ users.last_login; ✎ audit_logs (login_success / login_blocked)
+    A->>DB: read users, ✎ users.last_login, ✎ audit_logs (login_success / login_blocked)
     A-->>U: JWT (1h)
     AD->>A: POST /api/auth/approve/<id>  (or /reject)
-    A->>DB: ✎ users.status=active|rejected; ✎ audit_logs (employee_approved|rejected)
+    A->>DB: ✎ users.status=active|rejected, ✎ audit_logs (employee_approved|rejected)
 ```
 
 Login is refused when `email_verified` is false or `status` is `pending`/`rejected`. The JWT identity is `user.id`. `get_current_user()` resolves it on every protected route.
@@ -464,7 +464,7 @@ sequenceDiagram
     L->>L: loader by ext (PyMuPDF / Docx2txt / Markdown / RTF / Text)
     L->>LLM: _summarize_document_topics (purpose rag.document_summary)
     L->>L: optional table/image extraction (rag_config gates), image captioning
-    L->>L: RecursiveCharacterTextSplitter(800/80); tag metadata.document_code, chunk_type
+    L->>L: RecursiveCharacterTextSplitter(800/80), tag metadata.document_code, chunk_type
     L->>Q: QdrantVectorStore.from_documents (MiniLM-L6-v2 embeddings)
     DR->>RES: ✎ files.metamind_summary = content summary (or "N chunk(s) indexed")
     DR->>MM: generate_router_config(user) — sanity check Qdrant visibility
@@ -575,12 +575,12 @@ sequenceDiagram
     participant WS as workspace DB
 
     B->>SSE: EventSource open
-    SSE->>SM: start_new_query(sid); listen(sid)
+    SSE->>SM: start_new_query(sid), listen(sid)
     SSE-->>B: data:{connected:true}
     B->>CR: POST /api/chat/message
     CR->>SM: start_new_query(sid)
     CR->>WS: read model_configurations (api:// or ollama:// → custom_key/base_url)
-    CR->>CR: user = JWT user (fallback id 1); instructions = users.query_instructions + per-message
+    CR->>CR: user = JWT user (fallback id 1), instructions = users.query_instructions + per-message
     CR->>RS: get_smart_response(q, sid, model, key, instructions, company_code, user_id)
 
     RS->>RS: L1 classify_query_heuristic (general_knowledge_config.json)
