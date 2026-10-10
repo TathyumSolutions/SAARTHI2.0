@@ -7,6 +7,7 @@ import traceback
 import re
 import io
 import copy
+import json
 from flask import Blueprint, request, jsonify, send_file
 from app import db
 from app.models.database_connection import DatabaseConnection
@@ -36,12 +37,36 @@ def _sanitize_identifier(name: str) -> str:
     return name
 
 
+def _clean_text(value):
+    """Trims and collapses runs of whitespace in a user-entered name or
+    description ("Lending    Database." -> "Lending Database."). None for
+    blank input."""
+    if value is None:
+        return None
+    cleaned = re.sub(r'\s+', ' ', str(value)).strip()
+    return cleaned or None
+
+
+# Symbols in a spreadsheet header that carry meaning a plain identifier
+# would otherwise silently drop - "Slab: < Rs 10L/qtr" and "Slab: > Rs
+# 2Cr/qtr" used to become slab_rs_10l_qtr / slab_rs_2cr_qtr, losing which
+# end of the range each column is.
+_HEADER_SYMBOLS = (("<=", " lte "), (">=", " gte "), ("<", " lt "), (">", " gt "), ("%", " pct "))
+
+
+def _sanitize_column_identifier(name: str) -> str:
+    text = str(name)
+    for symbol, word in _HEADER_SYMBOLS:
+        text = text.replace(symbol, word)
+    return _sanitize_identifier(text)
+
+
 def _dedupe_identifiers(names):
-    """Ensures identifiers are unique after sanitization."""
+    """Ensures column identifiers are unique after sanitization."""
     seen = {}
     out = []
     for raw in names:
-        base = _sanitize_identifier(str(raw))
+        base = _sanitize_column_identifier(str(raw))
         count = seen.get(base, 0)
         seen[base] = count + 1
         out.append(base if count == 0 else f"{base}_{count + 1}")
@@ -151,7 +176,7 @@ def create_database_connection():
         
         # Create new connection
         connection = DatabaseConnection(
-            name=data.get('name'),
+            name=_clean_text(data.get('name')),
             type=data.get('type'),
             host=data.get('host'),
             port=data.get('port'),
@@ -160,7 +185,7 @@ def create_database_connection():
             password=data.get('password'),
             connection_string=data.get('connection_string'),
             config=data.get('config', {}),
-            description=(data.get('description') or '').strip() or None,
+            description=_clean_text(data.get('description')),
             company_code=current_user.company_code,
             created_by_user_id=current_user.id,
             status='connected'
@@ -184,6 +209,23 @@ def create_database_connection():
         print(f"POST error: {str(e)}")
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
+
+
+def _save_sheet(connection, table_name, sheet_name, df, info):
+    """Saves one uploaded sheet: sanitized column names (keeping each
+    original header as the column's label), numbers-as-text converted, the
+    title/notes found around the table kept, and the result mirrored into
+    the connection's own schema_metadata - so the database row describes
+    the upload's columns the same way a PostgreSQL connection's does."""
+    original_headers = [str(c) for c in df.columns]
+    df.columns = _dedupe_identifiers(df.columns)
+    labels = dict(zip(df.columns, original_headers))
+    record = spreadsheet_service.save_table(
+        connection.id, table_name, sheet_name, df,
+        labels=labels, title=info.get('title') or '', notes=info.get('notes') or '',
+    )
+    connection.schema_metadata = spreadsheet_service.schema_metadata_for([record])
+    return record
 
 
 @bp.route('/excel', methods=['POST'])
@@ -212,7 +254,7 @@ def create_excel_database():
         return jsonify({'error': 'Authentication required'}), 401
 
     try:
-        name = request.form.get('name', '').strip()
+        name = _clean_text(request.form.get('name')) or ''
         file = request.files.get('file')
 
         if not name:
@@ -241,7 +283,7 @@ def create_excel_database():
         # exactly after the connection, same as before.
         multi_sheet = len(sheets) > 1
         used_table_names = set()
-        custom_description = (request.form.get('description') or '').strip() or None
+        custom_description = _clean_text(request.form.get('description'))
         created_connections = []
         created_tables = []
 
@@ -270,7 +312,7 @@ def create_excel_database():
                 config={'source_tables': []},
                 # Without a description from the user, the title/description
                 # rows found above the sheet's header describe it instead.
-                description=custom_description or (sheet_info.get(sheet_name, {}).get('title') or None),
+                description=custom_description or _clean_text(sheet_info.get(sheet_name, {}).get('title')),
                 company_code=current_user.company_code,
                 created_by_user_id=current_user.id,
                 status='connected'
@@ -278,8 +320,7 @@ def create_excel_database():
             db.session.add(connection)
             db.session.commit()
 
-            df.columns = _dedupe_identifiers(df.columns)
-            record = spreadsheet_service.save_table(connection.id, table_name, sheet_name, df)
+            record = _save_sheet(connection, table_name, sheet_name, df, sheet_info.get(sheet_name, {}))
             spreadsheet_service.set_original_filename(connection.id, file.filename)
             connection.config = {
                 'source_tables': [{'table': record['table'], 'sheet': record['sheet'], 'row_count': record['row_count']}],
@@ -372,7 +413,12 @@ def update_database_connection(db_id):
         # Update fields
         for key in ['name', 'host', 'port', 'database', 'username', 'password', 'connection_string', 'type', 'description']:
             if key in data:
-                setattr(connection, key, data[key])
+                value = data[key]
+                if key in ('name', 'description'):
+                    value = _clean_text(value)
+                    if key == 'name' and not value:
+                        continue
+                setattr(connection, key, value)
 
         db.session.commit()
         log_event('database_connection_updated', company_code=current_user.company_code, user_id=current_user.id,
@@ -567,12 +613,12 @@ def update_excel_connection(db_id):
         return jsonify({'error': 'This endpoint is only for spreadsheet connections'}), 400
 
     try:
-        name = (request.form.get('name') or '').strip()
+        name = _clean_text(request.form.get('name'))
         if name:
             connection.name = name
 
         if 'description' in request.form:
-            connection.description = request.form.get('description', '').strip() or None
+            connection.description = _clean_text(request.form.get('description'))
 
         file = request.files.get('file')
         if file and file.filename:
@@ -584,7 +630,7 @@ def update_excel_connection(db_id):
                 }), 400
 
             try:
-                sheets, _ = read_tabular_upload(file.read(), file.filename)
+                sheets, sheet_info = read_tabular_upload(file.read(), file.filename)
             except ValueError as e:
                 return jsonify({'error': str(e)}), 400
 
@@ -603,8 +649,7 @@ def update_excel_connection(db_id):
                 _sanitize_identifier(connection.database or connection.name)
             )
 
-            df.columns = _dedupe_identifiers(df.columns)
-            record = spreadsheet_service.save_table(connection.id, table_name, sheet_name, df)
+            record = _save_sheet(connection, table_name, sheet_name, df, sheet_info.get(sheet_name, {}))
             spreadsheet_service.set_original_filename(connection.id, file.filename)
             connection.config = {
                 'source_tables': [{'table': record['table'], 'sheet': record['sheet'], 'row_count': record['row_count']}],
@@ -701,42 +746,38 @@ def test_database_connection(db_id):
         return jsonify({'error': str(e)}), 500
 
 
-def _summarize_spreadsheet_table_for_metamind(table_name: str) -> str:
-    """Asks an LLM to describe what a spreadsheet-backed table actually
-    contains (e.g. "Player roster with season-by-season performance
-    stats") from its columns and a few sample rows, then stores that on
-    the table's manifest record. automated_metamind.py's spreadsheet
-    introspection reads that description and uses it when building each
-    user's router config - this is the one place that generates it."""
+def _summarize_spreadsheet_table_for_metamind(table_name: str, connection_description: str = None,
+                                              llm_invoke=None) -> str:
+    """Works out what a spreadsheet-backed table and each of its columns
+    actually mean (see column_intelligence.enrich_table_semantics) and
+    stores both on the table's manifest record. automated_metamind.py's
+    spreadsheet introspection reads that description and those column
+    meanings when building each user's router config - this is the one
+    place that generates them.
+
+    The LLM sees everything the file itself said about the table - the
+    title above it, each column's original header (e.g. "Slab: < Rs
+    10L/qtr", not just slab_lt_rs_10l_qtr), the notes written below it -
+    plus the connection's own description and up to 15 sample rows. Given
+    only cleaned-up column names and 5 rows it used to guess (e.g. reading
+    agent-volume commission slabs as "loan amounts and quarters")."""
+    from app.services.column_intelligence import enrich_table_semantics, merge_semantics
+
+    record = spreadsheet_service.get_table_record(table_name) or {}
     df = spreadsheet_service.get_table_df(table_name)
-    sample = df.head(5)
-    sample_text = "\n".join(
-        ", ".join(f"{col}={row[col]}" for col in df.columns)
-        for _, row in sample.iterrows()
-    )
-
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import SystemMessage, HumanMessage
-
-    prompt = (
-        f"Table name: {table_name}\n"
-        f"Columns: {', '.join(df.columns)}\n"
-        f"Sample rows:\n{sample_text}\n\n"
-        "In one short sentence, describe what this table contains in "
-        "plain business language (e.g. \"Player roster with season-by-"
-        "season performance stats\"). Output only that sentence, no "
-        "quotes, no preamble."
-    )
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, openai_api_key=os.getenv("OPENAI_API_KEY"))
-    response = llm.invoke([
-        SystemMessage(content="You write single-sentence, plain-language summaries of spreadsheet tables."),
-        HumanMessage(content=prompt),
+    columns = copy.deepcopy(record.get("columns") or [
+        {"name": c, "type": spreadsheet_service.classify_column(df[c])} for c in df.columns
     ])
-    description = (response.content or "").strip().strip('"')
-    if not description:
-        description = f"Table storing {table_name} records."
+    sample_rows = json.loads(df.head(15).to_json(orient="records", date_format="iso"))
 
-    spreadsheet_service.set_table_description(table_name, description)
+    semantics = enrich_table_semantics(
+        table_name, columns, sample_rows,
+        title=record.get("title") or "", notes=record.get("notes") or "",
+        context=connection_description or "", llm_invoke=llm_invoke,
+    )
+    merge_semantics(columns, semantics)
+    description = (semantics.get("table_description") or "").strip() or f"Table storing {table_name} records."
+    spreadsheet_service.set_table_semantics(table_name, description, columns)
     return description
 
 
@@ -782,7 +823,10 @@ def process_database_connection(db_id):
 
             try:
                 for table_name in tables:
-                    _summarize_spreadsheet_table_for_metamind(table_name)
+                    _summarize_spreadsheet_table_for_metamind(table_name, connection.description)
+                connection.schema_metadata = spreadsheet_service.schema_metadata_for(
+                    spreadsheet_service.get_tables_for_connection(connection.id)
+                )
             except Exception as e:
                 print(f"Table summarization error: {e}")
                 print(traceback.format_exc())
@@ -837,6 +881,17 @@ def process_database_connection(db_id):
             if connection.status == 'error':
                 db.session.commit()
                 return jsonify({"status": "error", "message": connection.error_message or "Could not connect to this database."}), 502
+            if (connection.type or '').lower() == 'postgresql':
+                # Best-effort: what each column means, from its sample values
+                # (see enrich_db_column_semantics) - picked up by the next
+                # router config build; a failure here never blocks Process.
+                from app.services.automated_metamind import enrich_db_column_semantics
+                try:
+                    if enrich_db_column_semantics(connection):
+                        for uid in affected_user_ids:
+                            generate_router_config(user_id=uid)
+                except Exception as e:
+                    print(f"⚠️ Column meaning enrichment failed for connection {connection.id}: {e}")
             connection.status = 'processed'
             connection.error_message = None
             db.session.commit()

@@ -102,21 +102,41 @@ def _sanitize_for_parquet(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def save_table(connection_id: int, table_name: str, sheet_name, df: pd.DataFrame) -> dict:
+def save_table(connection_id: int, table_name: str, sheet_name, df: pd.DataFrame,
+               labels: dict = None, title: str = "", notes: str = "") -> dict:
     """Writes one sheet/CSV as a Parquet file and records it in the
     manifest under the given connection. Returns the table's manifest
-    record (without a description yet - that's added by summarization)."""
+    record (without a description yet - that's added by summarization).
+
+    labels maps each stored (sanitized) column name to the header exactly
+    as written in the file (e.g. "slab_lt_rs_10l_qtr" -> "Slab: < Rs
+    10L/qtr"); title/notes are the text found above/below the table. All
+    three are kept on the record so the column meanings can be worked out
+    from what the file actually said, not from a cleaned-up name alone.
+
+    Numbers written as text ("0.64%", "1,200") are stored as real numbers,
+    with the unit recorded per column (see column_intelligence), so they
+    can be compared, aggregated and multiplied instead of sorted as text."""
+    from app.services.column_intelligence import normalize_numeric_text, apply_profiles
+
     _ensure_folder()
+    df, units = normalize_numeric_text(df)
     df = _sanitize_for_parquet(df)
     conn_dir = os.path.join(SPREADSHEET_FOLDER, str(connection_id))
     os.makedirs(conn_dir, exist_ok=True)
     parquet_path = os.path.join(conn_dir, f"{table_name}.parquet")
     df.to_parquet(parquet_path, index=False)
 
-    columns = [
-        {"name": col, "type": classify_column(df[col]), **column_stats(df[col])}
-        for col in df.columns
-    ]
+    labels = labels or {}
+    columns = []
+    for col in df.columns:
+        entry = {"name": col, "type": classify_column(df[col]), **column_stats(df[col])}
+        if labels.get(col) and labels[col] != col:
+            entry["label"] = labels[col]
+        if units.get(col):
+            entry["unit"] = units[col]
+        columns.append(entry)
+    apply_profiles(columns, row_count=len(df))
     record = {
         "table": table_name,
         "sheet": sheet_name,
@@ -124,6 +144,8 @@ def save_table(connection_id: int, table_name: str, sheet_name, df: pd.DataFrame
         "columns": columns,
         "row_count": len(df),
         "description": None,
+        "title": (title or "").strip(),
+        "notes": (notes or "").strip(),
     }
 
     manifest = _load_manifest()
@@ -182,6 +204,39 @@ def set_table_description(table_name: str, description: str):
             if table["table"] == table_name:
                 table["description"] = description
     _save_manifest(manifest)
+
+
+def set_table_semantics(table_name: str, description: str, columns: list):
+    """Stores the table description and the enriched column list (meaning/
+    role/unit per column - see column_intelligence) on a table's record."""
+    manifest = _load_manifest()
+    for conn_data in manifest["connections"].values():
+        for table in conn_data.get("tables", []):
+            if table["table"] == table_name:
+                if description:
+                    table["description"] = description
+                table["columns"] = columns
+    _save_manifest(manifest)
+
+
+def schema_metadata_for(tables: list) -> dict:
+    """The database_connections.schema_metadata shape for spreadsheet
+    tables - the same {table: {description, row_count, columns}} shape a
+    PostgreSQL connection's introspection stores, plus the sheet title and
+    notes, so an Excel connection's row describes its own columns (names,
+    original headers, types, units, roles, meanings, sample values) instead
+    of leaving that only in a JSON file on disk."""
+    return {
+        t["table"]: {
+            "description": t.get("description"),
+            "row_count": t.get("row_count"),
+            "sheet": t.get("sheet"),
+            "title": t.get("title") or "",
+            "notes": t.get("notes") or "",
+            "columns": t.get("columns", []),
+        }
+        for t in tables or []
+    }
 
 
 def delete_connection_tables(connection_id: int):

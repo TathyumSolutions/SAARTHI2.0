@@ -15,6 +15,11 @@ the first column name, every other column "Unnamed: N", and the real
 header a data row. Here the header is detected per sheet, the sheet is
 re-read from that row (so numbers/dates keep their proper dtypes), and the
 skipped title text is returned so it can describe the table.
+
+The same goes for the bottom of a sheet: a "Notes" block written under the
+table, after a blank row, is policy text about the table, not more rows of
+it. It's split off and returned as the table's notes instead of being
+loaded as half-empty data rows.
 """
 import csv
 import io
@@ -82,6 +87,27 @@ def _title_text(rows: List[List[Any]], header_row: int) -> str:
     return " - ".join(parts)
 
 
+def _split_footer_notes(df: pd.DataFrame) -> Tuple[pd.DataFrame, str]:
+    """Splits a notes/footnote block off the bottom of a table: everything
+    after the first fully blank row, provided every non-blank row after it
+    is sparse (at most 2 cells, and under half the table's width) - i.e.
+    sentences, not more data. A table with a blank row in the middle of
+    real data is left alone, since the rows after its gap are full width.
+    Returns (table, notes text)."""
+    width = len(df.columns)
+    filled = df.notna().sum(axis=1).tolist()
+    for i, count in enumerate(filled):
+        if count or not any(filled[:i]):
+            continue
+        rest = [(j, c) for j, c in enumerate(filled[i + 1:], start=i + 1) if c]
+        if rest and all(c <= 2 and c < 0.5 * width for _, c in rest):
+            lines = []
+            for j, _ in rest:
+                lines.extend(str(v).strip() for v in df.iloc[j].tolist() if not _is_blank(v))
+            return df.iloc[:i], "\n".join(lines)
+    return df, ""
+
+
 def _tidy(df: pd.DataFrame) -> pd.DataFrame:
     """Drops fully empty rows, and columns that are entirely empty and have
     no real header (e.g. a blank column A before a table starting in B)."""
@@ -96,7 +122,8 @@ def _tidy(df: pd.DataFrame) -> pd.DataFrame:
 def read_tabular_upload(data: bytes, filename: str) -> Tuple[Dict[Optional[str], pd.DataFrame], Dict[Optional[str], Dict[str, Any]]]:
     """Reads an uploaded .csv/.xlsx/.xls file's bytes. Returns
     ({sheet_name: DataFrame}, {sheet_name: {"header_row": 1-based row,
-    "title": text above the header}}). A CSV has a single sheet named None.
+    "title": text above the header, "notes": text below the table (only
+    when there is some)}}). A CSV has a single sheet named None.
     Raises ValueError for an unsupported extension."""
     name = (filename or "").lower()
     sheets: Dict[Optional[str], pd.DataFrame] = {}
@@ -108,9 +135,11 @@ def read_tabular_upload(data: bytes, filename: str) -> Tuple[Dict[Optional[str],
         text = data.decode("utf-8-sig", errors="replace")
         top = [row for _, row in zip(range(HEADER_SCAN_ROWS), csv.reader(io.StringIO(text)))]
         header_row = detect_header_row(top)
-        df = pd.read_csv(io.BytesIO(data), skiprows=header_row)
+        df, notes = _split_footer_notes(pd.read_csv(io.BytesIO(data), skiprows=header_row))
         sheets[None] = _tidy(df)
         info[None] = {"header_row": header_row + 1, "title": _title_text(top, header_row)}
+        if notes:
+            info[None]["notes"] = notes
         return sheets, info
 
     if name.endswith((".xlsx", ".xls")):
@@ -118,9 +147,11 @@ def read_tabular_upload(data: bytes, filename: str) -> Tuple[Dict[Optional[str],
         for sheet_name, top_df in raw.items():
             top = top_df.values.tolist()
             header_row = detect_header_row(top)
-            df = pd.read_excel(io.BytesIO(data), sheet_name=sheet_name, header=header_row)
+            df, notes = _split_footer_notes(pd.read_excel(io.BytesIO(data), sheet_name=sheet_name, header=header_row))
             sheets[sheet_name] = _tidy(df)
             info[sheet_name] = {"header_row": header_row + 1, "title": _title_text(top, header_row)}
+            if notes:
+                info[sheet_name]["notes"] = notes
         return sheets, info
 
     raise ValueError("Only .xlsx, .xls, or .csv files are supported")

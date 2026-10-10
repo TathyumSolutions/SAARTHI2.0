@@ -2,8 +2,8 @@
 Tests for the MULTI-track synthesizer's chart generation.
 
 Merging tables from different data sources (e.g. a DB aggregate joined
-with a Spreadsheet lookup - _merge_tabular_results is already source-
-agnostic Python, no LLM involved) only produces a real chart if a
+with a Spreadsheet lookup - the Result Combiner's join is already source-
+agnostic Python) only produces a real chart if a
 contributing track's own pipeline happened to build one - in practice
 that meant only a DB-involving combo ever got charted, since DB is the
 only track whose own pipeline runs a visualizer step. A Spreadsheet+API
@@ -58,11 +58,12 @@ def test_generates_chart_from_merged_table_via_data_visualizer_agent():
         "columns": ["material_group", "group_name", "net_value"],
         "user_query": "show net value by material group",
         "system_instructions": "",
+        "preferred_measure": None,
     })
     assert result == fake_chart_configs
 
 
-def _run_real_gating_block(primary_result, user_query):
+def _run_real_gating_block(primary_result, user_query, combination=None):
     """Runs the ACTUAL gating code from get_smart_response's MULTI branch
     (extracted verbatim, not reimplemented) against a fake primary_result,
     with _decide_output_format and _generate_chart_for_merged_table
@@ -73,7 +74,7 @@ def _run_real_gating_block(primary_result, user_query):
     src = open(os.path.join(ROOT_DIR, "app", "services", "router_service.py")).read()
     m = re.search(
         r'^ *output_format = _decide_output_format\(primary_result\.get\("table"\)\)\n'
-        r'.*?merged_chart = _generate_chart_for_merged_table\(primary_result\.get\("table"\) or \[\], user_query, system_instructions\)\n',
+        r'.*?preferred_measure=derived\[-1\]\["as"\] if derived else None,\n *\)\n',
         src, re.S | re.M,
     )
     block = textwrap.dedent(m.group(0))
@@ -81,6 +82,7 @@ def _run_real_gating_block(primary_result, user_query):
         "_decide_output_format": router_service._decide_output_format,
         "_generate_chart_for_merged_table": router_service._generate_chart_for_merged_table,
         "primary_result": primary_result,
+        "combination": combination,
         "user_query": user_query,
         "system_instructions": "",
     }
@@ -98,7 +100,7 @@ def test_multi_synthesis_calls_chart_generator_only_when_format_is_chart_and_non
         output_format, merged_chart = _run_real_gating_block(
             {"table": [{"a": 1}], "chart": {}}, "some question"
         )
-    mocked_gen.assert_called_once_with([{"a": 1}], "some question", "")
+    mocked_gen.assert_called_once_with([{"a": 1}], "some question", "", preferred_measure=None)
     assert output_format == "chart"
     assert merged_chart == {"bar": {}}
 
@@ -120,3 +122,23 @@ def test_multi_synthesis_calls_chart_generator_only_when_format_is_chart_and_non
     mocked_gen3.assert_not_called()
     assert output_format == "table"
     assert merged_chart == {}
+
+
+def test_combined_table_is_always_offered_a_chart_of_the_computed_figure():
+    """A table the Result Combiner actually joined drops the base track's own
+    chart (it described only that track's rows), so the visualizer is run on
+    the combined rows even when the row count alone says "table" - and asked
+    to plot the figure the combiner computed (its last derived column)."""
+    combination = {
+        "join_stats": [{"left_on": "product_name", "right_on": "product_name", "matched": 12, "left_rows": 12}],
+        "plan": {"derived": [{"as": "commission_at_lowest_slab", "op": "percent_of",
+                              "args": ["total_disbursed", "lowest_slab_rate"]}]},
+    }
+    with patch.object(router_service, "_decide_output_format", return_value="table"), \
+         patch.object(router_service, "_generate_chart_for_merged_table", return_value={"bar": {"x": 1}}) as mocked_gen:
+        output_format, merged_chart = _run_real_gating_block(
+            {"table": [{"a": 1}], "chart": {}}, "q", combination=combination
+        )
+    mocked_gen.assert_called_once_with([{"a": 1}], "q", "", preferred_measure="commission_at_lowest_slab")
+    assert output_format == "table"
+    assert merged_chart == {"bar": {"x": 1}}
