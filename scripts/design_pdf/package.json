@@ -1,0 +1,12 @@
+{
+  "name": "saarthi-design-pdf",
+  "private": true,
+  "description": "Renders docs/SAARTHI_DESIGN_DOCUMENT.md to docs/Saarthi_Design_Document.pdf",
+  "scripts": {
+    "build": "./build.sh"
+  },
+  "dependencies": {
+    "mermaid": "11.4.1",
+    "playwright": "1.56.1"
+  }
+}
