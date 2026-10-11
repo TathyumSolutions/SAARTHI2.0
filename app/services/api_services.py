@@ -605,16 +605,8 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
 #                   if isinstance(tool_args, str):
 #                       tool_args = json.loads(tool_args)
 
-#                   base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-#                   result = urlparse(base_uri)
-#                   dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
-                  
-#                   conn = psycopg2.connect(dsn)
-#                   cursor = conn.cursor()
-#                   cursor.execute("SELECT base_url, endpoint, method FROM registered_tools WHERE integration_name = %s LIMIT 1;", (target_name,))
-#                   api_meta = cursor.fetchone()
-#                   cursor.close()
-#                   conn.close()
+#                   connector = ApiConnector.query.filter_by(integration_name=target_name).first()
+#                   api_meta = (connector.base_url, connector.endpoint, connector.method) if connector else None
 
 #                   if api_meta:
 #                       base_url, endpoint, method = api_meta[0], api_meta[1], api_meta[2]
@@ -833,16 +825,8 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
 #                     tool_args = json.loads(tool_args)
 
 #                 # 3. Connect to your database configuration table
-#                 base_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
-#                 result = urlparse(base_uri)
-#                 dsn = f"postgresql://{result.username}:{result.password}@{result.hostname}:{result.port or 5432}/saarthi_api_db"
-                
-#                 conn = psycopg2.connect(dsn)
-#                 cursor = conn.cursor()
-#                 cursor.execute("SELECT base_url, endpoint, method FROM registered_tools WHERE integration_name = %s LIMIT 1;", (target_name,))
-#                 api_meta = cursor.fetchone()
-#                 cursor.close()
-#                 conn.close()
+#                 connector = ApiConnector.query.filter_by(integration_name=target_name).first()
+#                 api_meta = (connector.base_url, connector.endpoint, connector.method) if connector else None
 
 #                 if api_meta:
 #                     base_url, endpoint, method = api_meta[0], api_meta[1], api_meta[2]
