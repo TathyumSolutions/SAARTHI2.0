@@ -2,13 +2,12 @@
 Model Configuration API Routes
 Handles LLM model settings, fine-tuning, and custom model management
 """
-import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from app import db                                       # CODE CHANGE: Imported database instance
 from app.models.model_config import ModelConfiguration
+from app.models.user import User
+from app.models.company import Company
 from app.utils.auth_helpers import get_current_user
 from app.services.model_selection_service import (
     PIPELINE_STEPS,
@@ -48,32 +47,24 @@ def _resolve_user_id() -> int:
         return 1
 
 
-def _get_auth_db_connection():
-    base_uri = os.environ.get('ENVIRONMENT_DATABASE_URL') or "postgresql://saarthi:password@db:5432/saarthi_db"
-    if "saarthi_db" in base_uri:
-        auth_db_uri = base_uri.replace("saarthi_db", "saarthi_auth_db")
-    else:
-        auth_db_uri = "postgresql://saarthi:password@db:5432/saarthi_auth_db"
-    return psycopg2.connect(auth_db_uri)
-
-
 def _resolve_company_context():
+    """Looks the caller up in saarthi_core_db (User / Company models) -
+    this used to read the legacy saarthi_auth_db `users` table directly."""
     user_id = _resolve_user_id()
     fallback_company = "default_company"
     fallback_name = "Default Company"
     fallback_role = "user"
 
     try:
-        conn = _get_auth_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT company_code, role, name FROM users WHERE id = %s", (user_id,))
-        row = cur.fetchone() or {}
-        cur.close()
-        conn.close()
+        user = User.query.get(user_id)
+        if user is None:
+            raise LookupError(f"user {user_id} not found")
 
-        company_code = str(row.get("company_code") or fallback_company).strip() or fallback_company
-        company_name = str(row.get("name") or fallback_name).strip() or fallback_name
-        role = str(row.get("role") or fallback_role).strip().lower() or fallback_role
+        company_code = str(user.company_code or fallback_company).strip() or fallback_company
+        company = Company.query.get(user.company_code) if user.company_code else None
+        company_name = (company.company_name if company else None) or user.name or fallback_name
+        company_name = str(company_name).strip() or fallback_name
+        role = str(user.role or fallback_role).strip().lower() or fallback_role
         return {
             "user_id": user_id,
             "company_code": company_code,
@@ -81,6 +72,7 @@ def _resolve_company_context():
             "role": role,
         }
     except Exception:
+        db.session.rollback()
         return {
             "user_id": user_id,
             "company_code": fallback_company,

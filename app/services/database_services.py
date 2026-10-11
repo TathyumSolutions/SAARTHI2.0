@@ -13,7 +13,7 @@ class DatabaseService:
             conn = psycopg2.connect(
                 host=config.get('host','db'),
                 port=config.get('port', 5432),
-                database=config.get('database','saarthi_db'),
+                database=config.get('database','postgres'),
                 user=config.get('username','saarthi'),
                 password=config.get('password'),
                 connect_timeout=5
