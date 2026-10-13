@@ -13,6 +13,7 @@ from app.models.resource_mapping import ResourceMapping
 from app.utils.auth_helpers import get_current_user
 from app.services.audit_service import log_event
 from app.services.llm_service import delete_document_vectors
+from app.models.resource_scope import SCOPE_SHARED, is_session_local
 
 try:
     import magic
@@ -67,6 +68,82 @@ def sniff_dangerous_content(file_path):
     return None
 
 
+def save_unstructured_upload(current_user, file, file_type, description=None,
+                             scope=SCOPE_SHARED, chat_session_id=None):
+    """
+    Saves one uploaded file to disk and creates its FileResource row
+    (status 'uploaded' - embedding happens on Process, same as always).
+    Shared by the Unstructured Data upload and the chat attach (+) button,
+    which passes scope='session_local' + its chat_session_id.
+
+    Returns the FileResource. Raises ValueError (message safe to show the
+    user) for a disallowed or dangerous file.
+    """
+    if not (file and allowed_file(file.filename)):
+        raise ValueError(f'File type not allowed: {file.filename if file else ""}')
+
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
+
+    filename = secure_filename(file.filename)
+
+    # Generate unique filename if exists
+    base_name, ext = os.path.splitext(filename)
+    counter = 1
+    while os.path.exists(os.path.join(UPLOAD_FOLDER, filename)):
+        filename = f"{base_name}_{counter}{ext}"
+        counter += 1
+
+    save_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(save_path)
+
+    dangerous_mime = sniff_dangerous_content(save_path)
+    if dangerous_mime:
+        os.remove(save_path)
+        print(f"⚠️  Rejected upload '{file.filename}': sniffed as {dangerous_mime}")
+        raise ValueError(f"'{file.filename}' was rejected: its content doesn't match a safe file type.")
+
+    file_size = os.path.getsize(save_path)
+    now = datetime.now()
+    code_prefix = {
+        'documents': 'DOC',
+        'images': 'IMG',
+        'videos': 'VID',
+        'audio': 'AUD',
+        'emails': 'EML'
+    }.get(file_type, 'FILE')
+    initials = filename[:3].upper()
+    doc_code = f"{code_prefix}-{initials}-{now.strftime('%Y%m%d-%H%M%S')}"
+    # Several files with the same first letters uploaded in the same second
+    # (easy with a multi-file attach) would otherwise collide on the unique
+    # document_code.
+    unique_code, n = doc_code, 2
+    while FileResource.query.filter_by(document_code=unique_code).first():
+        unique_code = f"{doc_code}-{n}"
+        n += 1
+
+    resource = FileResource(
+        document_code=unique_code,
+        file_name=filename,
+        file_type=file_type,
+        file_size=file_size,
+        file_path=save_path,
+        description=description,
+        company_code=current_user.company_code,
+        created_by_user_id=current_user.id,
+        scope=scope,
+        chat_session_id=chat_session_id,
+    )
+    db.session.add(resource)
+    db.session.commit()
+
+    log_event('file_uploaded', company_code=current_user.company_code, user_id=current_user.id,
+               resource_type='file', resource_id=resource.id,
+               details={'file_name': filename, 'scope': scope,
+                        **({'chat_session_id': chat_session_id} if chat_session_id else {})})
+    return resource
+
+
 @upload_bp.route('/api/upload/unstructured', methods=['POST'])
 @jwt_required()
 @limiter.limit("20 per minute")
@@ -84,60 +161,12 @@ def upload_unstructured():
     if not file_type:
         return jsonify({'error': 'No file type provided'}), 400
 
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER)
-
     uploaded_files = []
     for file in files:
-        if not (file and allowed_file(file.filename)):
-            return jsonify({'error': f'File type not allowed: {file.filename}'}), 400
-
-        filename = secure_filename(file.filename)
-
-        # Generate unique filename if exists
-        base_name, ext = os.path.splitext(filename)
-        counter = 1
-        while os.path.exists(os.path.join(UPLOAD_FOLDER, filename)):
-            filename = f"{base_name}_{counter}{ext}"
-            counter += 1
-
-        save_path = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(save_path)
-
-        dangerous_mime = sniff_dangerous_content(save_path)
-        if dangerous_mime:
-            os.remove(save_path)
-            print(f"⚠️  Rejected upload '{file.filename}': sniffed as {dangerous_mime}")
-            return jsonify({'error': f"'{file.filename}' was rejected: its content doesn't match a safe file type."}), 400
-
-        file_size = os.path.getsize(save_path)
-        now = datetime.now()
-        code_prefix = {
-            'documents': 'DOC',
-            'images': 'IMG',
-            'videos': 'VID',
-            'audio': 'AUD',
-            'emails': 'EML'
-        }.get(file_type, 'FILE')
-        initials = filename[:3].upper()
-        doc_code = f"{code_prefix}-{initials}-{now.strftime('%Y%m%d-%H%M%S')}"
-
-        resource = FileResource(
-            document_code=doc_code,
-            file_name=filename,
-            file_type=file_type,
-            file_size=file_size,
-            file_path=save_path,
-            description=description,
-            company_code=current_user.company_code,
-            created_by_user_id=current_user.id,
-        )
-        db.session.add(resource)
-        db.session.commit()
-
-        log_event('file_uploaded', company_code=current_user.company_code, user_id=current_user.id,
-                   resource_type='file', resource_id=resource.id, details={'file_name': filename})
-
+        try:
+            resource = save_unstructured_upload(current_user, file, file_type, description)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
         uploaded_files.append(resource.to_dict())
 
     return jsonify({'files': uploaded_files}), 200
@@ -156,7 +185,9 @@ def get_uploaded_files():
     if not current_user:
         return jsonify({'error': 'Authentication required'}), 401
 
-    own_files = FileResource.query.filter_by(created_by_user_id=current_user.id).all()
+    # Shared files only - files attached in a chat belong to that chat
+    # (see app/models/resource_scope.py), not the Unstructured Data list.
+    own_files = FileResource.query.filter_by(created_by_user_id=current_user.id, scope=SCOPE_SHARED).all()
 
     from app.models.resource_mapping import ResourceMapping
     granted_ids = [
@@ -164,7 +195,9 @@ def get_uploaded_files():
             resource_type='file', user_id=current_user.id
         ).all()
     ]
-    granted_files = FileResource.query.filter(FileResource.id.in_(granted_ids)).all() if granted_ids else []
+    granted_files = FileResource.query.filter(
+        FileResource.id.in_(granted_ids), FileResource.scope == SCOPE_SHARED
+    ).all() if granted_ids else []
 
     seen_ids = set()
     files = []
@@ -179,8 +212,13 @@ def get_uploaded_files():
 def _can_access_file(resource, user):
     """Own, admin, or explicitly granted via Resource Mapping - same
     "own + granted" rule used everywhere else (see datasource_routes.py's
-    get_visible_datasources)."""
-    if resource.created_by_user_id == user.id or user.role == 'admin':
+    get_visible_datasources). A file attached in a chat is its uploader's
+    alone - no admin override, no grant."""
+    if resource.created_by_user_id == user.id:
+        return True
+    if is_session_local(resource):
+        return False
+    if user.role == 'admin':
         return True
     from app.models.resource_mapping import ResourceMapping
     return ResourceMapping.query.filter_by(
@@ -239,7 +277,7 @@ def delete_file(document_code):
     if not resource:
         return jsonify({'error': 'File not found'}), 404
 
-    if resource.created_by_user_id != current_user.id and current_user.role != 'admin':
+    if resource.created_by_user_id != current_user.id and (current_user.role != 'admin' or is_session_local(resource)):
         return jsonify({'error': 'Only the uploader or a company admin can delete this file'}), 403
 
     try:

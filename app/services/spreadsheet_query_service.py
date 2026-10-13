@@ -411,7 +411,16 @@ def answer_from_spreadsheets(
     session_id: str = "1",
     feedback_context: str = "",
     hint_tables: list = None,
+    visible_tables=None,
 ) -> dict:
+    """
+    visible_tables: names of the spreadsheet tables this user may query in
+    this chat (the SPREADSHEET datasource's tables from their router config
+    - own + granted shared tables plus anything attached in this chat).
+    Everything else in the manifest - other users' uploads, other chats'
+    attachments - is left out of planning, validation and execution alike.
+    None (callers outside the chat router) keeps the full manifest.
+    """
     session_id = str(session_id)
     master_steps = []
     if feedback_context:
@@ -427,6 +436,9 @@ def answer_from_spreadsheets(
     try:
         push_event("start", "Matching the Right Data Source", "Checking which uploaded spreadsheets are relevant.")
         available_tables = {t["table"]: t for t in spreadsheet_service.list_all_tables()}
+        if visible_tables is not None:
+            allowed = set(visible_tables)
+            available_tables = {name: info for name, info in available_tables.items() if name in allowed}
         if not available_tables:
             push_event("complete", "Matching the Right Data Source", "No spreadsheet tables are available.")
             stream_manager.push_step(session_id, "DONE", is_sql=False)

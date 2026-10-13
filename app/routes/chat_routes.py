@@ -18,6 +18,12 @@ from app.models.user import User
 from app.models.chat import ChatSession
 from app.services.router_service import RouterService
 from app.routes.model_config_routes import _resolve_company_context
+from app.utils.auth_helpers import get_current_user
+from app.services.audit_service import log_event
+from app.services.session_resource_service import (
+    SessionAccessError, add_session_resources, delete_session_resource,
+    delete_session_resources, get_owned_session, list_session_resources,
+)
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
@@ -287,13 +293,88 @@ def delete_chat_session(session_id):
         if not session or session.user_id != current_user.id:
             return jsonify({"error": "Session not found"}), 404
 
+        # Files/spreadsheets attached in this chat live only as long as the
+        # chat does - delete them, with all their metadata, first.
+        deleted_attachments = delete_session_resources(session_id, current_user.id)
+
         db.session.delete(session)
         db.session.commit()
+
+        log_event('chat_session_deleted', company_code=current_user.company_code, user_id=current_user.id,
+                   details={'session_id': session_id, 'deleted_attachments': deleted_attachments})
         return jsonify({"status": "success", "message": "Session deleted from audit records"})
     except Exception as e:
         db.session.rollback()
         print(f"Error removing audit target frame: {e}")
         return jsonify({"error": "Failed to drop session tracking state"}), 500
+
+@bp.route('/sessions/<string:session_id>/resources', methods=['GET'])
+@jwt_required()
+def list_chat_session_resources(session_id):
+    """
+    Files/spreadsheets attached in this chat (the attach (+) button), with
+    their processing status - the chips shown above the chat input.
+    Response: { "resources": [{kind, id, name, status, error_message, process_url}] }
+    """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        get_owned_session(session_id, current_user)
+    except SessionAccessError:
+        return jsonify({"error": "Session not found"}), 404
+    return jsonify({"resources": list_session_resources(session_id, current_user)})
+
+
+@bp.route('/sessions/<string:session_id>/resources', methods=['POST'])
+@jwt_required()
+@limiter.limit("20 per minute")
+def upload_chat_session_resources(session_id):
+    """
+    Attaches local files to this chat only (see
+    app/services/session_resource_service.py). Documents (pdf/docx/txt/md)
+    and spreadsheets (xlsx/xls/csv) are stored exactly like Knowledge Base
+    uploads, but scoped to this user + this chat. Each returned attachment
+    carries the process_url the client calls next to index it - the same
+    Process endpoint Knowledge Base uploads use.
+    Request: multipart/form-data with one or more 'files'
+    Response: { "resources": [...] }
+    """
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    if not session_id or len(session_id) > 255:
+        return jsonify({"error": "Invalid session id"}), 400
+    try:
+        added = add_session_resources(session_id, current_user, request.files.getlist('files'))
+        return jsonify({"resources": added}), 201
+    except SessionAccessError:
+        return jsonify({"error": "Session not found"}), 404
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error attaching files to chat {session_id}: {e}")
+        return jsonify({"error": "Could not attach the file. Please try again."}), 500
+
+
+@bp.route('/sessions/<string:session_id>/resources/<string:kind>/<string:resource_id>', methods=['DELETE'])
+@jwt_required()
+def delete_chat_session_resource(session_id, kind, resource_id):
+    """Removes one attachment (kind 'file' or 'spreadsheet') from this chat."""
+    current_user = get_current_user()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    try:
+        if not delete_session_resource(session_id, current_user, kind, resource_id):
+            return jsonify({"error": "Attachment not found"}), 404
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error removing attachment {kind}/{resource_id} from chat {session_id}: {e}")
+        return jsonify({"error": "Could not remove the attachment. Please try again."}), 500
+
 
 # @bp.route('/sessions', methods=['GET'])
 # @jwt_required()

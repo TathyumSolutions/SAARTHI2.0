@@ -4,10 +4,11 @@ API Connector Model - a registered external REST API tool
 table that lived in a separate saarthi_api_db with no tenant tagging.
 """
 from app import db
+from app.models.resource_scope import ResourceScopeMixin
 from datetime import datetime
 
 
-class ApiConnector(db.Model):
+class ApiConnector(ResourceScopeMixin, db.Model):
     __bind_key__ = 'resources'
     __tablename__ = 'api_connectors'
 

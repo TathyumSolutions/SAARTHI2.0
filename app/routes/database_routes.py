@@ -24,6 +24,7 @@ from app.services import spreadsheet_service
 from app.services.spreadsheet_header_detection import read_tabular_upload
 from app.utils.auth_helpers import get_current_user
 from app.services.audit_service import log_event
+from app.models.resource_scope import SCOPE_SHARED, is_session_local
 
 bp = Blueprint('database', __name__, url_prefix='/api/databases')
 
@@ -113,7 +114,10 @@ def get_databases():
         return jsonify({'error': 'Authentication required', 'databases': []}), 401
 
     try:
-        own = DatabaseConnection.query.filter_by(created_by_user_id=current_user.id).all()
+        # Shared connections only - an Excel/CSV attached in a chat belongs
+        # to that chat (see app/models/resource_scope.py), not the
+        # Knowledge Base / Data Sources list.
+        own = DatabaseConnection.query.filter_by(created_by_user_id=current_user.id, scope=SCOPE_SHARED).all()
 
         from app.models.resource_mapping import ResourceMapping
         granted_ids = [
@@ -121,7 +125,9 @@ def get_databases():
                 resource_type='database', user_id=current_user.id
             ).all()
         ]
-        granted = DatabaseConnection.query.filter(DatabaseConnection.id.in_(granted_ids)).all() if granted_ids else []
+        granted = DatabaseConnection.query.filter(
+            DatabaseConnection.id.in_(granted_ids), DatabaseConnection.scope == SCOPE_SHARED
+        ).all() if granted_ids else []
 
         seen_ids = set()
         databases = []
@@ -228,6 +234,98 @@ def _save_sheet(connection, table_name, sheet_name, df, info):
     return record
 
 
+def create_spreadsheet_connections(current_user, file_bytes, filename, name, custom_description=None,
+                                   scope=SCOPE_SHARED, chat_session_id=None):
+    """
+    Turns one uploaded Excel/CSV file into one DatabaseConnection per
+    non-empty sheet (Parquet-backed - see create_excel_database below).
+    Shared by the Data Sources upload and the chat attach (+) button, which
+    passes scope='session_local' + its chat_session_id - everything else
+    about how the file is read, stored and described is identical.
+
+    Returns (connections, table_records, sheet_info, sheets, multi_sheet).
+    Raises ValueError (message safe to show the user) for bad input.
+    """
+    sheets, sheet_info = read_tabular_upload(file_bytes, filename)
+    sheets = {sheet_name: df for sheet_name, df in sheets.items() if not df.empty}
+    if not sheets:
+        raise ValueError('The file has no data rows')
+
+    base_table_name = _sanitize_identifier(name)
+    if not base_table_name:
+        raise ValueError('Could not derive a valid table name from the connection name')
+
+    # Only suffix table/connection names with the sheet when there's
+    # more than one - keeps the common single-sheet/CSV case named
+    # exactly after the connection, same as before.
+    multi_sheet = len(sheets) > 1
+    # Spreadsheet tables are looked up by name across every connection
+    # (spreadsheet_service.get_table_record), so a new table must never
+    # reuse a name that's already registered - it would shadow, or be
+    # shadowed by, someone else's table of the same name.
+    used_table_names = {t['table'] for t in spreadsheet_service.list_all_tables()}
+    created_connections = []
+    created_tables = []
+
+    for sheet_name, df in sheets.items():
+        if multi_sheet:
+            table_name = _sanitize_identifier(f"{base_table_name}_{sheet_name}")
+            connection_name = f"{name}_{sheet_name}"
+        else:
+            table_name = base_table_name
+            connection_name = name
+        candidate, n = table_name, 2
+        while candidate in used_table_names:
+            candidate = _sanitize_identifier(f"{table_name}_{n}")
+            n += 1
+        table_name = candidate
+        used_table_names.add(table_name)
+
+        # Row created first so its id is available to key the
+        # spreadsheet manifest by - filled in with the resulting
+        # table right after.
+        connection = DatabaseConnection(
+            name=connection_name,
+            type='Excel',
+            host=None,
+            port=None,
+            database=table_name,
+            username=None,
+            password=None,
+            config={'source_tables': []},
+            # Without a description from the user, the title/description
+            # rows found above the sheet's header describe it instead.
+            description=custom_description or _clean_text(sheet_info.get(sheet_name, {}).get('title')),
+            company_code=current_user.company_code,
+            created_by_user_id=current_user.id,
+            status='connected',
+            scope=scope,
+            chat_session_id=chat_session_id,
+        )
+        db.session.add(connection)
+        db.session.commit()
+
+        record = _save_sheet(connection, table_name, sheet_name, df, sheet_info.get(sheet_name, {}))
+        spreadsheet_service.set_original_filename(connection.id, filename)
+        connection.config = {
+            'source_tables': [{'table': record['table'], 'sheet': record['sheet'], 'row_count': record['row_count']}],
+            'original_filename': filename,
+            'row_count': record['row_count'],
+        }
+        db.session.commit()
+
+        created_connections.append(connection)
+        created_tables.append(record)
+
+    for connection in created_connections:
+        log_event('database_connection_created', company_code=current_user.company_code, user_id=current_user.id,
+                   resource_type='database', resource_id=connection.id,
+                   details={'name': connection.name, 'type': 'Excel', 'scope': scope,
+                            **({'chat_session_id': chat_session_id} if chat_session_id else {})})
+
+    return created_connections, created_tables, sheet_info, sheets, multi_sheet
+
+
 @bp.route('/excel', methods=['POST'])
 @jwt_required()
 def create_excel_database():
@@ -262,82 +360,16 @@ def create_excel_database():
         if not file or file.filename == '':
             return jsonify({'error': 'An Excel or CSV file is required'}), 400
 
-        # Every sheet in the workbook is read (each becomes its own
-        # connection below), with its real header row detected rather than
-        # assumed to be row 1 - see spreadsheet_header_detection.py.
         try:
-            sheets, sheet_info = read_tabular_upload(file.read(), file.filename)
+            created_connections, created_tables, sheet_info, sheets, multi_sheet = create_spreadsheet_connections(
+                current_user, file.read(), file.filename, name,
+                custom_description=_clean_text(request.form.get('description')),
+            )
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
 
-        sheets = {sheet_name: df for sheet_name, df in sheets.items() if not df.empty}
-        if not sheets:
-            return jsonify({'error': 'The file has no data rows'}), 400
-
-        base_table_name = _sanitize_identifier(name)
-        if not base_table_name:
-            return jsonify({'error': 'Could not derive a valid table name from the connection name'}), 400
-
-        # Only suffix table/connection names with the sheet when there's
-        # more than one - keeps the common single-sheet/CSV case named
-        # exactly after the connection, same as before.
-        multi_sheet = len(sheets) > 1
-        used_table_names = set()
-        custom_description = _clean_text(request.form.get('description'))
-        created_connections = []
-        created_tables = []
-
-        for sheet_name, df in sheets.items():
-            if multi_sheet:
-                table_name = _sanitize_identifier(f"{base_table_name}_{sheet_name}")
-                connection_name = f"{name}_{sheet_name}"
-            else:
-                table_name = base_table_name
-                connection_name = name
-            if table_name in used_table_names:
-                table_name = _sanitize_identifier(f"{table_name}_{len(used_table_names) + 1}")
-            used_table_names.add(table_name)
-
-            # Row created first so its id is available to key the
-            # spreadsheet manifest by - filled in with the resulting
-            # table right after.
-            connection = DatabaseConnection(
-                name=connection_name,
-                type='Excel',
-                host=None,
-                port=None,
-                database=table_name,
-                username=None,
-                password=None,
-                config={'source_tables': []},
-                # Without a description from the user, the title/description
-                # rows found above the sheet's header describe it instead.
-                description=custom_description or _clean_text(sheet_info.get(sheet_name, {}).get('title')),
-                company_code=current_user.company_code,
-                created_by_user_id=current_user.id,
-                status='connected'
-            )
-            db.session.add(connection)
-            db.session.commit()
-
-            record = _save_sheet(connection, table_name, sheet_name, df, sheet_info.get(sheet_name, {}))
-            spreadsheet_service.set_original_filename(connection.id, file.filename)
-            connection.config = {
-                'source_tables': [{'table': record['table'], 'sheet': record['sheet'], 'row_count': record['row_count']}],
-                'original_filename': file.filename,
-                'row_count': record['row_count'],
-            }
-            db.session.commit()
-
-            created_connections.append(connection)
-            created_tables.append(record)
-
         from app.services.automated_metamind import generate_router_config
         generate_router_config(user_id=current_user.id)
-
-        for connection in created_connections:
-            log_event('database_connection_created', company_code=current_user.company_code, user_id=current_user.id,
-                       resource_type='database', resource_id=connection.id, details={'name': connection.name, 'type': 'Excel'})
 
         table_summary = ', '.join(f'"{t["table"]}" ({t["row_count"]} rows)' for t in created_tables)
         header_notes = [
@@ -358,9 +390,14 @@ def create_excel_database():
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
+
 def _can_view_connection(user, connection):
     if connection.created_by_user_id == user.id:
         return True
+    if is_session_local(connection):
+        # Attached in someone else's chat - never visible to anyone else,
+        # whatever Resource Mapping says (it refuses such grants anyway).
+        return False
     from app.models.resource_mapping import ResourceMapping
     return ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id, user_id=user.id).first() is not None
 
@@ -368,6 +405,8 @@ def _can_view_connection(user, connection):
 def _can_modify_connection(user, connection):
     if connection.created_by_user_id == user.id:
         return True
+    if is_session_local(connection):
+        return False
     return user.role == 'admin' and user.company_code and user.company_code == connection.company_code
 
 
@@ -472,14 +511,8 @@ def delete_database_connection(db_id):
         if not connection or not _can_modify_connection(current_user, connection):
             return jsonify({'error': 'Connection not found'}), 404
 
-        is_excel = (connection.type or '').lower() == 'excel'
         connection_id = connection.id
-        ResourceMapping.query.filter_by(resource_type='database', resource_id=connection_id).delete()
-        db.session.delete(connection)
-        db.session.commit()
-
-        if is_excel:
-            spreadsheet_service.delete_connection_tables(db_id)
+        delete_connection_resource(connection)
 
         log_event('database_connection_deleted', company_code=current_user.company_code, user_id=current_user.id,
                    resource_type='database', resource_id=connection_id)
@@ -494,6 +527,25 @@ def delete_database_connection(db_id):
         print(f"DELETE error: {str(e)}")
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
+
+def delete_connection_resource(connection):
+    """
+    Deletes a DatabaseConnection and everything hanging off it: its
+    Resource Mapping grants, the row itself (with its schema_metadata and
+    metamind_summary), and - for Excel/CSV - its Parquet tables and
+    manifest entry. The single deletion path for both the Data Sources
+    delete button and a chat session's attachments being deleted with it
+    (see app/services/session_resource_service.py). Commits.
+    """
+    is_excel = (connection.type or '').lower() == 'excel'
+    connection_id = connection.id
+    ResourceMapping.query.filter_by(resource_type='database', resource_id=connection_id).delete()
+    db.session.delete(connection)
+    db.session.commit()
+
+    if is_excel:
+        spreadsheet_service.delete_connection_tables(connection_id)
+
 
 def _excel_sheet_names(tables):
     """Unique, <=31-char sheet names (Excel's own limit) for a set of
@@ -805,6 +857,11 @@ def process_database_connection(db_id):
             m.user_id for m in ResourceMapping.query.filter_by(resource_type='database', resource_id=connection.id).all()
         }
 
+        # A chat attachment is only visible to router config built for its
+        # own chat, so refresh with that chat's id - otherwise its
+        # metamind_summary would never be written by the refresh below.
+        refresh_kwargs = {'chat_session_id': connection.chat_session_id} if is_session_local(connection) else {}
+
         if (connection.type or '').lower() == 'excel':
             tables = [t['table'] for t in spreadsheet_service.get_tables_for_connection(connection.id)]
 
@@ -836,7 +893,7 @@ def process_database_connection(db_id):
                 return jsonify({"status": "error", "message": "Something went wrong while summarizing these tables. Please try again."}), 500
 
             for uid in affected_user_ids:
-                generate_router_config(user_id=uid)
+                generate_router_config(user_id=uid, **refresh_kwargs)
             connection.status = 'processed'
             connection.error_message = None
             db.session.commit()

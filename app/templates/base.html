@@ -729,6 +729,17 @@
         let chatSessions = [];
         let currentSessionId = 'session_' + Date.now();
 
+        // Every switch of the active chat goes through here: the id is
+        // what the backend scopes this chat's attached files to (see
+        // index.html's attach (+) button), so it's remembered across page
+        // reloads alongside the restored chat history, and anything that
+        // depends on it (the attachment chips) is told it changed.
+        function setCurrentSessionId(sessionId) {
+            currentSessionId = sessionId;
+            try { localStorage.setItem('saarthi_current_session_id', sessionId); } catch (e) { }
+            window.dispatchEvent(new CustomEvent('saarthi:session-changed', { detail: { sessionId: sessionId } }));
+        }
+
         function _getChatContainerEl() {
             return document.querySelector('.chat-container') || document.getElementById('chatContainer');
         }
@@ -815,7 +826,7 @@
                     // conversation.
                     await saveActiveChatToHistory();
 
-                    currentSessionId = session.id;
+                    setCurrentSessionId(session.id);
 
                     try {
                         const res = await authFetch(`/api/chat/sessions/${session.id}`);
@@ -846,7 +857,8 @@
                             if (currentSessionId === session.id) {
                                 const chatContainerEl = _getChatContainerEl();
                                 if (chatContainerEl) chatContainerEl.innerHTML = '';
-                                currentSessionId = 'session_' + Date.now();
+                                localStorage.removeItem('saarthi_chat_history');
+                                setCurrentSessionId('session_' + Date.now());
                             }
                             await fetchSavedSessions();
                         } catch (err) {
@@ -880,7 +892,8 @@
                 thoughtChainEl.innerHTML = '';
             }
 
-            currentSessionId = 'session_' + Date.now();
+            localStorage.removeItem('saarthi_chat_history');
+            setCurrentSessionId('session_' + Date.now());
             renderAuditTrailList();
             console.log("🆕 Switched to a brand new conversation channel.");
         }

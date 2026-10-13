@@ -205,7 +205,7 @@ def classify_query_heuristic(user_query: str) -> str | None:
 # ============================================================
 # ROUTER CONFIG LOADING + TRIMMING
 # ============================================================
-def _load_router_config(user_id: int) -> dict:
+def _load_router_config(user_id: int, chat_session_id=None) -> dict:
     """
     Computes this specific user's router config straight from their own
     DatabaseConnection/ApiConnector/FileResource rows - not a shared file
@@ -223,11 +223,21 @@ def _load_router_config(user_id: int) -> dict:
     connection was actually (re)introspected (create/update/test/Process).
     Resource *visibility* (which connections/files/tools this user can
     see) is still resolved live on every call, same as before.
+
+    chat_session_id: the chat the question is asked in - adds the files
+    and spreadsheets attached in that chat (see app/models/resource_scope.py).
     """
-    menu = generate_router_config(user_id, use_cached_metadata=True)
+    menu = generate_router_config(user_id, use_cached_metadata=True, chat_session_id=chat_session_id)
     if not menu:
         return {"routing_menu": {"datasources": {}, "routing_rules": {}, "instructions": ""}}
     return menu
+
+
+def _visible_spreadsheet_tables(router_config: dict) -> list:
+    """Spreadsheet table names in this user's (chat-scoped) router config -
+    the only tables the SPREADSHEET track may plan against or execute."""
+    datasources = ((router_config or {}).get("routing_menu") or {}).get("datasources") or {}
+    return list(((datasources.get("SPREADSHEET") or {}).get("tables") or {}).keys())
 
 
 def _query_relevance_words(user_query: str) -> set:
@@ -701,13 +711,27 @@ def _run_reused_spreadsheet_query(question: str, matched: "QueryLog", score: flo
     from .spreadsheet_query_service import _execute_plan
 
     session_id = ctx["session_id"]
+
+    # A liked plan may come from any user in the company - and may have
+    # read a spreadsheet only its author could see (their own unshared
+    # upload, or a file attached in one of their chats). Only replay it
+    # when every table it touches is visible to THIS user in THIS chat;
+    # otherwise fall back to fresh routing (the caller does that on error).
+    try:
+        plan = json.loads(matched.main_query)
+    except Exception:
+        plan = None
+    visible = set(_visible_spreadsheet_tables(_load_router_config(ctx.get("user_id", 1), session_id)))
+    if not plan or not set(plan.get("tables") or []) <= visible:
+        print(f"⚠️ Not reusing spreadsheet plan {matched.query_code}: it reads tables not visible in this chat.")
+        return {"error": True}
+
     _push_router_event(
         session_id, "start", "Reusing a Matched Query",
         f"This closely matches a previously accepted query ({matched.query_code}) - reusing its plan instead of regenerating it."
     )
 
     try:
-        plan = json.loads(matched.main_query)
         result_df = _execute_plan(plan)
         table_records = json.loads(result_df.to_json(orient="records", date_format="iso"))
         had_error = False
@@ -1305,6 +1329,9 @@ def _run_files_track(question: str, ctx: dict, hint_document_codes: list = None)
         question, model_name=ctx["model_name"],
         session_id=ctx["session_id"], custom_key=ctx["custom_key"],
         user_id=ctx.get("user_id"), feedback_context=ctx.get("feedback_context", ""),
+        # Files attached in this chat are searchable alongside the user's
+        # shared/granted ones - never another chat's attachments.
+        chat_session_id=ctx["session_id"],
         # Documents the router already identified from the FILES metadata
         # (document_code/name/description list) - narrows retrieval to
         # just these when they're real, visible documents; answer_from_docs
@@ -1394,6 +1421,9 @@ def _run_spreadsheet_track(question: str, ctx: dict, hint_tables: list = None) -
         # metadata - narrows the plan-builder's candidate tables to just
         # these when they're real; falls back to the full set otherwise.
         hint_tables=hint_tables or [],
+        # Only tables in this user's chat-scoped router config - never
+        # another user's upload or another chat's attachment.
+        visible_tables=_visible_spreadsheet_tables(ctx.get("router_config")),
     )
 
     tables = result.get("tables") or []
@@ -1822,7 +1852,7 @@ class RouterService:
             # ------------------------------------------------
             # LAYER 2: Load config + tools, build token-budgeted messages
             # ------------------------------------------------
-            router_config = _load_router_config(user_id)
+            router_config = _load_router_config(user_id, session_id)
             active_db_tools = fetch_and_translate_tools()
             live_tools_summary = "\n".join(
                 f"- Tool: '{t.get('function', {}).get('name')}' -> {t.get('function', {}).get('description')}"

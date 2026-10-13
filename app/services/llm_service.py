@@ -445,9 +445,16 @@ class LLMService:
 
     # --- Core Processing Logic ---
 
-    def process_to_embeddings(self, file_path, document_code=None):
+    def process_to_embeddings(self, file_path, document_code=None, extra_metadata=None):
         """
         Loads document, creates chunks, generates embeddings, and stores in Qdrant.
+
+        extra_metadata: added to every chunk's metadata alongside
+        document_code - e.g. {"scope": "session_local", "chat_session_id":
+        ...} for a file attached in a chat (see
+        app/services/session_resource_service.py). Retrieval itself is
+        still scoped by document_code (see answer_from_docs); these just
+        keep each chunk self-describing.
         """
         if not os.path.exists(file_path):
             return {"error": f"File not found at {file_path}"}
@@ -515,6 +522,9 @@ class LLMService:
 
             chunks.extend(table_chunks)
             chunks.extend(image_chunks)
+
+            for chunk in chunks:
+                chunk.metadata.update(extra_metadata or {})
 
             # 3. Store in Qdrant Vector Database
             # This handles both embedding and storage in one go
@@ -631,7 +641,7 @@ class LLMService:
     #         print(f"Analysis Error: {e}")
     #         return "Analyzing natural language inquiry for document matching modules."    
 
-    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions='',user_id=None,feedback_context='',hint_document_codes=None):
+    def answer_from_docs(self, user_query, model_name,session_id=1,custom_key='',system_instructions='',user_id=None,feedback_context='',hint_document_codes=None,chat_session_id=None):
         """
         Retrieves relevant chunks from Qdrant and updates the live steps
         using the new structured event payload layout. Retrieval is scoped
@@ -653,7 +663,7 @@ class LLMService:
         qdrant_filter = None
         if user_id is not None:
             from app.services.automated_metamind import visible_document_codes
-            doc_codes = visible_document_codes(user_id)
+            doc_codes = visible_document_codes(user_id, chat_session_id)
             if not doc_codes:
                 stream_manager.push_step(session_id, "DONE", is_sql=False)
                 return {
@@ -1110,7 +1120,7 @@ class LLMService:
 
 _shared_llm_service = LLMService()
 
-def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions='', user_id=None, feedback_context='', hint_document_codes=None):
+def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system_instructions='', user_id=None, feedback_context='', hint_document_codes=None, chat_session_id=None):
     """
     Top-level module function mapping so your orchestrator router can import
     it cleanly without needing class-level structural instantiation overhead.
@@ -1124,7 +1134,14 @@ def answer_from_docs(user_query, model_name, session_id=1, custom_key='', system
         user_id=user_id,
         feedback_context=feedback_context,
         hint_document_codes=hint_document_codes,
+        chat_session_id=chat_session_id,
     )
+
+
+def process_to_embeddings(file_path, document_code=None, extra_metadata=None):
+    """Module-level wrapper over the shared LLMService - see
+    LLMService.process_to_embeddings."""
+    return _shared_llm_service.process_to_embeddings(file_path, document_code=document_code, extra_metadata=extra_metadata)
 
 
 def delete_document_vectors(document_code):
