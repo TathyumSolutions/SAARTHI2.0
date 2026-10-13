@@ -71,6 +71,7 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,
         'pool_recycle': 300,
+        'pool_reset_on_return': 'rollback',
     }
 
     # Superadmin emails (comma-separated) allowed to provision new

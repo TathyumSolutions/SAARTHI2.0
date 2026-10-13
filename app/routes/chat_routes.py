@@ -209,6 +209,7 @@ def get_chat_sessions():
             for s in sessions
         ]})
     except Exception as e:
+        db.session.rollback()
         print(f"Error fetching chat sessions: {e}")
         return jsonify({"error": "Failed to load chat sessions"}), 500
 

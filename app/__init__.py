@@ -165,6 +165,22 @@ def create_app(config_name='development'):
             print(traceback.format_exc())
             db.session.rollback()
 
+    @app.teardown_appcontext
+    def teardown_db_session(exception):
+        # A failed request can leave a Postgres connection in a bad state
+        # (the exact desync pattern seen in the logs). Roll it back and
+        # discard the session so the next request gets a fresh connection
+        # instead of reusing a poisoned one.
+        try:
+            if exception is not None:
+                db.session.rollback()
+        except Exception:
+            pass
+        try:
+            db.session.remove()
+        except Exception:
+            pass
+
     # Health check endpoint
     @app.route('/health')
     def health_check():
