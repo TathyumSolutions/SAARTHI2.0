@@ -482,6 +482,94 @@
         background: #106EBE;
     }
 
+    .send-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .attach-btn {
+        width: 40px;
+        height: 40px;
+        flex-shrink: 0;
+        border-radius: 50%;
+        border: 1px solid var(--border-color);
+        background: var(--panel-bg);
+        color: var(--text-primary);
+        font-size: 22px;
+        line-height: 1;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .attach-btn:hover {
+        border-color: var(--primary-blue);
+        color: var(--primary-blue);
+    }
+
+    .attachment-bar {
+        display: none;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 10px 20px 0;
+        background: var(--sidebar-bg);
+        border-top: 1px solid var(--border-color);
+        flex-shrink: 0;
+    }
+
+    .attachment-bar.has-items {
+        display: flex;
+    }
+
+    .attachment-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 280px;
+        padding: 5px 8px 5px 10px;
+        border-radius: 14px;
+        border: 1px solid var(--border-color);
+        background: var(--panel-bg);
+        color: var(--text-primary);
+        font-size: 12px;
+    }
+
+    .attachment-chip .chip-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .attachment-chip .chip-status {
+        font-size: 11px;
+        color: var(--text-secondary);
+        white-space: nowrap;
+    }
+
+    .attachment-chip.is-error {
+        border-color: #EF4444;
+    }
+
+    .attachment-chip.is-error .chip-status {
+        color: #EF4444;
+    }
+
+    .attachment-chip.is-ready .chip-status {
+        color: #10B981;
+    }
+
+    .attachment-chip .chip-remove {
+        border: none;
+        background: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 14px;
+        padding: 0 2px;
+    }
+
+    .attachment-chip .chip-remove:hover {
+        color: #EF4444;
+    }
+
     .right-sidebar {
         width: 320px;
         background: var(--sidebar-bg);
@@ -596,8 +684,14 @@
 <!-- Chat Container -->
 <div class="chat-container"></div>
 
+<!-- Files attached to this chat only (see attachChatFiles below) -->
+<div class="attachment-bar" id="attachmentBar" aria-live="polite"></div>
+
 <!-- Input Container -->
 <div class="input-container">
+    <button type="button" class="attach-btn" id="attachBtn" title="Attach files to this chat (PDF, Word, text, Markdown, Excel, CSV)" aria-label="Attach files">+</button>
+    <input type="file" id="attachInput" multiple hidden
+           accept=".pdf,.docx,.txt,.md,.xlsx,.xls,.csv">
     <textarea class="chat-input" rows="2" placeholder="Ask Saarthi anything about your data..."></textarea>
     <button class="send-btn">Send</button>
 </div>
@@ -1728,7 +1822,14 @@
             return;
         }
 
-        const currentSessionId = 1;
+        if (attachmentsPending()) {
+            alert("Please wait until your attached files are ready.");
+            return;
+        }
+
+        // The real chat id (see base.html's setCurrentSessionId) - it's what
+        // the backend uses to include this chat's attached files.
+        const chatSessionId = currentSessionId;
         lastUserQuestion = message;
 
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1740,7 +1841,7 @@
         `, 'S', time, true);
         chatInput.value = '';
 
-        initializeLiveStepStream(currentSessionId, async function () {
+        initializeLiveStepStream(chatSessionId, async function () {
 
             try {
                 const response = await authFetch('/api/chat/message', {
@@ -1748,7 +1849,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: message,
-                        session_id: 1,
+                        session_id: chatSessionId,
                         mode: 'chat'
                     })
                 });
@@ -2005,9 +2106,7 @@
 
         if (pendingSessionId) {
             sessionStorage.removeItem('saarthi_pending_session_id');
-            if (typeof currentSessionId !== 'undefined') {
-                currentSessionId = pendingSessionId;
-            }
+            setCurrentSessionId(pendingSessionId);
             authFetch(`/api/chat/sessions/${pendingSessionId}`)
                 .then(res => res.json())
                 .then(data => {
@@ -2022,15 +2121,175 @@
             sessionStorage.removeItem('saarthi_force_new_chat');
             if (chatContainer) chatContainer.innerHTML = '';
             localStorage.removeItem('saarthi_chat_history');
+            setCurrentSessionId('session_' + Date.now());
         } else {
             const savedHistory = localStorage.getItem('saarthi_chat_history');
+            const savedSessionId = localStorage.getItem('saarthi_current_session_id');
             if (savedHistory && chatContainer) {
                 chatContainer.innerHTML = savedHistory;
                 chatContainer.scrollTop = chatContainer.scrollHeight;
                 console.log("💾 Previous chat conversation successfully restored from storage!");
             }
+            // The restored conversation keeps its own id - and with it,
+            // the files attached to it (even before its first question).
+            setCurrentSessionId(savedSessionId || currentSessionId);
         }
     });
+
+    // ==========================================
+    // CHAT ATTACHMENTS (+ button)
+    // Local files attached here belong to THIS chat only: the backend
+    // stores them like any Knowledge Base upload but scoped to this user
+    // and chat (see app/services/session_resource_service.py), they are
+    // processed through the same Process endpoints, and they're deleted
+    // together with the chat.
+    // ==========================================
+    const attachBtn = document.getElementById('attachBtn');
+    const attachInput = document.getElementById('attachInput');
+    const attachmentBar = document.getElementById('attachmentBar');
+    let chatAttachments = [];      // [{kind, id, name, status, error_message, process_url}]
+    let uploadingCount = 0;
+
+    function attachmentsPending() {
+        return uploadingCount > 0 || chatAttachments.some(a => a.status === 'uploaded' || a.status === 'processing');
+    }
+
+    function renderAttachments() {
+        attachmentBar.innerHTML = '';
+        const labels = { uploaded: 'Queued…', processing: 'Processing…', processed: 'Ready', error: 'Failed' };
+        chatAttachments.forEach(function (a) {
+            const chip = document.createElement('span');
+            chip.className = 'attachment-chip'
+                + (a.status === 'error' ? ' is-error' : '')
+                + (a.status === 'processed' ? ' is-ready' : '');
+            chip.title = a.status === 'error' && a.error_message ? a.error_message : a.name;
+
+            const icon = document.createElement('span');
+            icon.textContent = a.kind === 'spreadsheet' ? '📊' : '📄';
+            const name = document.createElement('span');
+            name.className = 'chip-name';
+            name.textContent = a.name;
+            const status = document.createElement('span');
+            status.className = 'chip-status';
+            status.textContent = labels[a.status] || a.status;
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'chip-remove';
+            remove.setAttribute('aria-label', 'Remove ' + a.name);
+            remove.textContent = '×';
+            remove.disabled = a.status === 'processing';
+            remove.addEventListener('click', function () { removeAttachment(a); });
+
+            chip.append(icon, name, status, remove);
+            attachmentBar.appendChild(chip);
+        });
+        if (uploadingCount > 0) {
+            const chip = document.createElement('span');
+            chip.className = 'attachment-chip';
+            chip.textContent = `Uploading ${uploadingCount} file(s)…`;
+            attachmentBar.appendChild(chip);
+        }
+        attachmentBar.classList.toggle('has-items', chatAttachments.length > 0 || uploadingCount > 0);
+        sendBtn.disabled = attachmentsPending();
+    }
+
+    async function loadAttachments(sessionId) {
+        chatAttachments = [];
+        renderAttachments();
+        try {
+            const res = await authFetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/resources`);
+            if (!res.ok) return;    // brand-new chat: nothing saved server-side yet
+            const data = await res.json();
+            if (sessionId !== currentSessionId) return;   // switched chats meanwhile
+            chatAttachments = data.resources || [];
+            renderAttachments();
+            // Anything left unprocessed (e.g. the page was reloaded mid-way)
+            // is picked up again.
+            chatAttachments.filter(a => a.status === 'uploaded').forEach(processAttachment);
+        } catch (err) {
+            console.error('Could not load chat attachments:', err);
+        }
+    }
+
+    async function processAttachment(a) {
+        a.status = 'processing';
+        renderAttachments();
+        try {
+            const res = await authFetch(a.process_url, { method: 'POST' });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.status === 'success') {
+                a.status = 'processed';
+                a.error_message = null;
+            } else {
+                a.status = 'error';
+                a.error_message = data.message || data.error || 'Processing failed.';
+            }
+        } catch (err) {
+            a.status = 'error';
+            a.error_message = 'Processing failed.';
+        }
+        renderAttachments();
+    }
+
+    async function attachChatFiles(fileList) {
+        const files = Array.from(fileList || []);
+        if (!files.length) return;
+        const sessionId = currentSessionId;
+        const form = new FormData();
+        files.forEach(f => form.append('files', f));
+
+        uploadingCount += files.length;
+        renderAttachments();
+        try {
+            const res = await authFetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/resources`, {
+                method: 'POST',
+                body: form
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert(data.error || 'Could not attach the file.');
+                // Earlier files of the batch may already be attached.
+                if (sessionId === currentSessionId) await loadAttachments(sessionId);
+                return;
+            }
+            if (sessionId !== currentSessionId) return;
+            const added = data.resources || [];
+            chatAttachments = chatAttachments.concat(added);
+            renderAttachments();
+            added.forEach(processAttachment);
+        } catch (err) {
+            console.error('Attach failed:', err);
+            alert('Could not attach the file.');
+        } finally {
+            uploadingCount -= files.length;
+            renderAttachments();
+        }
+    }
+
+    async function removeAttachment(a) {
+        try {
+            const res = await authFetch(
+                `/api/chat/sessions/${encodeURIComponent(currentSessionId)}/resources/${a.kind}/${encodeURIComponent(a.id)}`,
+                { method: 'DELETE' }
+            );
+            if (!res.ok && res.status !== 404) {
+                const data = await res.json().catch(() => ({}));
+                alert(data.error || 'Could not remove the attachment.');
+                return;
+            }
+            chatAttachments = chatAttachments.filter(x => x !== a);
+            renderAttachments();
+        } catch (err) {
+            console.error('Remove attachment failed:', err);
+        }
+    }
+
+    attachBtn.addEventListener('click', () => attachInput.click());
+    attachInput.addEventListener('change', function () {
+        attachChatFiles(attachInput.files);
+        attachInput.value = '';
+    });
+    window.addEventListener('saarthi:session-changed', e => loadAttachments(e.detail.sessionId));
 
     sendBtn.addEventListener('click', handleChat);
     chatInput.addEventListener('keydown', (e) => {

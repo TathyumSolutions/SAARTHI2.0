@@ -8,6 +8,7 @@ from app.utils.crypto import encrypt, decrypt
 from app.utils.network_guard import is_safe_url, build_full_api_url
 from app.utils.auth_helpers import get_current_user
 from app.services.audit_service import log_event
+from app.models.resource_scope import SCOPE_SHARED, is_session_local
 
 # 1. Define the separate blueprint for API data sources
 bp = Blueprint('api_connectors', __name__)
@@ -157,7 +158,7 @@ def delete_tool(integration_name):
         if not tool:
             return jsonify({"status": "error", "message": "Tool not found."}), 404
 
-        if tool.created_by_user_id != current_user.id and current_user.role != 'admin':
+        if tool.created_by_user_id != current_user.id and (current_user.role != 'admin' or is_session_local(tool)):
             return jsonify({"status": "error", "message": "Only the creator or a company admin can delete this tool"}), 403
 
         tool_id = tool.id
@@ -197,7 +198,7 @@ def get_tools():
         return jsonify({"status": "error", "message": "Authentication required"}), 401
 
     try:
-        own_tools = ApiConnector.query.filter_by(created_by_user_id=current_user.id).all()
+        own_tools = ApiConnector.query.filter_by(created_by_user_id=current_user.id, scope=SCOPE_SHARED).all()
 
         from app.models.resource_mapping import ResourceMapping
         granted_ids = [
@@ -205,7 +206,9 @@ def get_tools():
                 resource_type='api', user_id=current_user.id
             ).all()
         ]
-        granted_tools = ApiConnector.query.filter(ApiConnector.id.in_(granted_ids)).all() if granted_ids else []
+        granted_tools = ApiConnector.query.filter(
+            ApiConnector.id.in_(granted_ids), ApiConnector.scope == SCOPE_SHARED
+        ).all() if granted_ids else []
 
         seen_ids = set()
         tools_list = []

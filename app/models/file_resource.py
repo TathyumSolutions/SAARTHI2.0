@@ -4,10 +4,11 @@ Replaces the old flat uploads/file_metadata.json file, which had no
 tenant tagging at all and no query/index capability.
 """
 from app import db
+from app.models.resource_scope import ResourceScopeMixin
 from datetime import datetime
 
 
-class FileResource(db.Model):
+class FileResource(ResourceScopeMixin, db.Model):
     __bind_key__ = 'resources'
     __tablename__ = 'files'
 

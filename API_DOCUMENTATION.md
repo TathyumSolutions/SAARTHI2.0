@@ -370,6 +370,35 @@ sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib && 
 }
 ```
 
+`session_id` is the chat's id (e.g. `"session_1760339012345"`). Files attached to that chat (below) are searched only when the question is asked in that same chat.
+
+### 3. Chat Attachments (attach "+" button)
+Local files attached to **one chat only**. They are stored and processed like Knowledge Base uploads (documents → embeddings, Excel/CSV → spreadsheet tables), but they are marked `scope = 'session_local'` with `chat_session_id` set on the `files` / `database_connections` row. As a result:
+- only the uploader can use them, and only in that chat;
+- they never appear in the Knowledge Base, Data Sources or Resource Mapping screens, and they can't be granted to another user;
+- they are deleted, together with all their metadata, vectors and Parquet data, when the chat is deleted (`DELETE /api/chat/sessions/<session_id>`).
+
+Supported types: `pdf, docx, txt, md, xlsx, xls, csv`. Limits: 25 MB per file, 20 attachments per chat.
+
+**Attach:** `POST /api/chat/sessions/<session_id>/resources` (multipart, one or more `files`). This creates the chat session if it hasn't been saved yet.
+
+**Response:**
+```json
+{
+  "resources": [
+    {"kind": "file", "id": "DOC-NOT-20261013-101500", "name": "notes.txt", "status": "uploaded",
+     "error_message": null, "process_url": "/api/datasources/unstructured/DOC-NOT-20261013-101500/process"},
+    {"kind": "spreadsheet", "id": 42, "name": "sales", "status": "uploaded",
+     "error_message": null, "process_url": "/api/databases/42/process"}
+  ]
+}
+```
+Then call `POST <process_url>` for each attachment. These are the same Process endpoints Knowledge Base uploads use.
+
+**List:** `GET /api/chat/sessions/<session_id>/resources`. Same shape, with `status` set to `uploaded` / `processed` / `error`.
+
+**Remove one:** `DELETE /api/chat/sessions/<session_id>/resources/<kind>/<id>`
+
 ---
 
 ## Analytics APIs

@@ -14,6 +14,7 @@ from app.models.resource_mapping import ResourceMapping
 from app.models.user import User
 from app.utils.auth_helpers import get_current_user
 from app.services.audit_service import log_event
+from app.models.resource_scope import visibility_filter, is_session_local
 
 bp = Blueprint('datasource', __name__, url_prefix='/api/datasources')
 
@@ -67,17 +68,16 @@ def get_visible_datasources(user):
         if m.resource_type in granted_by_type:
             granted_by_type[m.resource_type].add(m.resource_id)
 
+    # Shared resources only (no chat_session_id) - chat attachments
+    # belong to their chat, not this list.
     databases = DatabaseConnection.query.filter(
-        (DatabaseConnection.created_by_user_id == user.id)
-        | (DatabaseConnection.id.in_(granted_by_type['database'] or [-1]))
+        visibility_filter(DatabaseConnection, user.id, granted_by_type['database'])
     ).all()
     files = FileResource.query.filter(
-        (FileResource.created_by_user_id == user.id)
-        | (FileResource.id.in_(granted_by_type['file'] or [-1]))
+        visibility_filter(FileResource, user.id, granted_by_type['file'])
     ).all()
     apis = ApiConnector.query.filter(
-        (ApiConnector.created_by_user_id == user.id)
-        | (ApiConnector.id.in_(granted_by_type['api'] or [-1]))
+        visibility_filter(ApiConnector, user.id, granted_by_type['api'])
     ).all()
 
     creator_ids = {r.created_by_user_id for r in (databases + files + apis)}
@@ -219,7 +219,7 @@ def update_datasource_description(datasource_type, datasource_id):
     if error:
         return error
 
-    if resource.created_by_user_id != current_user.id and current_user.role != 'admin':
+    if resource.created_by_user_id != current_user.id and (current_user.role != 'admin' or is_session_local(resource)):
         return jsonify({'status': 'error', 'message': 'Only the owner or a company admin can edit this description'}), 403
 
     description = ((request.get_json(silent=True) or {}).get('description') or '').strip()
@@ -320,7 +320,9 @@ def get_datasource_metadata(datasource_type, datasource_id):
     is_granted = ResourceMapping.query.filter_by(
         resource_type=datasource_type, resource_id=resource.id, user_id=current_user.id
     ).first() is not None
-    if resource.created_by_user_id != current_user.id and not is_granted and current_user.role != 'admin':
+    if resource.created_by_user_id != current_user.id and (
+        is_session_local(resource) or (not is_granted and current_user.role != 'admin')
+    ):
         return jsonify({'status': 'error', 'message': 'You do not have access to this datasource'}), 403
 
     try:
@@ -416,6 +418,41 @@ def upload_file():
 llm_service = LLMService()
 
 
+def delete_file_resource(resource, strict=True):
+    """
+    Deletes a FileResource and everything hanging off it: its Qdrant
+    chunks, the file on disk, its Resource Mapping grants, and the row
+    itself (with its metamind_summary). The single deletion path for both
+    the Knowledge Base delete button and a chat session's attachments
+    being deleted with it (see app/services/session_resource_service.py).
+    Commits.
+
+    strict=False (the chat-deletion cascade) logs a failed vector/disk
+    cleanup and still removes the row - with the row gone the leftover
+    chunks are unreachable anyway (retrieval is scoped by the document
+    codes of existing rows), and a chat being deleted must not be blocked
+    by e.g. Qdrant being briefly down.
+    """
+    try:
+        llm_service.delete_document_vectors(resource.document_code)
+    except Exception as e:
+        if strict:
+            raise
+        print(f"⚠️ Could not delete Qdrant chunks for {resource.document_code}: {e}")
+
+    if resource.file_path and os.path.exists(resource.file_path):
+        try:
+            os.remove(resource.file_path)
+        except Exception as e:
+            if strict:
+                raise
+            print(f"⚠️ Could not remove {resource.file_path}: {e}")
+
+    ResourceMapping.query.filter_by(resource_type='file', resource_id=resource.id).delete()
+    db.session.delete(resource)
+    db.session.commit()
+
+
 @bp.route('/unstructured/<document_code>', methods=['DELETE'])
 @jwt_required()
 def delete_datasource(document_code):
@@ -433,19 +470,12 @@ def delete_datasource(document_code):
         if not resource:
             return jsonify({"status": "error", "message": f"Document code {document_code} not found."}), 404
 
-        if resource.created_by_user_id != current_user.id and current_user.role != 'admin':
+        if resource.created_by_user_id != current_user.id and (current_user.role != 'admin' or is_session_local(resource)):
             return jsonify({"status": "error", "message": "Only the uploader or a company admin can delete this file"}), 403
-
-        llm_service.delete_document_vectors(document_code)
-
-        if resource.file_path and os.path.exists(resource.file_path):
-            os.remove(resource.file_path)
 
         file_name = resource.file_name
         resource_id = resource.id
-        ResourceMapping.query.filter_by(resource_type='file', resource_id=resource_id).delete()
-        db.session.delete(resource)
-        db.session.commit()
+        delete_file_resource(resource)
 
         log_event('file_deleted', company_code=current_user.company_code, user_id=current_user.id,
                    resource_type='file', resource_id=resource_id, details={'document_code': document_code})
@@ -471,8 +501,15 @@ def process_unstructured_file(document_code):
         if not resource:
             return jsonify({"status": "error", "message": f"Document code {document_code} not found."}), 404
 
-        if resource.created_by_user_id != current_user.id and current_user.role != 'admin':
+        if resource.created_by_user_id != current_user.id and (current_user.role != 'admin' or is_session_local(resource)):
             return jsonify({"status": "error", "message": "Only the uploader or a company admin can process this file"}), 403
+
+        # A chat attachment is embedded exactly like any other file - its
+        # chunks just also carry which chat they belong to, and the router
+        # check below has to look inside that chat to see it.
+        local_kwargs = (
+            {'chat_session_id': resource.chat_session_id} if is_session_local(resource) else {}
+        )
 
         file_path = resource.file_path
         resource.status = 'processing'
@@ -482,7 +519,10 @@ def process_unstructured_file(document_code):
         # Trigger the AI Pipeline
         if file_path and os.path.exists(file_path):
             # PASSING document_code here is essential for the Vector DB
-            result = llm_service.process_to_embeddings(file_path, document_code=document_code)
+            result = llm_service.process_to_embeddings(
+                file_path, document_code=document_code,
+                extra_metadata={'scope': resource.scope, **local_kwargs},
+            )
 
             if "error" in result:
                 print(f"❌ Error processing document {document_code}: {result['error']}")
@@ -514,7 +554,7 @@ def process_unstructured_file(document_code):
             # surfacing as a processing failure rather than a false "processed".
             from app.services.automated_metamind import generate_router_config
             try:
-                generate_router_config(user_id=current_user.id)
+                generate_router_config(user_id=current_user.id, **local_kwargs)
             except Exception as e:
                 print(f"❌ Error verifying router visibility after processing {document_code}: {e}")
                 resource.status = 'error'

@@ -787,21 +787,33 @@ def _visible_resource_ids(user_id, resource_type):
     return granted
 
 
-def visible_document_codes(user_id):
+def _visible_filter(model, user_id, resource_type, chat_session_id=None):
+    """
+    The one "own + granted" visibility rule every resource introspection
+    below shares - shared resources this user created or was granted via
+    Resource Mapping, plus (only when a chat_session_id is given) their own
+    session-local uploads from that exact chat session. See
+    app/models/resource_scope.py.
+    """
+    from app.models.resource_scope import visibility_filter
+    return visibility_filter(model, user_id, _visible_resource_ids(user_id, resource_type), chat_session_id)
+
+
+def visible_document_codes(user_id, chat_session_id=None):
     """
     document_code values for uploaded files visible to this user - their
-    own uploads, plus anything explicitly granted via Resource Mapping.
-    Same "own + granted" rule as introspect_api_db/introspect_spreadsheets;
-    used to scope both the FILES status shown in the router config and
-    the actual Qdrant retrieval in llm_service.answer_from_docs, so a
-    document uploaded by (or not shared with) another user never surfaces
-    in this user's answers.
+    own uploads, plus anything explicitly granted via Resource Mapping,
+    plus files attached in the chat session `chat_session_id` (if given).
+    Same rule as introspect_api_db/introspect_spreadsheets; used to scope
+    both the FILES status shown in the router config and the actual Qdrant
+    retrieval in llm_service.answer_from_docs, so a document uploaded by
+    (or not shared with) another user - or attached in a different chat -
+    never surfaces in this user's answers.
     """
     from app.models.file_resource import FileResource
 
-    granted_ids = _visible_resource_ids(user_id, 'file')
     resources = FileResource.query.filter(
-        (FileResource.created_by_user_id == user_id) | (FileResource.id.in_(granted_ids or [-1]))
+        _visible_filter(FileResource, user_id, 'file', chat_session_id)
     ).all()
     return [r.document_code for r in resources]
 
@@ -938,13 +950,14 @@ def _test_postgres_connectivity(db_config):
 
 
 def _visible_postgresql_connections(user_id):
-    """PostgreSQL DatabaseConnection rows visible to this user - own + resource-mapped."""
+    """PostgreSQL DatabaseConnection rows visible to this user - own + resource-mapped.
+    Shared only: a chat's attach button never creates a live database
+    connection, only files and Excel/CSV uploads."""
     from app.models.database_connection import DatabaseConnection
 
-    granted_ids = _visible_resource_ids(user_id, 'database')
     return DatabaseConnection.query.filter(
         DatabaseConnection.type == 'PostgreSQL',
-        (DatabaseConnection.created_by_user_id == user_id) | (DatabaseConnection.id.in_(granted_ids or [-1]))
+        _visible_filter(DatabaseConnection, user_id, 'database'),
     ).all()
 
 
@@ -981,17 +994,17 @@ def resolve_query_execution_config(user_id):
     return _connection_to_db_config(connections[0])
 
 
-def introspect_api_db(user_id):
+def introspect_api_db(user_id, chat_session_id=None):
     """
     API connectors visible to this specific user - their own, plus any
-    explicitly granted via Resource Mapping.
+    explicitly granted via Resource Mapping, plus any local to the chat
+    session `chat_session_id` (if given).
     """
     from app.models.api_connector import ApiConnector
     from app.utils.redaction import redact_secrets
 
-    granted_ids = _visible_resource_ids(user_id, 'api')
     tools = ApiConnector.query.filter(
-        (ApiConnector.created_by_user_id == user_id) | (ApiConnector.id.in_(granted_ids or [-1])),
+        _visible_filter(ApiConnector, user_id, 'api', chat_session_id),
         ApiConnector.status == 'Active',
     ).all()
 
@@ -1020,7 +1033,7 @@ def introspect_api_db(user_id):
 # STEP 3: INTROSPECT Qdrant -> FILES datasource
 # ============================================================
 
-def introspect_qdrant(user_id):
+def introspect_qdrant(user_id, chat_session_id=None):
     """
     Confirms Qdrant collection metrics to verify active uploads visible to
     this specific user - their own uploads plus anything explicitly
@@ -1032,7 +1045,7 @@ def introspect_qdrant(user_id):
         print("⚠️ [FILES] qdrant_client not installed, skipping FILES datasource.")
         return None
 
-    doc_codes = visible_document_codes(user_id)
+    doc_codes = visible_document_codes(user_id, chat_session_id)
     if not doc_codes:
         print(f"⚠️ [FILES] No documents visible to user {user_id}, skipping FILES datasource.")
         return None
@@ -1117,6 +1130,9 @@ def introspect_qdrant(user_id):
                 "name": r.file_name,
                 "description": description,
                 "status": r.status or "uploaded",
+                # Attached in this very chat - see build_routing_menu's
+                # rule about "this file"/"attached" questions.
+                **({"attached_in_this_chat": True} if r.is_session_local else {}),
             })
 
         print(f"✅ [FILES] Qdrant collection '{QDRANT_COLLECTION}' has {points_count} points visible to user {user_id}: {chunk_type_counts}")
@@ -1178,7 +1194,7 @@ def _sync_spreadsheet_connection_records(connections_by_id: dict, tables_by_conn
             print(f"⚠️ [SPREADSHEET] Could not update spreadsheet connection records: {e}")
 
 
-def introspect_spreadsheets(user_id):
+def introspect_spreadsheets(user_id, chat_session_id=None):
     """
     Reads the Parquet-backed table manifest (spreadsheet_service.py) - not
     a database - for Excel/CSV uploads that deliberately never got written
@@ -1200,10 +1216,9 @@ def introspect_spreadsheets(user_id):
         return None
 
     from app.models.database_connection import DatabaseConnection
-    granted_ids = _visible_resource_ids(user_id, 'database')
     connections_by_id = {
         conn.id: conn for conn in DatabaseConnection.query.filter(
-            (DatabaseConnection.created_by_user_id == user_id) | (DatabaseConnection.id.in_(granted_ids or [-1]))
+            _visible_filter(DatabaseConnection, user_id, 'database', chat_session_id)
         ).all()
     }
     visible_connection_ids = set(connections_by_id.keys())
@@ -1230,6 +1245,7 @@ def introspect_spreadsheets(user_id):
             "row_count": table.get("row_count"),
             "columns": table.get("columns", []),
             **({"notes": table["notes"]} if table.get("notes") else {}),
+            **({"attached_in_this_chat": True} if connections_by_id[connection_id].is_session_local else {}),
         }
 
     for connection_id, parts in summary_parts_by_connection.items():
@@ -1393,6 +1409,7 @@ def build_routing_menu(db_tables, api_tools, files_info, spreadsheet_tables=None
         "rule_5": "If query could match more than one active datasource -> return all matching ones, e.g. [\"DB\", \"FILES\"]",
         "rule_6": "When in doubt between DB and FILES -> prefer FILES",
         "rule_7": "If query mentions table names or columns shown under SPREADSHEET.tables, or explicitly refers to an uploaded excel/csv/spreadsheet file -> always choose SPREADSHEET",
+        "rule_8": "Entries marked attached_in_this_chat were attached by the user in this conversation - if the query says 'this file', 'the attached document/sheet', 'the file I uploaded' or similar, choose the datasource holding those entries (FILES for documents, SPREADSHEET for excel/csv) and prefer them over other entries",
         "output_format": "Return ONLY a JSON array. Example: [\"DB\"] or [\"FILES\"] or [\"API\"] or [\"SPREADSHEET\"] or [\"DB\", \"FILES\"]"
     }
 
@@ -1475,7 +1492,7 @@ def build_routing_menu_summary(menu: dict) -> dict:
     }
 
 
-def generate_router_config(user_id, sap_db_config=None, use_cached_metadata=False):
+def generate_router_config(user_id, sap_db_config=None, use_cached_metadata=False, chat_session_id=None):
     """
     Builds this specific user's router config - which datasources/tables/
     API tools/spreadsheets the smart router considers when answering their
@@ -1508,6 +1525,12 @@ def generate_router_config(user_id, sap_db_config=None, use_cached_metadata=Fals
     Qdrant documents (introspect_qdrant) are scoped the same way, via
     visible_document_codes().
 
+    chat_session_id: the chat this question is being asked in. When given,
+    files and Excel/CSV uploads attached in that chat (scope
+    'session_local', see app/models/resource_scope.py) are included too;
+    without it - every caller that isn't answering a chat question - only
+    shared resources are.
+
     Returns the routing menu dict (see build_routing_menu()'s shape), or
     None if this user has no visible datasources at all - callers that
     need the trimmed version call build_routing_menu_summary(menu)
@@ -1535,9 +1558,9 @@ def generate_router_config(user_id, sap_db_config=None, use_cached_metadata=Fals
         db_tables = _load_cached_visible_databases(user_id)
     else:
         db_tables = _introspect_visible_databases(user_id, sap_db_config)
-    api_tools = introspect_api_db(user_id)
-    files_info = introspect_qdrant(user_id)
-    spreadsheet_tables = introspect_spreadsheets(user_id)
+    api_tools = introspect_api_db(user_id, chat_session_id)
+    files_info = introspect_qdrant(user_id, chat_session_id)
+    spreadsheet_tables = introspect_spreadsheets(user_id, chat_session_id)
     _attach_lookup_hints(db_tables, spreadsheet_tables)
     inferred_relations = _infer_db_relations(db_tables)
     if inferred_relations:

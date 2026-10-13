@@ -42,6 +42,13 @@ class _FakeMatched:
         self.remarks = remarks
 
 
+def _router_config_with_spreadsheet_tables(*tables):
+    """A chat-scoped router config whose SPREADSHEET datasource lists exactly
+    these tables - what _run_reused_spreadsheet_query checks a stored plan
+    against before replaying it."""
+    return {"routing_menu": {"datasources": {"SPREADSHEET": {"tables": {t: {} for t in tables}}}}}
+
+
 def test_reuse_dispatch_matches_reusable_tracks_exactly():
     """REUSABLE_TRACKS and REUSE_DISPATCH must never drift - a track listed
     as reusable with no dispatch entry would KeyError the moment a real
@@ -68,7 +75,9 @@ def test_reused_spreadsheet_query_replays_stored_plan_with_no_llm_call():
         [{"metal": "copper", "code": "CU"}, {"metal": "zinc", "code": "ZN"}]
     )
 
-    with patch("app.services.spreadsheet_query_service._execute_plan", return_value=fake_df) as mocked_exec:
+    with patch("app.services.spreadsheet_query_service._execute_plan", return_value=fake_df) as mocked_exec, \
+         patch.object(router_service, "_load_router_config",
+                      return_value=_router_config_with_spreadsheet_tables("metal_codes")):
         result = router_service._run_reused_spreadsheet_query(
             "what are the metal codes", matched, 0.97, {"session_id": "s1"}
         )
@@ -94,13 +103,39 @@ def test_reused_spreadsheet_query_reports_failure_honestly():
     matched = _FakeMatched(main_query=json.dumps({"tables": ["metal_codes"]}))
 
     with patch("app.services.spreadsheet_query_service._execute_plan",
-               side_effect=ValueError("no such column: old_name")):
+               side_effect=ValueError("no such column: old_name")), \
+         patch.object(router_service, "_load_router_config",
+                      return_value=_router_config_with_spreadsheet_tables("metal_codes")):
         result = router_service._run_reused_spreadsheet_query(
             "some question", matched, 0.95, {"session_id": "s1"}
         )
 
     assert result["error"] is True
     assert result["table"] == []
+
+
+def test_reused_spreadsheet_query_never_reads_a_table_not_visible_in_this_chat():
+    """A liked plan can come from any user in the company - possibly one
+    that read a spreadsheet attached in THEIR chat. If any table it reads
+    isn't in this user's chat-scoped router config, it must not run at all
+    (and its stored answer must not be returned) - the caller falls back to
+    fresh routing on error."""
+    matched = _FakeMatched(
+        main_query=json.dumps({"tables": ["metal_codes", "someone_elses_upload"]}),
+        answer="secret numbers from someone else's file",
+    )
+
+    with patch("app.services.spreadsheet_query_service._execute_plan") as mocked_exec, \
+         patch.object(router_service, "_load_router_config",
+                      return_value=_router_config_with_spreadsheet_tables("metal_codes")) as mocked_config:
+        result = router_service._run_reused_spreadsheet_query(
+            "some question", matched, 0.95, {"session_id": "session_1", "user_id": 7}
+        )
+
+    mocked_config.assert_called_once_with(7, "session_1")
+    mocked_exec.assert_not_called()
+    assert result["error"] is True
+    assert "secret" not in json.dumps(result)
 
 
 def test_find_reusable_query_only_matches_liked_db_or_spreadsheet():
