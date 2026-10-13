@@ -121,6 +121,21 @@ def sync_missing_columns(db):
                     print(f"[DB Bootstrap] Added missing column: {table.name}.{column.name}")
                 except Exception as e:
                     print(f"[DB Bootstrap] Could not add column {table.name}.{column.name}: {e}")
+                    continue
+
+                # A column the model marks index=True (e.g. the scope/
+                # chat_session_id pair every resource table filters on - see
+                # app/models/resource_scope.py) gets its index too, the same
+                # one create_all() would have built on a fresh table.
+                if column.index:
+                    index_name = f"ix_{table.name}_{column.name}"
+                    try:
+                        with engine.begin() as conn:
+                            conn.execute(text(
+                                f'CREATE INDEX IF NOT EXISTS "{index_name}" ON "{table.name}" ("{column.name}")'
+                            ))
+                    except Exception as e:
+                        print(f"[DB Bootstrap] Could not index {table.name}.{column.name}: {e}")
 
 
 def drop_removed_tables(db, table_names):

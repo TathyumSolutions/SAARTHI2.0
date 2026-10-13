@@ -4,10 +4,11 @@ systems like SAP, or the demo SAP database once it's registered like any
 other external connection).
 """
 from app import db
+from app.models.resource_scope import ResourceScopeMixin
 from datetime import datetime
 
 
-class DatabaseConnection(db.Model):
+class DatabaseConnection(ResourceScopeMixin, db.Model):
     __bind_key__ = 'resources'
     __tablename__ = 'database_connections'
 

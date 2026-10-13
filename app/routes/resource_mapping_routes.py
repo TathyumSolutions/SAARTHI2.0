@@ -15,6 +15,7 @@ from app.models.file_resource import FileResource
 from app.models.api_connector import ApiConnector
 from app.models.model_config import ModelConfiguration
 from app.models.resource_mapping import ResourceMapping, RESOURCE_TYPES
+from app.models.resource_scope import SCOPE_SHARED, is_session_local
 from app.services.audit_service import log_event
 from app.utils.decorators import admin_required
 
@@ -22,14 +23,17 @@ bp = Blueprint('resource_mapping', __name__, url_prefix='/api/resource-mapping')
 
 
 def _resource_lookup(resource_type, resource_id, company_code):
-    """Returns the resource row if it exists and belongs to company_code, else None."""
+    """Returns the resource row if it exists, belongs to company_code and
+    can be shared, else None. A file/spreadsheet attached in a chat
+    (scope 'session_local' - see app/models/resource_scope.py) belongs to
+    its uploader's chat alone and can never be granted to anyone."""
     model = {
         'database': DatabaseConnection, 'file': FileResource, 'api': ApiConnector, 'llm': ModelConfiguration,
     }.get(resource_type)
     if not model:
         return None
     resource = model.query.get(resource_id)
-    if not resource or resource.company_code != company_code:
+    if not resource or resource.company_code != company_code or is_session_local(resource):
         return None
     return resource
 
@@ -79,13 +83,13 @@ def list_resources(current_user):
     company_code = current_user.company_code
     resources = []
 
-    for conn in DatabaseConnection.query.filter_by(company_code=company_code).all():
+    for conn in DatabaseConnection.query.filter_by(company_code=company_code, scope=SCOPE_SHARED).all():
         resources.append({"type": "database", "id": conn.id, "name": conn.name})
 
-    for f in FileResource.query.filter_by(company_code=company_code).all():
+    for f in FileResource.query.filter_by(company_code=company_code, scope=SCOPE_SHARED).all():
         resources.append({"type": "file", "id": f.id, "name": f.file_name})
 
-    for tool in ApiConnector.query.filter_by(company_code=company_code).all():
+    for tool in ApiConnector.query.filter_by(company_code=company_code, scope=SCOPE_SHARED).all():
         resources.append({"type": "api", "id": tool.id, "name": tool.integration_name})
 
     for cfg in ModelConfiguration.query.filter(
