@@ -744,6 +744,31 @@
             return document.querySelector('.chat-container') || document.getElementById('chatContainer');
         }
 
+        // Chat history is saved as the chat panel's HTML, and a <canvas>
+        // keeps none of its drawing in HTML - so every chart is stored as
+        // its Chart.js config on the canvas (data-chart-config) and drawn
+        // again from that here, both when it first appears and whenever a
+        // saved chat is put back on screen.
+        function renderSavedCharts(container) {
+            if (!container || typeof Chart === 'undefined') return;
+            container.querySelectorAll('canvas[data-chart-config]').forEach(function (canvasEl) {
+                let cfg;
+                try { cfg = JSON.parse(canvasEl.getAttribute('data-chart-config')); } catch (e) { return; }
+                const existing = Chart.getChart(canvasEl);
+                if (existing) existing.destroy();
+                // Labels arrive shortened for readability; show the
+                // untruncated name (full_labels) in the tooltip.
+                if (Array.isArray(cfg.full_labels)) {
+                    cfg.options = cfg.options || {};
+                    cfg.options.plugins = cfg.options.plugins || {};
+                    cfg.options.plugins.tooltip = Object.assign({}, cfg.options.plugins.tooltip, {
+                        callbacks: { title: (items) => items.length ? (cfg.full_labels[items[0].dataIndex] ?? items[0].label) : '' }
+                    });
+                }
+                new Chart(canvasEl.getContext('2d'), cfg);
+            });
+        }
+
         async function fetchSavedSessions() {
             try {
                 const response = await authFetch('/api/chat/sessions');
@@ -833,6 +858,7 @@
                         const data = await res.json();
                         if (data.session) {
                             chatContainerEl.innerHTML = data.session.chat_history || '';
+                            renderSavedCharts(chatContainerEl);
                             chatContainerEl.scrollTop = chatContainerEl.scrollHeight;
                             localStorage.setItem('saarthi_chat_history', data.session.chat_history || '');
                         }

@@ -1881,7 +1881,7 @@
                         extraOutput += `
                             <div style="padding:15px; border-radius:14px; background:transparent; border:1px solid #e2e8f0; border-top:3px solid #7c3aed; box-shadow:0 4px 15px rgba(124, 58, 237, 0.15);">
                                 <div style="position:relative; height:${chartHeight}px; width:100%;">
-                                    <canvas id="${chartId}"></canvas>
+                                    <canvas id="${chartId}" data-chart-config="${escapeAttr(JSON.stringify(chartCfg))}"></canvas>
                                 </div>
                             </div>`;
                         if (ui.chart.truncated && ui.export) {
@@ -1901,19 +1901,7 @@
                         // run right after that insertion actually happens.
                         pendingChartInit = () => {
                             const canvasEl = document.getElementById(chartId);
-                            if (canvasEl) {
-                                // Labels arrive shortened for readability; show the
-                                // untruncated name (full_labels) in the tooltip.
-                                const cfg = ui.chart[ui.chart.recommended];
-                                if (Array.isArray(cfg.full_labels)) {
-                                    cfg.options = cfg.options || {};
-                                    cfg.options.plugins = cfg.options.plugins || {};
-                                    cfg.options.plugins.tooltip = Object.assign({}, cfg.options.plugins.tooltip, {
-                                        callbacks: { title: (items) => items.length ? (cfg.full_labels[items[0].dataIndex] ?? items[0].label) : '' }
-                                    });
-                                }
-                                new Chart(canvasEl.getContext('2d'), cfg);
-                            }
+                            if (canvasEl) renderSavedCharts(canvasEl.parentElement);
                         };
                     }
                     else if (visibleRows.length > 0) {
@@ -2112,6 +2100,7 @@
                 .then(data => {
                     if (data.session && chatContainer) {
                         chatContainer.innerHTML = data.session.chat_history || '';
+                        renderSavedCharts(chatContainer);
                         chatContainer.scrollTop = chatContainer.scrollHeight;
                         localStorage.setItem('saarthi_chat_history', data.session.chat_history || '');
                     }
@@ -2127,6 +2116,7 @@
             const savedSessionId = localStorage.getItem('saarthi_current_session_id');
             if (savedHistory && chatContainer) {
                 chatContainer.innerHTML = savedHistory;
+                renderSavedCharts(chatContainer);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
                 console.log("💾 Previous chat conversation successfully restored from storage!");
             }
