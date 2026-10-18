@@ -372,3 +372,90 @@ Contributions are welcome! Please:
 For support, email: support@saarthi.com
 Documentation: https://docs.saarthi.com
 hello 
+
+
+
+****************************************************
+-- =========================================================
+-- 1) Connect to PostgreSQL server
+-- =========================================================
+-- psql "postgresql://saarthi:password@db:5432/postgres"
+
+-- =========================================================
+-- 2) Switch to each database
+-- =========================================================
+-- \c saarthi_core_db
+-- \c saarthi_resources_db
+-- \c saarthi_workspace_db
+
+-- =========================================================
+-- 3) Show all tables in current database
+-- =========================================================
+SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+ORDER BY table_name;
+
+-- =========================================================
+-- 4) Select all rows from all tables in each database
+-- =========================================================
+
+-- CORE DB
+SELECT * FROM users;
+SELECT * FROM companies;
+SELECT * FROM audit_logs;
+SELECT * FROM resource_mapping;
+
+-- RESOURCES DB
+SELECT * FROM database_connections;
+SELECT * FROM files;
+SELECT * FROM api_connectors;
+
+-- WORKSPACE DB
+SELECT * FROM chat_sessions;
+SELECT * FROM query_logs;
+SELECT * FROM response_feedback;
+SELECT * FROM llm_call_logs;
+SELECT * FROM model_configurations;
+SELECT * FROM user_model_pipelines;
+SELECT * FROM bi_semantics_configs;
+
+-- =========================================================
+-- 5) Delete all rows in safe order
+-- =========================================================
+
+-- CORE DB
+DELETE FROM resource_mapping;
+DELETE FROM audit_logs;
+DELETE FROM users;
+DELETE FROM companies;
+
+-- RESOURCES DB
+DELETE FROM database_connections;
+DELETE FROM files;
+DELETE FROM api_connectors;
+
+-- WORKSPACE DB
+DELETE FROM llm_call_logs;
+DELETE FROM query_logs;
+DELETE FROM response_feedback;
+DELETE FROM chat_sessions;
+DELETE FROM model_configurations;
+DELETE FROM user_model_pipelines;
+DELETE FROM bi_semantics_configs;
+
+-- =========================================================
+-- 6) Faster full cleanup alternative
+-- =========================================================
+-- Use this instead of DELETE if you want to wipe all data quickly.
+
+-- CORE DB:
+-- TRUNCATE TABLE resource_mapping, audit_logs, users, companies RESTART IDENTITY CASCADE;
+
+-- RESOURCES DB:
+-- TRUNCATE TABLE database_connections, files, api_connectors RESTART IDENTITY CASCADE;
+
+-- WORKSPACE DB:
+-- TRUNCATE TABLE llm_call_logs, query_logs, response_feedback, chat_sessions,
+-- model_configurations, user_model_pipelines, bi_semantics_configs
+-- RESTART IDENTITY CASCADE;
