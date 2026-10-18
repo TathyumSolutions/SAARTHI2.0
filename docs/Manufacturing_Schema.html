@@ -1,0 +1,797 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Manufacturing Schema</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#f6f2e9;
+    --surface:#ffffff;
+    --surface-2:#efe9d8;
+    --ink:#1d2230;
+    --muted:#666c7d;
+    --border:#ddd3ba;
+    --accent:#0f7a63;
+    --accent-soft:#dcece5;
+    --domain-plant:#47597a;
+    --domain-cat:#0f7a63;
+    --domain-proc:#b5732a;
+    --domain-prod:#8c3f63;
+    --domain-fin:#a3453f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#12151b;
+      --surface:#1a1f28;
+      --surface-2:#212734;
+      --ink:#e9e6dc;
+      --muted:#9aa1b0;
+      --border:#2c3342;
+      --accent:#45c1a1;
+      --accent-soft:#1c332d;
+      --domain-plant:#7d90b6;
+      --domain-cat:#3bb897;
+      --domain-proc:#e0a35b;
+      --domain-prod:#c56b93;
+      --domain-fin:#d97972;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12151b;
+    --surface:#1a1f28;
+    --surface-2:#212734;
+    --ink:#e9e6dc;
+    --muted:#9aa1b0;
+    --border:#2c3342;
+    --accent:#45c1a1;
+    --accent-soft:#1c332d;
+    --domain-plant:#7d90b6;
+    --domain-cat:#3bb897;
+    --domain-proc:#e0a35b;
+    --domain-prod:#c56b93;
+    --domain-fin:#d97972;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;
+    padding-inline:20px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding-block:40px 64px;}
+
+  h1,h2,h3{font-family:'Fraunces',Georgia,serif;font-weight:600;text-wrap:balance;margin:0;}
+  code,.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;}
+
+  header.hero{
+    display:flex;flex-direction:column;gap:14px;
+    padding-bottom:28px;border-bottom:1px solid var(--border);margin-bottom:32px;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono';font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--accent);
+  }
+  h1{font-size:clamp(28px,5vw,42px);}
+  .lede{max-width:64ch;color:var(--muted);font-size:15.5px;line-height:1.55;}
+  .lede strong{color:var(--ink);font-weight:600;}
+
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;}
+  .stat{
+    background:var(--surface);border:1px solid var(--border);border-radius:3px;
+    padding:10px 14px;min-width:118px;
+  }
+  .stat .v{font-family:'IBM Plex Mono';font-weight:600;font-size:19px;font-variant-numeric:tabular-nums;}
+  .stat .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+
+  section{margin-bottom:44px;}
+  h2{font-size:23px;margin-bottom:6px;}
+  .section-note{color:var(--muted);font-size:14px;max-width:72ch;line-height:1.55;margin-bottom:20px;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin:18px 0 20px;font-size:12.5px;color:var(--muted);}
+  .legend-item{display:flex;align-items:center;gap:6px;}
+  .swatch{width:11px;height:11px;border-radius:2px;flex:none;}
+  .line-sample{width:22px;height:0;border-top:2.5px solid var(--accent);flex:none;}
+  .line-sample.ref{border-top:1.5px solid var(--muted);opacity:.8;}
+
+  figure{margin:0;}
+  .diagram-scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:10px;}
+  .diagram-scroll svg{display:block;min-width:760px;width:100%;height:auto;}
+  figcaption{color:var(--muted);font-size:13px;line-height:1.55;margin-top:12px;max-width:78ch;}
+
+  .domain-groups{display:flex;flex-direction:column;gap:36px;}
+  .domain-group{border-left:3px solid var(--domain-color);padding-left:18px;}
+  .domain-group h3{font-size:17px;display:flex;align-items:center;gap:8px;}
+  .domain-group .dg-note{color:var(--muted);font-size:13px;margin:4px 0 16px;max-width:70ch;}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden;}
+  .card-hdr{
+    background:var(--domain-color);color:#fff;padding:9px 14px;
+    display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  }
+  .card-hdr .tname{font-family:'IBM Plex Mono';font-weight:600;font-size:13.5px;}
+  .card-hdr .trows{font-size:10.5px;opacity:.85;font-family:'IBM Plex Mono';white-space:nowrap;}
+  .card-body{padding:2px 0;}
+  .card table{width:100%;border-collapse:collapse;font-size:12px;}
+  .card th{
+    text-align:left;font-family:'IBM Plex Sans';font-weight:600;font-size:10px;
+    text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    padding:7px 14px 5px;border-bottom:1px solid var(--border);
+  }
+  .card td{padding:5px 14px;border-bottom:1px solid var(--surface-2);vertical-align:top;}
+  .card tr:last-child td{border-bottom:none;}
+  .card td.col{font-family:'IBM Plex Mono';white-space:nowrap;}
+  .card td.type{font-family:'IBM Plex Mono';color:var(--muted);white-space:nowrap;}
+  .card td.note{color:var(--muted);font-size:11.3px;}
+  .key-pk{
+    display:inline-block;font-family:'IBM Plex Sans';font-weight:700;font-size:8.5px;
+    background:var(--domain-color);color:#fff;border-radius:2px;padding:1px 4px;margin-right:5px;
+    vertical-align:middle;
+  }
+  .key-fk{
+    display:inline-block;font-family:'IBM Plex Sans';font-weight:700;font-size:8.5px;
+    border:1px solid var(--muted);color:var(--muted);border-radius:2px;padding:0 4px;margin-right:5px;
+    vertical-align:middle;
+  }
+
+  .side-table-wrap{overflow-x:auto;margin-top:14px;}
+  table.reftable{border-collapse:collapse;font-size:12px;width:100%;min-width:560px;}
+  table.reftable caption{
+    text-align:left;font-family:'IBM Plex Sans';font-weight:600;font-size:12.5px;
+    color:var(--ink);margin-bottom:8px;caption-side:top;
+  }
+  table.reftable th{
+    text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    padding:6px 12px;border-bottom:1px solid var(--border);
+  }
+  table.reftable td{padding:6px 12px;border-bottom:1px solid var(--surface-2);font-family:'IBM Plex Mono';}
+  table.reftable td.cat{font-family:'IBM Plex Sans';}
+
+  footer{color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:16px;line-height:1.6;}
+  footer code{background:var(--surface-2);padding:1px 5px;border-radius:2px;}
+  /* manufacturing column names run longer than lending's: two cards per row, wrap long labels, scroll on narrow screens */
+  .cards{grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr));}
+  .card-body{overflow-x:auto;}
+  .card td.col{white-space:normal;}
+  .card td.note{min-width:150px;overflow-wrap:anywhere;}
+</style>
+
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">Data model · demo_manufacturing</span>
+    <h1>Manufacturing Schema</h1>
+    <p class="lede">
+      The physical data model behind Saarthi's synthetic engineering / auto-components manufacturer demo database
+      (<code class="mono">demo_manufacturing/db_manufacturing.py</code>): <strong>16 tables</strong> covering
+      plant and machine master data, the product catalogue and bill of materials, raw-material procurement,
+      production orders and their per-shift shop-floor log, quality inspections, machine downtime, shipments,
+      payables and the sales/receipt ledger. All data is synthetic (Faker <code class="mono">en_IN</code> locale;
+      GSTIN/PAN/mobile numbers are valid-format, not real registrants) and is provisioned into its own Postgres
+      database, <code class="mono">manufacturing_demo_db</code>, independent of Saarthi's own core databases and of
+      <code class="mono">lending_demo_db</code>.
+    </p>
+    <div class="stats">
+      <div class="stat"><div class="v">16</div><div class="l">Tables</div></div>
+      <div class="stat"><div class="v">55</div><div class="l">Plants</div></div>
+      <div class="stat"><div class="v">880</div><div class="l">Machines</div></div>
+      <div class="stat"><div class="v">12</div><div class="l">Products</div></div>
+      <div class="stat"><div class="v">55,000</div><div class="l">Customers</div></div>
+      <div class="stat"><div class="v">121,820</div><div class="l">Production orders</div></div>
+      <div class="stat"><div class="v">7.71M</div><div class="l">Production log rows</div></div>
+      <div class="stat"><div class="v">208,105</div><div class="l">QC inspections</div></div>
+    </div>
+    <p class="lede" style="font-size:12.5px;">Row counts shown are the <code class="mono">--scale full</code> preset (~1.2&nbsp;GB loaded); <code class="mono">tiny</code>/<code class="mono">small</code>/<code class="mono">medium</code> scale the same 16-table shape down.</p>
+  </header>
+
+  <section>
+    <h2>Entity relationship diagram</h2>
+    <p class="section-note">
+      Boxes are grouped by domain (color) and laid out by dependency layer — plant, product and material
+      master data at the top, flowing down through suppliers and customers to purchase and production orders,
+      and on to the shop-floor log, inspections, shipments and finance at the bottom. Only the primary
+      keys are shown on each box; every column, including the foreign keys not drawn here, is listed
+      in the data dictionary below.
+    </p>
+
+    <div class="legend">
+      <span class="legend-item"><span class="swatch" style="background:var(--domain-plant)"></span>Plant &amp; organization</span>
+      <span class="legend-item"><span class="swatch" style="background:var(--domain-cat)"></span>Products &amp; BOM</span>
+      <span class="legend-item"><span class="swatch" style="background:var(--domain-proc)"></span>Procurement</span>
+      <span class="legend-item"><span class="swatch" style="background:var(--domain-prod)"></span>Production &amp; quality</span>
+      <span class="legend-item"><span class="swatch" style="background:var(--domain-fin)"></span>Sales, fulfillment &amp; finance</span>
+      <span class="legend-item"><span class="line-sample"></span>Order / procurement FK (drawn)</span>
+      <span class="legend-item"><span class="line-sample ref"></span>Plant/org FK (sample)</span>
+    </div>
+
+    <figure>
+      <div class="diagram-scroll">
+<svg viewBox="0 0 1440 540" role="img" aria-label="Entity relationship diagram of the 16-table manufacturing schema: plants, products and raw materials as master data at the top; employees, machines, customers, the bill of materials and suppliers below them; production orders and purchase orders in the middle; and production log, quality inspections, shipments, the transactions ledger, payables and machine downtime hanging off them at the bottom.">
+          <defs>
+            <marker id="arrow-accent" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 Z" style="fill:var(--accent)"/>
+            </marker>
+            <marker id="arrow-ref" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 Z" style="fill:var(--muted)"/>
+            </marker>
+          </defs>
+
+          <!-- edges: plant/org references (thin) -->
+          <path d="M140,170 L560,114" style="stroke:var(--muted);stroke-width:1.25;fill:none;opacity:.75" marker-end="url(#arrow-ref)"/>
+          <path d="M380,170 L590,114" style="stroke:var(--muted);stroke-width:1.25;fill:none;opacity:.75" marker-end="url(#arrow-ref)"/>
+          <path d="M690,170 L660,114" style="stroke:var(--muted);stroke-width:1.25;fill:none;opacity:.75" marker-end="url(#arrow-ref)"/>
+          <path d="M1220,170 L700,114" style="stroke:var(--muted);stroke-width:1.25;fill:none;opacity:.75" marker-end="url(#arrow-ref)"/>
+          <path d="M560,320 L440,244" style="stroke:var(--muted);stroke-width:1.25;fill:none;opacity:.75" marker-end="url(#arrow-ref)"/>
+
+          <!-- edges: order-to-cash and procure-to-pay spine (thick) -->
+          <path d="M1030,170 L1040,114" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M1110,170 L1260,114" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M1240,300 L1270,244" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M1340,337 Q1470,230 1400,114" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M1280,430 L1250,374" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M680,300 L695,244" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M760,320 L990,114" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M430,430 L580,374" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M620,430 L640,374" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M780,430 L720,374" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M1000,430 Q900,380 762,350" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M150,430 L330,244" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+
+          <!-- plants -->
+          <g>
+            <rect x="520" y="40" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="520" y="40" width="200" height="26" style="fill:var(--domain-plant)"/>
+            <text x="620" y="57" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">plants</text>
+            <rect x="530" y="74" width="20" height="13" style="fill:var(--domain-plant)"/>
+            <text x="540" y="83.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="556" y="84" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">plant_id</text>
+            <text x="530" y="103" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">plant network</text>
+          </g>
+
+          <!-- products -->
+          <g>
+            <rect x="960" y="40" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="960" y="40" width="200" height="26" style="fill:var(--domain-cat)"/>
+            <text x="1060" y="57" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">products</text>
+            <rect x="970" y="74" width="20" height="13" style="fill:var(--domain-cat)"/>
+            <text x="980" y="83.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="996" y="84" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">product_id</text>
+            <text x="970" y="103" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">finished-goods catalogue</text>
+          </g>
+
+          <!-- raw_materials -->
+          <g>
+            <rect x="1220" y="40" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="1220" y="40" width="200" height="26" style="fill:var(--domain-cat)"/>
+            <text x="1320" y="57" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">raw_materials</text>
+            <rect x="1230" y="74" width="20" height="13" style="fill:var(--domain-cat)"/>
+            <text x="1240" y="83.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="1256" y="84" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">material_id</text>
+            <text x="1230" y="103" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">material master</text>
+          </g>
+
+          <!-- employees -->
+          <g>
+            <rect x="40" y="170" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="40" y="170" width="200" height="26" style="fill:var(--domain-plant)"/>
+            <text x="140" y="187" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">employees</text>
+            <rect x="50" y="204" width="20" height="13" style="fill:var(--domain-plant)"/>
+            <text x="60" y="213.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="76" y="214" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">employee_id</text>
+            <text x="50" y="233" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">plant staff</text>
+          </g>
+
+          <!-- machines -->
+          <g>
+            <rect x="280" y="170" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="280" y="170" width="200" height="26" style="fill:var(--domain-plant)"/>
+            <text x="380" y="187" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">machines</text>
+            <rect x="290" y="204" width="20" height="13" style="fill:var(--domain-plant)"/>
+            <text x="300" y="213.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="316" y="214" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">machine_id</text>
+            <text x="290" y="233" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">shop-floor equipment</text>
+          </g>
+
+          <!-- customers -->
+          <g>
+            <rect x="600" y="170" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="600" y="170" width="200" height="26" style="fill:var(--domain-fin)"/>
+            <text x="700" y="187" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">customers</text>
+            <rect x="610" y="204" width="20" height="13" style="fill:var(--domain-fin)"/>
+            <text x="620" y="213.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="636" y="214" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">customer_id</text>
+            <text x="610" y="233" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">OEM / Tier-1 / export buyers</text>
+          </g>
+
+          <!-- bill_of_materials -->
+          <g>
+            <rect x="940" y="170" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="940" y="170" width="200" height="26" style="fill:var(--domain-cat)"/>
+            <text x="1040" y="187" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">bill_of_materials</text>
+            <rect x="950" y="204" width="20" height="13" style="fill:var(--domain-cat)"/>
+            <text x="960" y="213.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="976" y="214" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">bom_id</text>
+            <text x="950" y="233" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">product → material qty</text>
+          </g>
+
+          <!-- suppliers -->
+          <g>
+            <rect x="1180" y="170" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="1180" y="170" width="200" height="26" style="fill:var(--domain-proc)"/>
+            <text x="1280" y="187" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">suppliers</text>
+            <rect x="1190" y="204" width="20" height="13" style="fill:var(--domain-proc)"/>
+            <text x="1200" y="213.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="1216" y="214" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">supplier_id</text>
+            <text x="1190" y="233" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">empanelled vendors</text>
+          </g>
+
+          <!-- production_orders -->
+          <g>
+            <rect x="560" y="300" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="560" y="300" width="200" height="26" style="fill:var(--domain-prod)"/>
+            <text x="660" y="317" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">production_orders</text>
+            <rect x="570" y="334" width="20" height="13" style="fill:var(--domain-prod)"/>
+            <text x="580" y="343.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="596" y="344" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">production_order_id</text>
+            <text x="570" y="363" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">customer order → work order</text>
+          </g>
+
+          <!-- purchase_orders -->
+          <g>
+            <rect x="1140" y="300" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="1140" y="300" width="200" height="26" style="fill:var(--domain-proc)"/>
+            <text x="1240" y="317" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">purchase_orders</text>
+            <rect x="1150" y="334" width="20" height="13" style="fill:var(--domain-proc)"/>
+            <text x="1160" y="343.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="1176" y="344" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">po_id</text>
+            <text x="1150" y="363" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">raw-material procurement</text>
+          </g>
+
+          <!-- machine_downtime -->
+          <g>
+            <rect x="30" y="430" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="30" y="430" width="200" height="26" style="fill:var(--domain-prod)"/>
+            <text x="130" y="447" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">machine_downtime</text>
+            <rect x="40" y="464" width="20" height="13" style="fill:var(--domain-prod)"/>
+            <text x="50" y="473.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="66" y="474" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">downtime_id</text>
+            <text x="40" y="493" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">breakdown &amp; maintenance</text>
+          </g>
+
+          <!-- production_log -->
+          <g>
+            <rect x="260" y="430" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="260" y="430" width="200" height="26" style="fill:var(--domain-prod)"/>
+            <text x="360" y="447" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">production_log</text>
+            <rect x="270" y="464" width="20" height="13" style="fill:var(--domain-prod)"/>
+            <text x="280" y="473.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="296" y="474" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">log_id</text>
+            <text x="270" y="493" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">per day × shift (largest table)</text>
+          </g>
+
+          <!-- quality_inspection_records -->
+          <g>
+            <rect x="490" y="430" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="490" y="430" width="200" height="26" style="fill:var(--domain-prod)"/>
+            <text x="590" y="447" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:11.5px;fill:#fff">quality_inspection_records</text>
+            <rect x="500" y="464" width="20" height="13" style="fill:var(--domain-prod)"/>
+            <text x="510" y="473.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="526" y="474" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">inspection_id</text>
+            <text x="500" y="493" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">QC inspections</text>
+          </g>
+
+          <!-- shipments -->
+          <g>
+            <rect x="720" y="430" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="720" y="430" width="200" height="26" style="fill:var(--domain-fin)"/>
+            <text x="820" y="447" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">shipments</text>
+            <rect x="730" y="464" width="20" height="13" style="fill:var(--domain-fin)"/>
+            <text x="740" y="473.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="756" y="474" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">shipment_id</text>
+            <text x="730" y="493" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">dispatch &amp; delivery</text>
+          </g>
+
+          <!-- transactions_ledger -->
+          <g>
+            <rect x="950" y="430" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="950" y="430" width="200" height="26" style="fill:var(--domain-fin)"/>
+            <text x="1050" y="447" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">transactions_ledger</text>
+            <rect x="960" y="464" width="20" height="13" style="fill:var(--domain-fin)"/>
+            <text x="970" y="473.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="986" y="474" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">transaction_id</text>
+            <text x="960" y="493" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">invoices &amp; receipts</text>
+          </g>
+
+          <!-- payables -->
+          <g>
+            <rect x="1180" y="430" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="1180" y="430" width="200" height="26" style="fill:var(--domain-fin)"/>
+            <text x="1280" y="447" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">payables</text>
+            <rect x="1190" y="464" width="20" height="13" style="fill:var(--domain-fin)"/>
+            <text x="1200" y="473.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="1216" y="474" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">payable_id</text>
+            <text x="1190" y="493" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">supplier &amp; overhead AP</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>
+        Thick teal edges trace the two business flows: order-to-cash (customer → production order →
+        production log / quality inspection / shipment / ledger) and procure-to-pay (supplier and raw material →
+        purchase order → payable), plus the bill of materials joining products to raw materials and machine
+        downtime hanging off machines. Thin gray edges sample the plant references every master table carries.
+        To keep the drawing legible, the remaining plant/machine/employee lookups on
+        <code class="mono">purchase_orders</code>, <code class="mono">production_orders</code>,
+        <code class="mono">production_log</code>, <code class="mono">shipments</code>,
+        <code class="mono">quality_inspection_records</code>, <code class="mono">transactions_ledger</code> and
+        <code class="mono">payables</code> aren't drawn individually — they're listed in full in the
+        data dictionary below.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Data dictionary</h2>
+    <p class="section-note">
+      Every column, type and key constraint, grouped by the same five domains as the diagram above.
+      <span class="key-pk" style="background:var(--muted)">PK</span> marks the primary key,
+      <span class="key-fk">FK</span> marks a foreign key (its target table is named in the note column).
+    </p>
+
+    <div class="domain-groups">
+
+      <div class="domain-group" style="--domain-color:var(--domain-plant)">
+        <h3>Plant &amp; organization</h3>
+        <p class="dg-note">The plant network, the staff who run it and the machines on its shop floors — the master data every operational table hangs off.</p>
+        <div class="cards">
+
+          <div class="card" style="--domain-color:var(--domain-plant)">
+            <div class="card-hdr"><span class="tname">plants</span><span class="trows">55 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>plant_id</span></td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">plant_code</td><td class="type">varchar(10)</td><td class="note">unique</td></tr>
+              <tr><td class="col">plant_name</td><td class="type">varchar(120)</td><td class="note"></td></tr>
+              <tr><td class="col">city / state / pincode</td><td class="type">varchar</td><td class="note"></td></tr>
+              <tr><td class="col">region</td><td class="type">varchar(20)</td><td class="note">North/South/East/West/Central</td></tr>
+              <tr><td class="col">plant_type</td><td class="type">varchar(30)</td><td class="note">Machining/Assembly/Foundry/Fabrication/Injection Molding/…</td></tr>
+              <tr><td class="col">opened_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">is_active</td><td class="type">boolean</td><td class="note">default true</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-plant)">
+            <div class="card-hdr"><span class="tname">employees</span><span class="trows">715 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>employee_id</span></td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">employee_code</td><td class="type">varchar(15)</td><td class="note">unique</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>plant_id</span></td><td class="type">integer</td><td class="note">→ plants</td></tr>
+              <tr><td class="col">full_name / designation</td><td class="type">varchar</td><td class="note">Plant Manager, Production Supervisor, Quality Inspector, Machine Operator…</td></tr>
+              <tr><td class="col">email / mobile</td><td class="type">varchar</td><td class="note">nullable</td></tr>
+              <tr><td class="col">date_joined</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">is_active</td><td class="type">boolean</td><td class="note">default true</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-plant)">
+            <div class="card-hdr"><span class="tname">machines</span><span class="trows">880 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>machine_id</span></td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">machine_code</td><td class="type">varchar(15)</td><td class="note">unique</td></tr>
+              <tr><td class="col">machine_name</td><td class="type">varchar(120)</td><td class="note"></td></tr>
+              <tr><td class="col">machine_type</td><td class="type">varchar(40)</td><td class="note">CNC Lathe/VMC/Press Brake/Welding Robot/Induction Furnace/…</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>plant_id</span></td><td class="type">integer</td><td class="note">→ plants</td></tr>
+              <tr><td class="col">manufacturer</td><td class="type">varchar(80)</td><td class="note">nullable</td></tr>
+              <tr><td class="col">installed_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">capacity_units_per_hour</td><td class="type">numeric(10,2)</td><td class="note"></td></tr>
+              <tr><td class="col">status</td><td class="type">varchar(20)</td><td class="note">Running/Idle/Under Maintenance/Breakdown/Decommissioned</td></tr>
+            </table></div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="domain-group" style="--domain-color:var(--domain-cat)">
+        <h3>Products &amp; bill of materials</h3>
+        <p class="dg-note">What the plants make, what it is made from, and how much of each material goes into one unit.</p>
+        <div class="cards">
+
+          <div class="card" style="--domain-color:var(--domain-cat)">
+            <div class="card-hdr"><span class="tname">products</span><span class="trows">12 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>product_id</span></td><td class="type">smallint</td><td class="note"></td></tr>
+              <tr><td class="col">product_code / product_name</td><td class="type">varchar</td><td class="note">code unique, e.g. BRK-CAL, HYD-CYL</td></tr>
+              <tr><td class="col">category</td><td class="type">varchar(40)</td><td class="note">Automotive Components/Machined Parts/Fasteners/…</td></tr>
+              <tr><td class="col">unit_of_measure</td><td class="type">varchar(10)</td><td class="note">PCS</td></tr>
+              <tr><td class="col">standard_cost / selling_price</td><td class="type">numeric(12,2)</td><td class="note">per unit</td></tr>
+              <tr><td class="col">min_order_qty</td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">standard_cycle_time_minutes</td><td class="type">numeric(8,2)</td><td class="note">per unit</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-cat)">
+            <div class="card-hdr"><span class="tname">raw_materials</span><span class="trows">15 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>material_id</span></td><td class="type">smallint</td><td class="note"></td></tr>
+              <tr><td class="col">material_code / material_name</td><td class="type">varchar</td><td class="note">code unique, e.g. STL-MS-SHT, ALU-6061</td></tr>
+              <tr><td class="col">category</td><td class="type">varchar(40)</td><td class="note">Steel/Aluminum/Plastic Resin/Electrical/Consumables/…</td></tr>
+              <tr><td class="col">unit_of_measure</td><td class="type">varchar(10)</td><td class="note">KG/PCS/SET/LTR/SQM</td></tr>
+              <tr><td class="col">standard_unit_price</td><td class="type">numeric(12,2)</td><td class="note">compare with benchmark workbook</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-cat)">
+            <div class="card-hdr"><span class="tname">bill_of_materials</span><span class="trows">35 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>bom_id</span></td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>product_id</span></td><td class="type">smallint</td><td class="note">→ products</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>material_id</span></td><td class="type">smallint</td><td class="note">→ raw_materials</td></tr>
+              <tr><td class="col">quantity_per_unit</td><td class="type">numeric(10,3)</td><td class="note">material UoM per finished unit; 2–5 lines per product</td></tr>
+            </table></div>
+          </div>
+
+        </div>
+
+        <div class="side-table-wrap">
+          <table class="reftable">
+            <caption>Finished-goods catalogue (products seed data)</caption>
+            <tr><th>Code</th><th>Product</th><th>Category</th><th>Std cost</th><th>Selling price</th><th>Min order</th><th>Cycle time</th></tr>
+            <tr><td>BRK-CAL</td><td class="cat">Brake Caliper Assembly</td><td class="cat">Automotive Components</td><td>₹850.00</td><td>₹1,450.00</td><td>500</td><td>12 min</td></tr>
+            <tr><td>ENG-BRK</td><td class="cat">Engine Mounting Bracket</td><td class="cat">Automotive Components</td><td>₹220.00</td><td>₹410.00</td><td>1,000</td><td>6.5 min</td></tr>
+            <tr><td>GEAR-SH</td><td class="cat">Precision Gear Shaft</td><td class="cat">Machined Parts</td><td>₹640.00</td><td>₹1,150.00</td><td>300</td><td>18 min</td></tr>
+            <tr><td>HEX-BLT-M10</td><td class="cat">Hex Bolt M10x50 (Grade 8.8)</td><td class="cat">Industrial Fasteners</td><td>₹4.50</td><td>₹9.00</td><td>50,000</td><td>0.15 min</td></tr>
+            <tr><td>HEX-NUT-M10</td><td class="cat">Hex Nut M10</td><td class="cat">Industrial Fasteners</td><td>₹1.80</td><td>₹3.50</td><td>50,000</td><td>0.08 min</td></tr>
+            <tr><td>SHT-BRKT</td><td class="cat">Sheet Metal Mounting Bracket</td><td class="cat">Sheet Metal Assemblies</td><td>₹95.00</td><td>₹175.00</td><td>2,000</td><td>3.2 min</td></tr>
+            <tr><td>ELE-ENCL</td><td class="cat">Electrical Control Enclosure</td><td class="cat">Electrical Enclosures</td><td>₹1,350.00</td><td>₹2,400.00</td><td>200</td><td>25 min</td></tr>
+            <tr><td>PLST-HSG</td><td class="cat">Plastic Connector Housing</td><td class="cat">Plastic Molded Parts</td><td>₹12.00</td><td>₹24.00</td><td>20,000</td><td>0.9 min</td></tr>
+            <tr><td>PLST-CVR</td><td class="cat">Plastic Protective Cover</td><td class="cat">Plastic Molded Parts</td><td>₹28.00</td><td>₹52.00</td><td>10,000</td><td>1.4 min</td></tr>
+            <tr><td>HYD-CYL</td><td class="cat">Hydraulic Cylinder Assembly</td><td class="cat">Industrial Equipment</td><td>₹4,200.00</td><td>₹7,500.00</td><td>50</td><td>45 min</td></tr>
+            <tr><td>VLV-BODY</td><td class="cat">Valve Body Casting</td><td class="cat">Foundry Castings</td><td>₹310.00</td><td>₹560.00</td><td>800</td><td>22 min</td></tr>
+            <tr><td>PWR-CBL</td><td class="cat">Power Cable Harness</td><td class="cat">Wiring &amp; Harnesses</td><td>₹145.00</td><td>₹260.00</td><td>1,500</td><td>5 min</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="domain-group" style="--domain-color:var(--domain-proc)">
+        <h3>Procurement</h3>
+        <p class="dg-note">Empanelled raw-material vendors and the purchase orders raised on them, through to goods receipt.</p>
+        <div class="cards">
+
+          <div class="card" style="--domain-color:var(--domain-proc)">
+            <div class="card-hdr"><span class="tname">suppliers</span><span class="trows">750 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>supplier_id</span></td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">supplier_code</td><td class="type">varchar(15)</td><td class="note">unique</td></tr>
+              <tr><td class="col">supplier_name / company_name</td><td class="type">varchar</td><td class="note">company nullable</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>plant_id</span></td><td class="type">integer</td><td class="note">→ plants (servicing plant)</td></tr>
+              <tr><td class="col">mobile</td><td class="type">varchar(15)</td><td class="note">nullable</td></tr>
+              <tr><td class="col">gstin</td><td class="type">varchar(15)</td><td class="note">nullable, format-only</td></tr>
+              <tr><td class="col">quality_rating</td><td class="type">numeric(3,1)</td><td class="note">2.0–5.0</td></tr>
+              <tr><td class="col">empanelled_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">is_active</td><td class="type">boolean</td><td class="note">default true</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-proc)">
+            <div class="card-hdr"><span class="tname">purchase_orders</span><span class="trows">3,042 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>po_id</span></td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col">po_number</td><td class="type">varchar(20)</td><td class="note">unique</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>supplier_id</span></td><td class="type">integer</td><td class="note">→ suppliers</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>material_id</span></td><td class="type">smallint</td><td class="note">→ raw_materials</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>plant_id</span></td><td class="type">integer</td><td class="note">→ plants</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>requested_by_employee_id</span></td><td class="type">integer</td><td class="note">→ employees, nullable</td></tr>
+              <tr><td class="col">order_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">quantity</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">unit_price</td><td class="type">numeric(12,2)</td><td class="note"></td></tr>
+              <tr><td class="col">total_amount</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">status</td><td class="type">varchar(20)</td><td class="note">Received/Approved/Cancelled/Rejected/Draft</td></tr>
+              <tr><td class="col">rejection_reason</td><td class="type">varchar(120)</td><td class="note">nullable</td></tr>
+              <tr><td class="col">expected_delivery_date / received_date</td><td class="type">date</td><td class="note">nullable</td></tr>
+            </table></div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="domain-group" style="--domain-color:var(--domain-prod)">
+        <h3>Production &amp; quality</h3>
+        <p class="dg-note">Work orders on the shop floor, their day-by-day shift log, quality inspections against them, and machine downtime.</p>
+        <div class="cards">
+
+          <div class="card" style="--domain-color:var(--domain-prod)">
+            <div class="card-hdr"><span class="tname">production_orders</span><span class="trows">121,820 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>production_order_id</span></td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col">order_number</td><td class="type">varchar(20)</td><td class="note">unique</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>customer_id</span> / product_id / plant_id</td><td class="type">int / smallint / int</td><td class="note">→ customers / products / plants</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>machine_id</span></td><td class="type">integer</td><td class="note">→ machines, nullable</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>supervisor_employee_id</span></td><td class="type">integer</td><td class="note">→ employees, nullable</td></tr>
+              <tr><td class="col">order_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">quantity_ordered</td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">unit_price</td><td class="type">numeric(12,2)</td><td class="note"></td></tr>
+              <tr><td class="col">total_order_value</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">planned_start/end_date</td><td class="type">date</td><td class="note">nullable</td></tr>
+              <tr><td class="col">actual_start/end_date</td><td class="type">date</td><td class="note">nullable</td></tr>
+              <tr><td class="col">quantity_produced / quantity_rejected</td><td class="type">integer</td><td class="note">default 0, backfilled from log</td></tr>
+              <tr><td class="col">order_status</td><td class="type">varchar(20)</td><td class="note">Completed/In Progress/Delayed/On Hold/Cancelled/Rejected</td></tr>
+              <tr><td class="col">priority</td><td class="type">varchar(10)</td><td class="note">Low/Normal/High/Urgent</td></tr>
+              <tr><td class="col">reliability_profile</td><td class="type">varchar(10)</td><td class="note">Good/Average/Poor</td></tr>
+              <tr><td class="col">delay_days</td><td class="type">integer</td><td class="note">default 0, trailing Delayed/Stopped streak</td></tr>
+              <tr><td class="col">at_risk_flag</td><td class="type">boolean</td><td class="note">default false, true when delay &gt; 10 days (or Delayed &gt; 5)</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-prod)">
+            <div class="card-hdr"><span class="tname">production_log</span><span class="trows">7.71M rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>log_id</span></td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>production_order_id</span></td><td class="type">bigint</td><td class="note">→ production_orders</td></tr>
+              <tr><td class="col">log_date</td><td class="type">date</td><td class="note">Sundays skipped</td></tr>
+              <tr><td class="col">shift</td><td class="type">varchar(10)</td><td class="note">Morning/Afternoon/Night</td></tr>
+              <tr><td class="col">planned_qty / produced_qty / rejected_qty</td><td class="type">integer</td><td class="note">produced/rejected default 0</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>machine_id</span></td><td class="type">integer</td><td class="note">→ machines, nullable</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>operator_employee_id</span></td><td class="type">integer</td><td class="note">→ employees, nullable</td></tr>
+              <tr><td class="col">downtime_minutes</td><td class="type">integer</td><td class="note">default 0</td></tr>
+              <tr><td class="col">log_status</td><td class="type">varchar(20)</td><td class="note">On Track/Delayed/Stopped</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-prod)">
+            <div class="card-hdr"><span class="tname">quality_inspection_records</span><span class="trows">208,105 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>inspection_id</span></td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>production_order_id</span></td><td class="type">bigint</td><td class="note">→ production_orders</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>product_id</span></td><td class="type">smallint</td><td class="note">→ products</td></tr>
+              <tr><td class="col">inspection_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>inspector_employee_id</span></td><td class="type">integer</td><td class="note">→ employees, nullable</td></tr>
+              <tr><td class="col">inspection_stage</td><td class="type">varchar(20)</td><td class="note">Incoming Material/In-Process/Final Inspection</td></tr>
+              <tr><td class="col">sample_size / defects_found</td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">defect_rate_pct</td><td class="type">numeric(5,2)</td><td class="note"></td></tr>
+              <tr><td class="col">result</td><td class="type">varchar(10)</td><td class="note">Pass/Rework/Fail</td></tr>
+            </table></div>
+            <div class="side-table-wrap" style="padding:0 14px 14px;">
+              <table class="reftable">
+                <caption>Defect rate → inspection result</caption>
+                <tr><th>Defect rate</th><th>Result</th></tr>
+                <tr><td>&lt; 2%</td><td class="cat">Pass</td></tr>
+                <tr><td>2% – &lt; 6%</td><td class="cat">Rework</td></tr>
+                <tr><td>≥ 6%</td><td class="cat">Fail</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-prod)">
+            <div class="card-hdr"><span class="tname">machine_downtime</span><span class="trows">1,749 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>downtime_id</span></td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>machine_id</span></td><td class="type">integer</td><td class="note">→ machines, ~2 events each</td></tr>
+              <tr><td class="col">as_of_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">downtime_category</td><td class="type">varchar(25)</td><td class="note">Scheduled Maintenance/Minor/Major Breakdown/Extended Outage</td></tr>
+              <tr><td class="col">downtime_hours</td><td class="type">numeric(8,2)</td><td class="note"></td></tr>
+              <tr><td class="col">maintenance_cost</td><td class="type">numeric(12,2)</td><td class="note"></td></tr>
+              <tr><td class="col">criticality</td><td class="type">varchar(10)</td><td class="note">Low/Medium/High/Critical</td></tr>
+            </table></div>
+            <div class="side-table-wrap" style="padding:0 14px 14px;">
+              <table class="reftable">
+                <caption>Downtime category → criticality</caption>
+                <tr><th>Category</th><th>Criticality</th><th>Hours</th><th>Share</th></tr>
+                <tr><td class="cat">Scheduled Maintenance</td><td class="cat">Low</td><td>2–12</td><td>55%</td></tr>
+                <tr><td class="cat">Minor Breakdown</td><td class="cat">Medium</td><td>1–8</td><td>28%</td></tr>
+                <tr><td class="cat">Major Breakdown</td><td class="cat">High</td><td>8–48</td><td>12%</td></tr>
+                <tr><td class="cat">Extended Outage</td><td class="cat">Critical</td><td>48–200</td><td>5%</td></tr>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="domain-group" style="--domain-color:var(--domain-fin)">
+        <h3>Sales, fulfillment &amp; finance</h3>
+        <p class="dg-note">The buyers, what was dispatched to them, the sales/receipt/purchase ledger, and supplier and overhead payables.</p>
+        <div class="cards">
+
+          <div class="card" style="--domain-color:var(--domain-fin)">
+            <div class="card-hdr"><span class="tname">customers</span><span class="trows">55,000 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>customer_id</span></td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">customer_code</td><td class="type">varchar(15)</td><td class="note">unique</td></tr>
+              <tr><td class="col">company_name / contact_person</td><td class="type">varchar</td><td class="note"></td></tr>
+              <tr><td class="col">gstin</td><td class="type">varchar(15)</td><td class="note">nullable, format-only</td></tr>
+              <tr><td class="col">mobile / email</td><td class="type">varchar</td><td class="note">email nullable</td></tr>
+              <tr><td class="col">address_line / city / state / pincode</td><td class="type">varchar</td><td class="note">address nullable</td></tr>
+              <tr><td class="col">customer_type</td><td class="type">varchar(25)</td><td class="note">OEM/Tier-1 Supplier/Distributor/Export Client/Retail / Aftermarket</td></tr>
+              <tr><td class="col">credit_limit</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">payment_terms_days</td><td class="type">smallint</td><td class="note">15/30/45/60/90</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>home_plant_id</span></td><td class="type">integer</td><td class="note">→ plants</td></tr>
+              <tr><td class="col">onboarded_date</td><td class="type">date</td><td class="note"></td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-fin)">
+            <div class="card-hdr"><span class="tname">shipments</span><span class="trows">190,346 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>shipment_id</span></td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col">shipment_number</td><td class="type">varchar(20)</td><td class="note">unique</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>production_order_id</span></td><td class="type">bigint</td><td class="note">→ production_orders, 1+ per order</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>customer_id</span> / plant_id</td><td class="type">integer</td><td class="note">→ customers / plants</td></tr>
+              <tr><td class="col">shipment_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">quantity_shipped</td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">unit_price / freight_amount</td><td class="type">numeric(12,2)</td><td class="note">freight default 0</td></tr>
+              <tr><td class="col">total_invoice_amount</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">transporter</td><td class="type">varchar(80)</td><td class="note">nullable</td></tr>
+              <tr><td class="col">transport_mode</td><td class="type">varchar(15)</td><td class="note">Road/Rail/Air/Sea</td></tr>
+              <tr><td class="col">shipment_status</td><td class="type">varchar(15)</td><td class="note">Delivered/In Transit/Dispatched/Returned</td></tr>
+              <tr><td class="col">delivered_date</td><td class="type">date</td><td class="note">nullable</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>dispatched_by_employee_id</span></td><td class="type">integer</td><td class="note">→ employees, nullable</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-fin)">
+            <div class="card-hdr"><span class="tname">transactions_ledger</span><span class="trows">184,218 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>transaction_id</span></td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col">reference_number</td><td class="type">varchar(25)</td><td class="note">unique</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>production_order_id</span></td><td class="type">bigint</td><td class="note">→ production_orders, null for purchases</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>customer_id</span></td><td class="type">integer</td><td class="note">→ customers, null for purchases</td></tr>
+              <tr><td class="col">transaction_type</td><td class="type">varchar(25)</td><td class="note">Sales Invoice/Payment Received/Raw Material Purchase</td></tr>
+              <tr><td class="col">transaction_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">amount</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">payment_mode</td><td class="type">varchar(30)</td><td class="note">NEFT/RTGS/UPI/Cheque/Letter of Credit/Cash</td></tr>
+              <tr><td class="col">status</td><td class="type">varchar(15)</td><td class="note">Success</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-fin)">
+            <div class="card-hdr"><span class="tname">payables</span><span class="trows">3,444 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-pk">PK</span>payable_id</span></td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col">payable_type</td><td class="type">varchar(30)</td><td class="note">Supplier Payment/Utility Bill/Contractor/Freight/Equipment Lease/IT AMC</td></tr>
+              <tr><td class="col">payee_name</td><td class="type">varchar(150)</td><td class="note"></td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>plant_id</span></td><td class="type">integer</td><td class="note">→ plants, nullable</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>supplier_id</span></td><td class="type">integer</td><td class="note">→ suppliers, supplier payments only</td></tr>
+              <tr><td class="col"><span style="white-space:nowrap"><span class="key-fk">FK</span>related_po_id</span></td><td class="type">bigint</td><td class="note">→ purchase_orders, supplier payments only</td></tr>
+              <tr><td class="col">invoice_number</td><td class="type">varchar(25)</td><td class="note">unique</td></tr>
+              <tr><td class="col">amount</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">due_date / paid_date</td><td class="type">date</td><td class="note">paid_date nullable</td></tr>
+              <tr><td class="col">status</td><td class="type">varchar(15)</td><td class="note">Paid/Pending</td></tr>
+            </table></div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <footer>
+    Source: <code>demo_manufacturing/db_manufacturing.py</code> (schema + Faker-based generator) and
+    <code>demo_manufacturing/README.md</code> in the Saarthi repository. Row counts reflect the
+    <code>--scale full</code> preset (fixed random seed, so a re-run reproduces them); re-run the generator with
+    <code>--scale tiny|small|medium|full</code> to reshape the volume, not the schema. All GSTIN/PAN/mobile values
+    are synthetic, valid-format identifiers only — not real companies or people.
+  </footer>
+
+</div>
+
+</body></html>
