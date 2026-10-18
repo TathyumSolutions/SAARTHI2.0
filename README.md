@@ -54,7 +54,6 @@ saarthi_enterprise_api/
 |   |        ├──agent_routes.py
 |   |        ├──agent_state.py
 |   |        ├──agent_tools.py
-|   |        ├──db.py
 |   |        ├──langgraph_agent.py
 |   |        ├── metamind.py
 |   |        ├──sap_schema_with_sap_comments.json

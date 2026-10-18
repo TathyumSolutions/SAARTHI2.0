@@ -38,8 +38,7 @@ except ImportError:
 # CONFIG - Environment-driven DB credentials
 # ============================================================
 
-# The SAP demo database is external (see app/services/databridge_services/db.py) -
-# no fallback to the app's own Postgres here. If DATABRIDGE_TARGET_HOST
+# The fallback database is external - no fallback to the app's own Postgres here. If DATABRIDGE_TARGET_HOST
 # isn't set, the connect attempt below fails fast and is caught, same as
 # any other unreachable/unconfigured datasource.
 DB_CONFIG = {
@@ -154,14 +153,11 @@ INTERNAL_SYSTEM_TABLES = {
 def _is_internal_table(table_name: str) -> bool:
     """
     True for Saarthi's own app tables (INTERNAL_SYSTEM_TABLES) plus any
-    table named with a leading underscore - the convention the demo
-    seeder (db_setup.py's pad_database_to_target_size / PAD_TABLE_NAME =
-    "_db_size_padding") already uses for tables that exist purely as disk-
-    size filler, not real business data. Without this, that table (just
-    "pad_id"/"filler" columns, tens of thousands of random rows) shows up
-    in the router's known-tables list like any other business table,
-    inviting the SQL agent to consider joining/querying it for a question
-    that has nothing to do with it.
+    table named with a leading underscore - the convention for tables that
+    exist as filler/housekeeping, not real business data. Without this,
+    such a table shows up in the router's known-tables list like any other
+    business table, inviting the SQL agent to consider joining/querying it
+    for a question that has nothing to do with it.
     """
     return table_name in INTERNAL_SYSTEM_TABLES or table_name.startswith("_")
 
@@ -209,10 +205,9 @@ def introspect_databridge_db(db_config=None):
     - per column: data_type, nullable, unique_values, null_count, sample_values
 
     db_config, if given, overrides the module-level DB_CONFIG (which reads
-    DATABRIDGE_TARGET_* from this process's own environment) - used by
-    run_agentic_process() to introspect the exact connection it just
-    seeded, using that connection's stored credentials directly rather
-    than relying on env vars that were only ever set for a subprocess.
+    DATABRIDGE_TARGET_* from this process's own environment) - used to
+    introspect one exact connection using its stored credentials
+    directly rather than relying on env vars.
 
     Skips the connection attempt entirely (no error, just a quiet skip)
     when there's no host to even try - the DATABRIDGE_TARGET_* env-var
@@ -827,8 +822,8 @@ def _introspect_visible_databases(user_id, sap_db_config=None):
 
     If sap_db_config is given explicitly, it's used as-is instead (see
     introspect_databridge_db's docstring) - this is how the Process button
-    and run_agentic_process ask for one *specific* connection to be
-    (re)introspected right after testing/seeding it, without this broader
+    asks for one *specific* connection to be (re)introspected right after
+    testing it, without this broader
     per-user lookup. Every other caller (creating/updating/deleting a
     connection, resource mapping changes, file uploads, etc.) doesn't know
     - and shouldn't need to know - which connection to use, so they rely
@@ -1275,9 +1270,9 @@ def _attach_lookup_hints(db_tables: dict, spreadsheet_tables: dict) -> None:
     """
     Mutates db_tables in place: for every DB column that has sample_values,
     checks whether those values are actually a code column translated by
-    one of this user's uploaded spreadsheet lookup tables (e.g.
-    mara.material_group's sample values ['RM01', 'RM02', 'RM03', ...]
-    exactly matching material_lookup_material_group_lookup.group_code).
+    one of this user's uploaded spreadsheet lookup tables (e.g. a
+    products.group_code column's sample values ['RM01', 'RM02', ...]
+    exactly matching an uploaded group_lookup sheet's group_code column).
     When found, records a "lookup_hint" on that column so
     data_source_finaliser.py can resolve a business term (e.g. "copper")
     against the matching spreadsheet table's other columns *before* a SQL

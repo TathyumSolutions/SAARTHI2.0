@@ -226,7 +226,6 @@ erDiagram
 | Result exports | `<instance>/result_exports/<uuid>.json` (7-day TTL) | `chat_routes.send_message` → `save_result_export` | `GET /api/export/results/<id>` (Excel download) |
 | `rag_config.yaml` | `app/services/rag_config.yaml` | Settings page (`POST /api/settings/rag-config`) | RAG, self-learning switch, LLM-logging pricing |
 | Live step stream | In-process memory (`stream_manager`) | Every track, while a query runs | `GET /api/chat/stream_steps` (SSE) |
-| Process logs | `./logs/process_<id>_<ts>.log` | `run-agentic-process` | Operators only |
 | Browser `localStorage` | `saarthi_chat_history`, JWT | Front-end | Front-end |
 
 ---
@@ -380,8 +379,6 @@ sequenceDiagram
 * `metamind_summary` is refreshed. It appears in the Knowledge Base list and Details popup.
 
 **Edit** (`PUT /api/databases/<id>`) re-runs the live config for owner, editor and grantees. **Delete** removes the `resource_mapping` rows and the connection row. Nothing else needs cleaning up, because routing is computed live and the connection simply disappears from the next query.
-
-**Advanced: `POST /api/databases/run-agentic-process/<id>`** runs two scripts as subprocesses: `databridge_services/db.py` (seeds an SAP-style demo dataset into the target DB) and `metamind.py` (*the file no longer exists*, see §16). It then introspects, stores `schema_metadata`, regenerates config for everyone affected, and writes `audit_logs (agentic_process_run)`. The UI no longer calls it.
 
 > **Note on non-PostgreSQL types (MySQL, Oracle, …).** Rows can be saved, but `_visible_postgresql_connections` only introspects `type == 'PostgreSQL'`. These connections never contribute schema, so the DB track cannot query them.
 
@@ -811,7 +808,7 @@ Disliked rows are stored but **never** matched. This is deliberate, to avoid inj
 |---|---|---|---|
 | `query_logs` | `router_service._log_query` (every path except status checks and crashes) | 1 row per answered question | **Queries** page `/query_logs` → `GET /api/query-logs/?source=&feedback=&user_id=` (company-wide for company users) |
 | `llm_call_logs` | `llm_call_logger.tracked_invoke` (LangChain) / `track_ollama_call` / `record_ollama_call` (raw Ollama) | 1 row per LLM call, with tokens, cost from `rag_config.llm_logging.pricing`, duration, prompt/response previews | **LLM Calls** page `/llm_calls` → `GET /api/llm-calls/`, `/summary` (grouped by `purpose`) |
-| `audit_logs` | `audit_service.log_event` | Security/tenant events: register, login(_blocked), approve/reject, resource created/updated/deleted/processed, mapping grant/revoke, agentic run | Audit Logs page |
+| `audit_logs` | `audit_service.log_event` | Security/tenant events: register, login(_blocked), approve/reject, resource created/updated/deleted/processed, mapping grant/revoke | Audit Logs page |
 
 Common `purpose` values: `router.decision`, `router.result_combiner`, `router.multi_source_synthesis`, `query_simplifier.simplify`, `query_sense.plan`, `sql_generator.generate_sql`, `sql_generator.narration`, `data_insight.generate`, `spreadsheet.plan`, `spreadsheet.answer`, `rag.intent_analysis`, `rag.answer`, `rag.hyde`, `rag.multi_query`, `rag.document_summary`, `rag.image_caption`, `metamind.table_description`, `metamind.column_semantics`.
 
@@ -908,9 +905,8 @@ These came up while tracing the flows above. They are recorded here so the desig
 | 5 | Multi-DB | `resolve_query_execution_config` executes SQL against the **first** visible PG connection, while the schema merges tables from **all** of them. | With 2+ PG connections, SQL for tables of the 2nd connection fails. |
 | 6 | Non-PG connections | Only `type == 'PostgreSQL'` is introspected or executed. | MySQL/Oracle/… connections can be saved and "processed" but are never queryable. |
 | 7 | Re-processing documents | Process re-indexes without first deleting the old points for that `document_code`. | Duplicate chunks in Qdrant, skewing retrieval and chunk counts. |
-| 8 | Agentic process | `run-agentic-process` invokes `databridge_services/metamind.py`, which no longer exists. | Endpoint fails at step 2 (UI no longer calls it). |
-| 9 | LLM budgets | No caller passes `model_configuration_id` (or `query_code`) to `tracked_invoke`. | Daily LLM budgets never accrue spend, and LLM calls cannot be joined to their query. |
-| 10 | Identity fallback | `_resolve_feedback_user` falls back to **user id 1** when the JWT cannot be resolved. | Activity could be attributed to user 1. |
-| 11 | Details popup | `/api/datasources/<type>/<id>/metadata` runs a **live** introspection (COUNT(*) and profiling) for all of the user's PG connections on every open. | Slow on large schemas, and it rewrites status as a side effect. |
-| 12 | Stream manager | In-process memory, keyed by `session_id`. | With several gunicorn workers, the SSE request and the POST can land on different workers, and steps are lost. Needs Redis pub/sub for multi-worker setups. |
-| 13 | Debug logging | `get_smart_response` prints the full inputs, including a preview of the `custom_key`. | Secrets and PII in stdout logs. |
+| 8 | LLM budgets | No caller passes `model_configuration_id` (or `query_code`) to `tracked_invoke`. | Daily LLM budgets never accrue spend, and LLM calls cannot be joined to their query. |
+| 9 | Identity fallback | `_resolve_feedback_user` falls back to **user id 1** when the JWT cannot be resolved. | Activity could be attributed to user 1. |
+| 10 | Details popup | `/api/datasources/<type>/<id>/metadata` runs a **live** introspection (COUNT(*) and profiling) for all of the user's PG connections on every open. | Slow on large schemas, and it rewrites status as a side effect. |
+| 11 | Stream manager | In-process memory, keyed by `session_id`. | With several gunicorn workers, the SSE request and the POST can land on different workers, and steps are lost. Needs Redis pub/sub for multi-worker setups. |
+| 12 | Debug logging | `get_smart_response` prints the full inputs, including a preview of the `custom_key`. | Secrets and PII in stdout logs. |
