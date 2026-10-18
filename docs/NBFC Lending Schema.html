@@ -1,0 +1,698 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>NBFC Lending Schema</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#f6f2e9;
+    --surface:#ffffff;
+    --surface-2:#efe9d8;
+    --ink:#1d2230;
+    --muted:#666c7d;
+    --border:#ddd3ba;
+    --accent:#0f7a63;
+    --accent-soft:#dcece5;
+    --domain-ref:#47597a;
+    --domain-cust:#0f7a63;
+    --domain-orig:#b5732a;
+    --domain-serv:#8c3f63;
+    --domain-risk:#a3453f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#12151b;
+      --surface:#1a1f28;
+      --surface-2:#212734;
+      --ink:#e9e6dc;
+      --muted:#9aa1b0;
+      --border:#2c3342;
+      --accent:#45c1a1;
+      --accent-soft:#1c332d;
+      --domain-ref:#7d90b6;
+      --domain-cust:#3bb897;
+      --domain-orig:#e0a35b;
+      --domain-serv:#c56b93;
+      --domain-risk:#d97972;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12151b;
+    --surface:#1a1f28;
+    --surface-2:#212734;
+    --ink:#e9e6dc;
+    --muted:#9aa1b0;
+    --border:#2c3342;
+    --accent:#45c1a1;
+    --accent-soft:#1c332d;
+    --domain-ref:#7d90b6;
+    --domain-cust:#3bb897;
+    --domain-orig:#e0a35b;
+    --domain-serv:#c56b93;
+    --domain-risk:#d97972;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;
+    padding-inline:20px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding-block:40px 64px;}
+
+  h1,h2,h3{font-family:'Fraunces',Georgia,serif;font-weight:600;text-wrap:balance;margin:0;}
+  code,.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;}
+
+  header.hero{
+    display:flex;flex-direction:column;gap:14px;
+    padding-bottom:28px;border-bottom:1px solid var(--border);margin-bottom:32px;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono';font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--accent);
+  }
+  h1{font-size:clamp(28px,5vw,42px);}
+  .lede{max-width:64ch;color:var(--muted);font-size:15.5px;line-height:1.55;}
+  .lede strong{color:var(--ink);font-weight:600;}
+
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;}
+  .stat{
+    background:var(--surface);border:1px solid var(--border);border-radius:3px;
+    padding:10px 14px;min-width:118px;
+  }
+  .stat .v{font-family:'IBM Plex Mono';font-weight:600;font-size:19px;font-variant-numeric:tabular-nums;}
+  .stat .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+
+  section{margin-bottom:44px;}
+  h2{font-size:23px;margin-bottom:6px;}
+  .section-note{color:var(--muted);font-size:14px;max-width:72ch;line-height:1.55;margin-bottom:20px;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin:18px 0 20px;font-size:12.5px;color:var(--muted);}
+  .legend-item{display:flex;align-items:center;gap:6px;}
+  .swatch{width:11px;height:11px;border-radius:2px;flex:none;}
+  .line-sample{width:22px;height:0;border-top:2.5px solid var(--accent);flex:none;}
+  .line-sample.ref{border-top:1.5px solid var(--muted);opacity:.8;}
+
+  figure{margin:0;}
+  .diagram-scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:10px;}
+  .diagram-scroll svg{display:block;min-width:760px;width:100%;height:auto;}
+  figcaption{color:var(--muted);font-size:13px;line-height:1.55;margin-top:12px;max-width:78ch;}
+
+  .domain-groups{display:flex;flex-direction:column;gap:36px;}
+  .domain-group{border-left:3px solid var(--domain-color);padding-left:18px;}
+  .domain-group h3{font-size:17px;display:flex;align-items:center;gap:8px;}
+  .domain-group .dg-note{color:var(--muted);font-size:13px;margin:4px 0 16px;max-width:70ch;}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden;}
+  .card-hdr{
+    background:var(--domain-color);color:#fff;padding:9px 14px;
+    display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  }
+  .card-hdr .tname{font-family:'IBM Plex Mono';font-weight:600;font-size:13.5px;}
+  .card-hdr .trows{font-size:10.5px;opacity:.85;font-family:'IBM Plex Mono';white-space:nowrap;}
+  .card-body{padding:2px 0;}
+  .card table{width:100%;border-collapse:collapse;font-size:12px;}
+  .card th{
+    text-align:left;font-family:'IBM Plex Sans';font-weight:600;font-size:10px;
+    text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    padding:7px 14px 5px;border-bottom:1px solid var(--border);
+  }
+  .card td{padding:5px 14px;border-bottom:1px solid var(--surface-2);vertical-align:top;}
+  .card tr:last-child td{border-bottom:none;}
+  .card td.col{font-family:'IBM Plex Mono';white-space:nowrap;}
+  .card td.type{font-family:'IBM Plex Mono';color:var(--muted);white-space:nowrap;}
+  .card td.note{color:var(--muted);font-size:11.3px;}
+  .key-pk{
+    display:inline-block;font-family:'IBM Plex Sans';font-weight:700;font-size:8.5px;
+    background:var(--domain-color);color:#fff;border-radius:2px;padding:1px 4px;margin-right:5px;
+    vertical-align:middle;
+  }
+  .key-fk{
+    display:inline-block;font-family:'IBM Plex Sans';font-weight:700;font-size:8.5px;
+    border:1px solid var(--muted);color:var(--muted);border-radius:2px;padding:0 4px;margin-right:5px;
+    vertical-align:middle;
+  }
+
+  .side-table-wrap{overflow-x:auto;margin-top:14px;}
+  table.reftable{border-collapse:collapse;font-size:12px;width:100%;min-width:560px;}
+  table.reftable caption{
+    text-align:left;font-family:'IBM Plex Sans';font-weight:600;font-size:12.5px;
+    color:var(--ink);margin-bottom:8px;caption-side:top;
+  }
+  table.reftable th{
+    text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+    padding:6px 12px;border-bottom:1px solid var(--border);
+  }
+  table.reftable td{padding:6px 12px;border-bottom:1px solid var(--surface-2);font-family:'IBM Plex Mono';}
+  table.reftable td.cat{font-family:'IBM Plex Sans';}
+
+  footer{color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:16px;line-height:1.6;}
+  footer code{background:var(--surface-2);padding:1px 5px;border-radius:2px;}
+</style>
+
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">Data model · demo_lending</span>
+    <h1>NBFC Lending Schema</h1>
+    <p class="lede">
+      The physical data model behind Saarthi's synthetic NBFC / lending-company demo database
+      (<code class="mono">demo_lending/db_lending.py</code>): <strong>13 tables</strong> covering the
+      full loan lifecycle — origination, disbursement, EMI amortization, collections, payables,
+      IRAC/NPA classification, credit-bureau pulls, and the disbursement ledger. All data is synthetic
+      (Faker <code class="mono">en_IN</code> locale; PAN/Aadhaar/account numbers are valid-format,
+      not real identifiers) and is provisioned into its own Postgres database,
+      <code class="mono">lending_demo_db</code>, independent of Saarthi's own core databases.
+    </p>
+    <div class="stats">
+      <div class="stat"><div class="v">13</div><div class="l">Tables</div></div>
+      <div class="stat"><div class="v">110</div><div class="l">Branches</div></div>
+      <div class="stat"><div class="v">12</div><div class="l">Loan products</div></div>
+      <div class="stat"><div class="v">95,000</div><div class="l">Customers</div></div>
+      <div class="stat"><div class="v">~108,000</div><div class="l">Disbursed loans</div></div>
+      <div class="stat"><div class="v">6.25M</div><div class="l">Schedule rows</div></div>
+      <div class="stat"><div class="v">3.06M</div><div class="l">Collection receipts</div></div>
+    </div>
+    <p class="lede" style="font-size:12.5px;">Row counts shown are the <code class="mono">--scale full</code> preset (~1.7&nbsp;GB loaded); <code class="mono">tiny</code>/<code class="mono">small</code>/<code class="mono">medium</code> scale the same 13-table shape down.</p>
+  </header>
+
+  <section>
+    <h2>Entity relationship diagram</h2>
+    <p class="section-note">
+      Boxes are grouped by domain (color) and laid out by dependency layer — reference/master data
+      at the top, the loan lifecycle flowing down to collections at the bottom. Only the primary
+      keys are shown on each box; every column, including the foreign keys not drawn here, is listed
+      in the data dictionary below.
+    </p>
+
+    <div class="legend">
+      <span class="legend-item"><span class="swatch" style="background:var(--domain-ref)"></span>Reference &amp; organization</span>
+      <span class="legend-item"><span class="swatch" style="background:var(--domain-cust)"></span>Customer &amp; bureau</span>
+      <span class="legend-item"><span class="swatch" style="background:var(--domain-orig)"></span>Origination</span>
+      <span class="legend-item"><span class="swatch" style="background:var(--domain-serv)"></span>Servicing &amp; collections</span>
+      <span class="legend-item"><span class="swatch" style="background:var(--domain-risk)"></span>Risk &amp; finance</span>
+      <span class="legend-item"><span class="line-sample"></span>Loan-lifecycle FK (drawn)</span>
+      <span class="legend-item"><span class="line-sample ref"></span>Branch/org FK (sample)</span>
+    </div>
+
+    <figure>
+      <div class="diagram-scroll">
+        <svg viewBox="0 0 1440 800" role="img" aria-label="Entity relationship diagram of the 13-table NBFC lending schema, showing branches, employees and agents as organizational reference data feeding customers, loan applications and loans, which flow down through the repayment schedule into collections, with NPA classification, the transactions ledger, payables and credit bureau records branching off the loan and customer records.">
+          <defs>
+            <marker id="arrow-accent" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 Z" style="fill:var(--accent)"/>
+            </marker>
+            <marker id="arrow-ref" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 Z" style="fill:var(--muted)"/>
+            </marker>
+          </defs>
+
+          <!-- edges: org references (thin) -->
+          <path d="M267,170 L330,114" style="stroke:var(--muted);stroke-width:1.25;fill:none;opacity:.75" marker-end="url(#arrow-ref)"/>
+          <path d="M720,170 L380,114" style="stroke:var(--muted);stroke-width:1.25;fill:none;opacity:.75" marker-end="url(#arrow-ref)"/>
+          <path d="M1173,170 L430,114" style="stroke:var(--muted);stroke-width:1.25;fill:none;opacity:.75" marker-end="url(#arrow-ref)"/>
+
+          <!-- edges: loan lifecycle spine (thick) -->
+          <path d="M1173,300 L1173,244" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M750,337 Q950,280 1120,244" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M650,430 L650,374" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M550,560 L620,504" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M550,690 L550,634" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M650,727 Q720,610 700,504" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M850,560 Q790,510 750,467" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M250,560 Q380,480 600,504" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <path d="M1050,597 Q880,500 750,467" style="stroke:var(--accent);stroke-width:2.25;fill:none" marker-end="url(#arrow-accent)"/>
+          <text x="666" y="405" style="font-family:'IBM Plex Mono';font-size:9.5px;fill:var(--accent)">1:1</text>
+
+          <!-- branches -->
+          <g>
+            <rect x="280" y="40" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="280" y="40" width="200" height="26" style="fill:var(--domain-ref)"/>
+            <text x="380" y="57" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">branches</text>
+            <rect x="290" y="74" width="20" height="13" style="fill:var(--domain-ref)"/>
+            <text x="300" y="83.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="316" y="84" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">branch_id</text>
+            <text x="290" y="103" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">branch network</text>
+          </g>
+
+          <!-- loan_products -->
+          <g>
+            <rect x="960" y="40" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="960" y="40" width="200" height="26" style="fill:var(--domain-ref)"/>
+            <text x="1060" y="57" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">loan_products</text>
+            <rect x="970" y="74" width="20" height="13" style="fill:var(--domain-ref)"/>
+            <text x="980" y="83.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="996" y="84" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">product_id</text>
+            <text x="970" y="103" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">loan catalogue</text>
+          </g>
+
+          <!-- employees -->
+          <g>
+            <rect x="167" y="170" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="167" y="170" width="200" height="26" style="fill:var(--domain-ref)"/>
+            <text x="267" y="187" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">employees</text>
+            <rect x="177" y="204" width="20" height="13" style="fill:var(--domain-ref)"/>
+            <text x="187" y="213.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="203" y="214" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">employee_id</text>
+            <text x="177" y="233" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">branch staff</text>
+          </g>
+
+          <!-- agents -->
+          <g>
+            <rect x="620" y="170" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="620" y="170" width="200" height="26" style="fill:var(--domain-ref)"/>
+            <text x="720" y="187" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">agents</text>
+            <rect x="630" y="204" width="20" height="13" style="fill:var(--domain-ref)"/>
+            <text x="640" y="213.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="656" y="214" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">agent_id</text>
+            <text x="630" y="233" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">DSAs &amp; agents</text>
+          </g>
+
+          <!-- customers -->
+          <g>
+            <rect x="1073" y="170" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="1073" y="170" width="200" height="26" style="fill:var(--domain-cust)"/>
+            <text x="1173" y="187" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">customers</text>
+            <rect x="1083" y="204" width="20" height="13" style="fill:var(--domain-cust)"/>
+            <text x="1093" y="213.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="1109" y="214" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">customer_id</text>
+            <text x="1083" y="233" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">borrower KYC</text>
+          </g>
+
+          <!-- loan_applications -->
+          <g>
+            <rect x="550" y="300" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="550" y="300" width="200" height="26" style="fill:var(--domain-orig)"/>
+            <text x="650" y="317" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">loan_applications</text>
+            <rect x="560" y="334" width="20" height="13" style="fill:var(--domain-orig)"/>
+            <text x="570" y="343.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="586" y="344" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">application_id</text>
+            <text x="560" y="363" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">application → decision</text>
+          </g>
+
+          <!-- credit_bureau_records -->
+          <g>
+            <rect x="1073" y="300" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="1073" y="300" width="200" height="26" style="fill:var(--domain-cust)"/>
+            <text x="1173" y="317" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">credit_bureau_records</text>
+            <rect x="1083" y="334" width="20" height="13" style="fill:var(--domain-cust)"/>
+            <text x="1093" y="343.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="1109" y="344" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">record_id</text>
+            <text x="1083" y="363" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">bureau scores</text>
+          </g>
+
+          <!-- loans -->
+          <g>
+            <rect x="550" y="430" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="550" y="430" width="200" height="26" style="fill:var(--domain-orig)"/>
+            <text x="650" y="447" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">loans</text>
+            <rect x="560" y="464" width="20" height="13" style="fill:var(--domain-orig)"/>
+            <text x="570" y="473.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="586" y="474" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">loan_id</text>
+            <text x="560" y="493" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">sanctioned &amp; disbursed</text>
+          </g>
+
+          <!-- transactions_ledger -->
+          <g>
+            <rect x="150" y="560" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="150" y="560" width="200" height="26" style="fill:var(--domain-risk)"/>
+            <text x="250" y="577" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">transactions_ledger</text>
+            <rect x="160" y="594" width="20" height="13" style="fill:var(--domain-risk)"/>
+            <text x="170" y="603.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="186" y="604" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">transaction_id</text>
+            <text x="160" y="623" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">disbursement &amp; fees</text>
+          </g>
+
+          <!-- repayment_schedule -->
+          <g>
+            <rect x="450" y="560" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="450" y="560" width="200" height="26" style="fill:var(--domain-serv)"/>
+            <text x="550" y="577" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">repayment_schedule</text>
+            <rect x="460" y="594" width="20" height="13" style="fill:var(--domain-serv)"/>
+            <text x="470" y="603.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="486" y="604" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">schedule_id</text>
+            <text x="460" y="623" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">amortization (largest table)</text>
+          </g>
+
+          <!-- npa_classification -->
+          <g>
+            <rect x="750" y="560" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="750" y="560" width="200" height="26" style="fill:var(--domain-risk)"/>
+            <text x="850" y="577" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">npa_classification</text>
+            <rect x="760" y="594" width="20" height="13" style="fill:var(--domain-risk)"/>
+            <text x="770" y="603.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="786" y="604" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">npa_id</text>
+            <text x="760" y="623" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">DPD &amp; provisioning</text>
+          </g>
+
+          <!-- payables -->
+          <g>
+            <rect x="1050" y="560" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="1050" y="560" width="200" height="26" style="fill:var(--domain-risk)"/>
+            <text x="1150" y="577" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">payables</text>
+            <rect x="1060" y="594" width="20" height="13" style="fill:var(--domain-risk)"/>
+            <text x="1070" y="603.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="1086" y="604" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">payable_id</text>
+            <text x="1060" y="623" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">commission &amp; vendor AP</text>
+          </g>
+
+          <!-- collections -->
+          <g>
+            <rect x="450" y="690" width="200" height="74" style="fill:var(--surface);stroke:var(--border)"/>
+            <rect x="450" y="690" width="200" height="26" style="fill:var(--domain-serv)"/>
+            <text x="550" y="707" text-anchor="middle" style="font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;fill:#fff">collections</text>
+            <rect x="460" y="724" width="20" height="13" style="fill:var(--domain-serv)"/>
+            <text x="470" y="733.5" text-anchor="middle" style="font-family:'IBM Plex Sans';font-weight:700;font-size:8px;fill:#fff">PK</text>
+            <text x="486" y="734" style="font-family:'IBM Plex Mono';font-size:11px;fill:var(--ink)">collection_id</text>
+            <text x="460" y="753" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--muted);font-style:italic">repayment receipts</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>
+        Thick teal edges trace the loan lifecycle spine (application → loan → schedule → collections,
+        and the loan → NPA / ledger / credit-bureau offshoots); thin gray edges sample the
+        branch-network references every org table carries. <code class="mono">loans.application_id</code>
+        is the one 1:1 link in the schema (unique FK). To keep the drawing legible, the remaining
+        branch/product/agent/employee lookups on <code class="mono">loan_applications</code>,
+        <code class="mono">loans</code>, <code class="mono">collections</code> and
+        <code class="mono">payables</code> aren't drawn individually — they're listed in full in the
+        data dictionary below.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Data dictionary</h2>
+    <p class="section-note">
+      Every column, type and key constraint, grouped by the same five domains as the diagram above.
+      <span class="key-pk" style="background:var(--muted)">PK</span> marks the primary key,
+      <span class="key-fk">FK</span> marks a foreign key (its target table is named in the note column).
+    </p>
+
+    <div class="domain-groups">
+
+      <div class="domain-group" style="--domain-color:var(--domain-ref)">
+        <h3>Reference &amp; organization</h3>
+        <p class="dg-note">Branch network, staff, empanelled agents and the loan product catalogue — the master data every operational table hangs off.</p>
+        <div class="cards">
+
+          <div class="card" style="--domain-color:var(--domain-ref)">
+            <div class="card-hdr"><span class="tname">branches</span><span class="trows">110 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>branch_id</td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">branch_code</td><td class="type">varchar(10)</td><td class="note">unique</td></tr>
+              <tr><td class="col">branch_name</td><td class="type">varchar(120)</td><td class="note"></td></tr>
+              <tr><td class="col">city / state / pincode</td><td class="type">varchar</td><td class="note"></td></tr>
+              <tr><td class="col">region</td><td class="type">varchar(20)</td><td class="note">North/South/East/West/Central</td></tr>
+              <tr><td class="col">opened_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">is_active</td><td class="type">boolean</td><td class="note">default true</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-ref)">
+            <div class="card-hdr"><span class="tname">employees</span><span class="trows">~990 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>employee_id</td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">employee_code</td><td class="type">varchar(15)</td><td class="note">unique</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>branch_id</td><td class="type">integer</td><td class="note">→ branches</td></tr>
+              <tr><td class="col">full_name / designation</td><td class="type">varchar</td><td class="note">Branch Manager, Credit Analyst, RM, Collections Officer…</td></tr>
+              <tr><td class="col">email / mobile</td><td class="type">varchar</td><td class="note">nullable</td></tr>
+              <tr><td class="col">date_joined</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">is_active</td><td class="type">boolean</td><td class="note">default true</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-ref)">
+            <div class="card-hdr"><span class="tname">agents</span><span class="trows">1,600 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>agent_id</td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">agent_code</td><td class="type">varchar(15)</td><td class="note">unique</td></tr>
+              <tr><td class="col">agent_name / agency_name</td><td class="type">varchar</td><td class="note">agency nullable</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>branch_id</td><td class="type">integer</td><td class="note">→ branches</td></tr>
+              <tr><td class="col">mobile</td><td class="type">varchar(15)</td><td class="note"></td></tr>
+              <tr><td class="col">commission_rate</td><td class="type">numeric(5,2)</td><td class="note">% per disbursement</td></tr>
+              <tr><td class="col">empanelled_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">is_active</td><td class="type">boolean</td><td class="note">default true</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-ref)">
+            <div class="card-hdr"><span class="tname">loan_products</span><span class="trows">12 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>product_id</td><td class="type">smallint</td><td class="note"></td></tr>
+              <tr><td class="col">product_code / name</td><td class="type">varchar</td><td class="note">code unique, e.g. PL, GL, LAP</td></tr>
+              <tr><td class="col">category</td><td class="type">varchar(30)</td><td class="note">Personal/Gold/Vehicle/Business/…</td></tr>
+              <tr><td class="col">min/max_amount</td><td class="type">numeric(14,2)</td><td class="note">sanction band</td></tr>
+              <tr><td class="col">min/max_tenure_months</td><td class="type">smallint</td><td class="note"></td></tr>
+              <tr><td class="col">interest_rate_min/max</td><td class="type">numeric(5,2)</td><td class="note">card rate band</td></tr>
+              <tr><td class="col">processing_fee_pct</td><td class="type">numeric(5,2)</td><td class="note"></td></tr>
+            </table></div>
+          </div>
+
+        </div>
+
+        <div class="side-table-wrap">
+          <table class="reftable">
+            <caption>Loan product catalogue (loan_products seed data)</caption>
+            <tr><th>Code</th><th>Product</th><th>Category</th><th>Amount band</th><th>Tenure</th><th>Rate band</th></tr>
+            <tr><td>PL</td><td class="cat">Personal Loan</td><td class="cat">Personal</td><td>₹50k–20L</td><td>12–60m</td><td>13.5–24.0%</td></tr>
+            <tr><td>GL</td><td class="cat">Gold Loan</td><td class="cat">Gold</td><td>₹10k–25L</td><td>3–24m</td><td>9.0–14.5%</td></tr>
+            <tr><td>TW</td><td class="cat">Two-Wheeler Loan</td><td class="cat">Vehicle</td><td>₹30k–2.5L</td><td>12–48m</td><td>11.5–18.0%</td></tr>
+            <tr><td>UCL</td><td class="cat">Used Car Loan</td><td class="cat">Vehicle</td><td>₹1L–15L</td><td>12–60m</td><td>12.0–17.5%</td></tr>
+            <tr><td>NCL</td><td class="cat">New Car Loan</td><td class="cat">Vehicle</td><td>₹2L–30L</td><td>12–84m</td><td>9.5–13.5%</td></tr>
+            <tr><td>MSME</td><td class="cat">MSME Business Loan</td><td class="cat">Business</td><td>₹1L–1Cr</td><td>12–84m</td><td>15.5–22.0%</td></tr>
+            <tr><td>LAP</td><td class="cat">Loan Against Property</td><td class="cat">Secured</td><td>₹5L–3Cr</td><td>24–180m</td><td>9.5–14.0%</td></tr>
+            <tr><td>CD</td><td class="cat">Consumer Durable Loan</td><td class="cat">Consumer</td><td>₹5k–2L</td><td>3–24m</td><td>18.0–28.0%</td></tr>
+            <tr><td>MFI</td><td class="cat">Microfinance (JLG) Loan</td><td class="cat">Microfinance</td><td>₹10k–1L</td><td>6–24m</td><td>21.0–26.0%</td></tr>
+            <tr><td>EDU</td><td class="cat">Education Loan</td><td class="cat">Education</td><td>₹1L–40L</td><td>12–120m</td><td>10.5–15.0%</td></tr>
+            <tr><td>HL</td><td class="cat">Home Loan</td><td class="cat">Housing</td><td>₹5L–5Cr</td><td>60–300m</td><td>8.5–11.5%</td></tr>
+            <tr><td>HLTU</td><td class="cat">Home Loan Top-up</td><td class="cat">Housing</td><td>₹1L–50L</td><td>24–180m</td><td>10.0–13.0%</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="domain-group" style="--domain-color:var(--domain-cust)">
+        <h3>Customer &amp; bureau</h3>
+        <p class="dg-note">Borrower KYC and the credit-bureau score pulls made against it.</p>
+        <div class="cards">
+
+          <div class="card" style="--domain-color:var(--domain-cust)">
+            <div class="card-hdr"><span class="tname">customers</span><span class="trows">95,000 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>customer_id</td><td class="type">integer</td><td class="note"></td></tr>
+              <tr><td class="col">customer_code</td><td class="type">varchar(15)</td><td class="note">unique</td></tr>
+              <tr><td class="col">first_name / last_name / gender</td><td class="type">varchar</td><td class="note"></td></tr>
+              <tr><td class="col">date_of_birth</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">pan_number</td><td class="type">varchar(10)</td><td class="note">unique, format-only</td></tr>
+              <tr><td class="col">aadhaar_masked</td><td class="type">varchar(15)</td><td class="note">XXXX-XXXX-1234</td></tr>
+              <tr><td class="col">mobile / email</td><td class="type">varchar</td><td class="note">email nullable</td></tr>
+              <tr><td class="col">address_line / city / state / pincode</td><td class="type">varchar</td><td class="note"></td></tr>
+              <tr><td class="col">occupation</td><td class="type">varchar(40)</td><td class="note">Salaried/Self-Employed/Agriculturist/…</td></tr>
+              <tr><td class="col">monthly_income</td><td class="type">numeric(12,2)</td><td class="note"></td></tr>
+              <tr><td class="col">cibil_score</td><td class="type">smallint</td><td class="note">nullable, 300–900</td></tr>
+              <tr><td class="col">kyc_status</td><td class="type">varchar(20)</td><td class="note">Verified/Pending/Rejected</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>home_branch_id</td><td class="type">integer</td><td class="note">→ branches</td></tr>
+              <tr><td class="col">onboarded_date</td><td class="type">date</td><td class="note"></td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-cust)">
+            <div class="card-hdr"><span class="tname">credit_bureau_records</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>record_id</td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>customer_id</td><td class="type">integer</td><td class="note">→ customers, 1–2 records each</td></tr>
+              <tr><td class="col">bureau_name</td><td class="type">varchar(20)</td><td class="note">CIBIL/Experian/Equifax/CRIF High Mark</td></tr>
+              <tr><td class="col">score</td><td class="type">smallint</td><td class="note">300–900</td></tr>
+              <tr><td class="col">report_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">existing_loans_count</td><td class="type">smallint</td><td class="note"></td></tr>
+              <tr><td class="col">total_outstanding</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">enquiries_last_6m</td><td class="type">smallint</td><td class="note"></td></tr>
+            </table></div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="domain-group" style="--domain-color:var(--domain-orig)">
+        <h3>Origination</h3>
+        <p class="dg-note">Application intake through underwriting decision, then the sanctioned/disbursed loan account it produces.</p>
+        <div class="cards">
+
+          <div class="card" style="--domain-color:var(--domain-orig)">
+            <div class="card-hdr"><span class="tname">loan_applications</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>application_id</td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col">application_number</td><td class="type">varchar(20)</td><td class="note">unique</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>customer_id</td><td class="type">integer</td><td class="note">→ customers</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>product_id</td><td class="type">smallint</td><td class="note">→ loan_products</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>branch_id</td><td class="type">integer</td><td class="note">→ branches</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>agent_id</td><td class="type">integer</td><td class="note">→ agents, nullable</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>credit_analyst_id</td><td class="type">integer</td><td class="note">→ employees, nullable</td></tr>
+              <tr><td class="col">applied_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">requested_amount</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">requested_tenure_months</td><td class="type">smallint</td><td class="note"></td></tr>
+              <tr><td class="col">status</td><td class="type">varchar(20)</td><td class="note">Approved/Rejected/Withdrawn</td></tr>
+              <tr><td class="col">rejection_reason</td><td class="type">varchar(120)</td><td class="note">nullable</td></tr>
+              <tr><td class="col">decision_date</td><td class="type">date</td><td class="note">nullable</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-orig)">
+            <div class="card-hdr"><span class="tname">loans</span><span class="trows">~108,000 rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>loan_id</td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col">loan_account_number</td><td class="type">varchar(20)</td><td class="note">unique</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>application_id</td><td class="type">bigint</td><td class="note">→ loan_applications, unique (1:1)</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>customer_id / product_id / branch_id</td><td class="type">int / smallint / int</td><td class="note">→ customers / loan_products / branches</td></tr>
+              <tr><td class="col">sanctioned_amount / disbursed_amount</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">interest_rate</td><td class="type">numeric(5,2)</td><td class="note"></td></tr>
+              <tr><td class="col">tenure_months</td><td class="type">smallint</td><td class="note"></td></tr>
+              <tr><td class="col">emi_amount</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">disbursement_date / first_emi_date / maturity_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">disbursing_bank</td><td class="type">varchar(60)</td><td class="note">nullable</td></tr>
+              <tr><td class="col">loan_status</td><td class="type">varchar(20)</td><td class="note">Active/Closed/Foreclosed</td></tr>
+              <tr><td class="col">closure_date</td><td class="type">date</td><td class="note">nullable</td></tr>
+              <tr><td class="col">risk_profile</td><td class="type">varchar(10)</td><td class="note">Good/Average/Risky</td></tr>
+              <tr><td class="col">current_dpd</td><td class="type">integer</td><td class="note">default 0, backfilled from schedule</td></tr>
+              <tr><td class="col">npa_flag</td><td class="type">boolean</td><td class="note">default false, true when DPD &gt; 90</td></tr>
+            </table></div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="domain-group" style="--domain-color:var(--domain-serv)">
+        <h3>Servicing &amp; collections</h3>
+        <p class="dg-note">The per-installment amortization schedule and the actual receipts posted against it.</p>
+        <div class="cards">
+
+          <div class="card" style="--domain-color:var(--domain-serv)">
+            <div class="card-hdr"><span class="tname">repayment_schedule</span><span class="trows">6.25M rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>schedule_id</td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>loan_id</td><td class="type">bigint</td><td class="note">→ loans</td></tr>
+              <tr><td class="col">installment_number</td><td class="type">smallint</td><td class="note"></td></tr>
+              <tr><td class="col">due_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">opening/closing_principal</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">principal_due / interest_due / emi_due</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">amount_paid</td><td class="type">numeric(14,2)</td><td class="note">default 0</td></tr>
+              <tr><td class="col">paid_date</td><td class="type">date</td><td class="note">nullable</td></tr>
+              <tr><td class="col">payment_status</td><td class="type">varchar(20)</td><td class="note">Paid/Partially Paid/Overdue/Not Due</td></tr>
+              <tr><td class="col">dpd_days</td><td class="type">integer</td><td class="note">default 0</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-serv)">
+            <div class="card-hdr"><span class="tname">collections</span><span class="trows">3.06M rows</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>collection_id</td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col">receipt_number</td><td class="type">varchar(20)</td><td class="note">unique</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>loan_id</td><td class="type">bigint</td><td class="note">→ loans</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>schedule_id</td><td class="type">bigint</td><td class="note">→ repayment_schedule, nullable</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>customer_id</td><td class="type">integer</td><td class="note">→ customers</td></tr>
+              <tr><td class="col">collection_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">principal/interest/penalty_component</td><td class="type">numeric(14,2)</td><td class="note">penalty default 0</td></tr>
+              <tr><td class="col">total_amount</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">payment_mode</td><td class="type">varchar(20)</td><td class="note">NACH/UPI/NEFT/Cheque/Cash/Auto-Debit</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>collected_by_employee_id</td><td class="type">integer</td><td class="note">→ employees, nullable</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>collected_by_agent_id</td><td class="type">integer</td><td class="note">→ agents, nullable</td></tr>
+            </table></div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="domain-group" style="--domain-color:var(--domain-risk)">
+        <h3>Risk &amp; finance</h3>
+        <p class="dg-note">IRAC/NPA provisioning snapshots, agent-commission and vendor payables, and the disbursement/fee ledger.</p>
+        <div class="cards">
+
+          <div class="card" style="--domain-color:var(--domain-risk)">
+            <div class="card-hdr"><span class="tname">npa_classification</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>npa_id</td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>loan_id</td><td class="type">bigint</td><td class="note">→ loans</td></tr>
+              <tr><td class="col">as_of_date</td><td class="type">date</td><td class="note">snapshot date</td></tr>
+              <tr><td class="col">dpd_bucket</td><td class="type">varchar(15)</td><td class="note">SMA-0/SMA-1/SMA-2/NPA…</td></tr>
+              <tr><td class="col">asset_classification</td><td class="type">varchar(15)</td><td class="note">Standard/Sub-Standard/Doubtful/Loss</td></tr>
+              <tr><td class="col">outstanding_principal</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">provisioning_pct / amount</td><td class="type">numeric</td><td class="note">IRAC provisioning norm</td></tr>
+            </table></div>
+            <div class="side-table-wrap" style="padding:0 14px 14px;">
+              <table class="reftable">
+                <caption>DPD bucket → provisioning (IRAC norms modeled)</caption>
+                <tr><th>DPD range</th><th>Bucket</th><th>Classification</th><th>Provisioning</th></tr>
+                <tr><td>0</td><td class="cat">Standard</td><td class="cat">Standard</td><td>0.40%</td></tr>
+                <tr><td>1–30</td><td class="cat">SMA-0</td><td class="cat">Standard</td><td>0.40%</td></tr>
+                <tr><td>31–60</td><td class="cat">SMA-1</td><td class="cat">Standard</td><td>1.00%</td></tr>
+                <tr><td>61–90</td><td class="cat">SMA-2</td><td class="cat">Standard</td><td>15.00%</td></tr>
+                <tr><td>91–365</td><td class="cat">NPA 91-365</td><td class="cat">Sub-Standard</td><td>25.00%</td></tr>
+                <tr><td>366–730</td><td class="cat">NPA 1-2yr</td><td class="cat">Doubtful</td><td>50.00%</td></tr>
+                <tr><td>731+</td><td class="cat">NPA 2yr+</td><td class="cat">Loss</td><td>100.00%</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-risk)">
+            <div class="card-hdr"><span class="tname">payables</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>payable_id</td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col">payable_type</td><td class="type">varchar(30)</td><td class="note">Agent Commission/Insurance Premium/Vendor/…</td></tr>
+              <tr><td class="col">payee_name</td><td class="type">varchar(150)</td><td class="note"></td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>branch_id</td><td class="type">integer</td><td class="note">→ branches, nullable</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>agent_id</td><td class="type">integer</td><td class="note">→ agents, nullable</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>related_loan_id</td><td class="type">bigint</td><td class="note">→ loans, nullable</td></tr>
+              <tr><td class="col">invoice_number</td><td class="type">varchar(25)</td><td class="note">unique</td></tr>
+              <tr><td class="col">amount</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">due_date / paid_date</td><td class="type">date</td><td class="note">paid_date nullable</td></tr>
+              <tr><td class="col">status</td><td class="type">varchar(15)</td><td class="note">Paid/Pending</td></tr>
+            </table></div>
+          </div>
+
+          <div class="card" style="--domain-color:var(--domain-risk)">
+            <div class="card-hdr"><span class="tname">transactions_ledger</span></div>
+            <div class="card-body"><table>
+              <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+              <tr><td class="col"><span class="key-pk">PK</span>transaction_id</td><td class="type">bigint</td><td class="note"></td></tr>
+              <tr><td class="col">reference_number</td><td class="type">varchar(25)</td><td class="note">unique</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>loan_id</td><td class="type">bigint</td><td class="note">→ loans, nullable</td></tr>
+              <tr><td class="col"><span class="key-fk">FK</span>customer_id</td><td class="type">integer</td><td class="note">→ customers, nullable</td></tr>
+              <tr><td class="col">transaction_type</td><td class="type">varchar(20)</td><td class="note">Disbursement/Processing Fee</td></tr>
+              <tr><td class="col">transaction_date</td><td class="type">date</td><td class="note"></td></tr>
+              <tr><td class="col">amount</td><td class="type">numeric(14,2)</td><td class="note"></td></tr>
+              <tr><td class="col">payment_mode</td><td class="type">varchar(30)</td><td class="note"></td></tr>
+              <tr><td class="col">status</td><td class="type">varchar(15)</td><td class="note">Success</td></tr>
+            </table></div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer>
+    Source: <code>demo_lending/db_lending.py</code> (schema + Faker-based generator) and
+    <code>demo_lending/README.md</code> in the Saarthi repository. Row counts reflect the
+    <code>--scale full</code> preset; re-run the generator with <code>--scale tiny|small|medium|full</code>
+    to reshape the volume, not the schema. All PAN/Aadhaar/mobile values are synthetic, valid-format
+    identifiers only — not real people or accounts.
+  </footer>
+
+</div>
+
+</body></html>
