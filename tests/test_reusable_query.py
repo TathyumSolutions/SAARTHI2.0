@@ -140,12 +140,15 @@ def test_reused_spreadsheet_query_never_reads_a_table_not_visible_in_this_chat()
 
 def test_find_reusable_query_only_matches_liked_db_or_spreadsheet():
     """The candidate query must filter on router_decision in {DB,
-    SPREADSHEET} (via .in_(REUSABLE_TRACKS)), feedback_type == 'like', and
-    a non-null main_query - FILES/API/GENERAL/MULTI rows, disliked rows,
-    and rows with no stored main_query must never be candidates."""
+    SPREADSHEET} (via .in_(REUSABLE_TRACKS)) and on like/dislike feedback -
+    FILES/API/GENERAL/MULTI rows must never be candidates, and only a liked
+    row with a stored main_query can be returned (disliked rows are read
+    only to block reuse; see tests/test_feedback_match_threshold.py)."""
     candidate = MagicMock()
     candidate.question = "what are the metal codes?"
     candidate.router_decision = "SPREADSHEET"
+    candidate.feedback_type = "like"
+    candidate.matched_query_code = None
 
     mock_query_chain = MagicMock()
     mock_query_chain.filter.return_value = mock_query_chain
@@ -156,15 +159,15 @@ def test_find_reusable_query_only_matches_liked_db_or_spreadsheet():
     fake_embedder = MagicMock()
     fake_embedder.embed_query.return_value = [1.0, 0.0]
 
-    with patch.object(router_service.QueryLog, "query", mock_query_chain), \
+    with patch.object(router_service, "QueryLog", MagicMock(query=mock_query_chain)), \
          patch.object(router_service, "_get_feedback_embedder", return_value=fake_embedder), \
          patch.object(router_service, "_cosine_similarity", return_value=0.96):
         matched, score, track = router_service._find_reusable_query(
             "company1", None, "what are the metal codes?"
         )
 
-    # router_decision, feedback_type, and main_query each contribute their
-    # own .filter(...) call (plus one more for the company/user scope) -
+    # router_decision, feedback_type, and the company/user scope each add
+    # their own .filter(...) call -
     # the exact SQLAlchemy expressions aren't asserted here (that's the
     # ORM's job to get right), just that filtering actually happened
     # before the candidates were pulled.
@@ -178,6 +181,8 @@ def test_find_reusable_query_below_threshold_returns_no_match():
     candidate = MagicMock()
     candidate.question = "a completely different question"
     candidate.router_decision = "DB"
+    candidate.feedback_type = "like"
+    candidate.matched_query_code = None
 
     mock_query_chain = MagicMock()
     mock_query_chain.filter.return_value = mock_query_chain
@@ -188,7 +193,7 @@ def test_find_reusable_query_below_threshold_returns_no_match():
     fake_embedder = MagicMock()
     fake_embedder.embed_query.return_value = [1.0, 0.0]
 
-    with patch.object(router_service.QueryLog, "query", mock_query_chain), \
+    with patch.object(router_service, "QueryLog", MagicMock(query=mock_query_chain)), \
          patch.object(router_service, "_get_feedback_embedder", return_value=fake_embedder), \
          patch.object(router_service, "_cosine_similarity", return_value=0.5):
         matched, score, track = router_service._find_reusable_query(
