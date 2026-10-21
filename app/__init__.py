@@ -115,7 +115,8 @@ def create_app(config_name='development'):
         resource_mapping_routes,
         warehouse_routes,
         bi_semantics_routes,
-        user_model_pipeline_routes
+        user_model_pipeline_routes,
+        alert_routes
     )
 
     # HTML page routes (no prefix)
@@ -142,6 +143,12 @@ def create_app(config_name='development'):
     app.register_blueprint(warehouse_routes.bp)
     app.register_blueprint(bi_semantics_routes.bp)
     app.register_blueprint(user_model_pipeline_routes.bp)
+    app.register_blueprint(alert_routes.bp)
+
+    # `flask run-due-jobs` - the every-minute scheduler for alerts and
+    # subscriptions (see app/commands.py).
+    from app.commands import run_due_jobs_command
+    app.cli.add_command(run_due_jobs_command)
 
     from app.routes.upload_routes import upload_bp
     app.register_blueprint(upload_bp)

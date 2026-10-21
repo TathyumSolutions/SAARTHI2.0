@@ -36,6 +36,30 @@ services:
       - nltk_data:/root/nltk_data
       - hf_cache:/root/.cache/huggingface
 
+  # Alerts & Subscriptions scheduler: one process that wakes at the start
+  # of every minute and runs the jobs that are due (app/commands.py).
+  # Keep exactly one of these; the web workers never run jobs themselves.
+  scheduler:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - FLASK_ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    command: flask --app run.py run-due-jobs --loop
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./app:/app/app
+      - uploads_data:/app/uploads
+      - nltk_data:/root/nltk_data
+      - hf_cache:/root/.cache/huggingface
+
   db:
     image: postgres:15
     environment:

@@ -1,0 +1,832 @@
+{% extends "base.html" %}
+{% block title %}Saarthi - New Alert or Subscription{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .center-panel { overflow-y: auto; }
+    .al-page { max-width: 900px; display: flex; flex-direction: column; gap: 18px; padding-bottom: 40px; }
+    .al-subtitle { margin: 6px 0 0; font-size: 13px; color: #B8B8B8; }
+    .al-types { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .al-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--dark-bg); font-size: 13px; color: #E2E8F0; cursor: pointer; }
+    .al-opt.selected { border-color: var(--primary-blue); background: rgba(0,120,212,.10); }
+    .al-opt input[type=radio] { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--primary-blue); flex-shrink: 0; }
+    .al-opt strong { font-size: 14px; color: #fff; }
+    .al-opt .al-hint { display: block; font-size: 12px; color: #A0A0A0; margin-top: 2px; }
+    .al-card { background: var(--sidebar-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+    .al-h { margin: 0; font-size: 15px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 10px; }
+    .al-n { width: 22px; height: 22px; border-radius: 50%; background: var(--primary-blue); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+    .al-tabs { display: flex; border-bottom: 1px solid var(--border-color); gap: 4px; }
+    .al-tab { min-height: 36px; padding: 8px 14px; border: none; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+    .al-tab[aria-selected=true] { border-bottom-color: var(--primary-blue); color: #fff; font-weight: 600; }
+    .al-lbl { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .al-inp { box-sizing: border-box; min-height: 36px; padding: 7px 10px; background: var(--dark-bg); color: #fff; border: 1px solid var(--border-color); border-radius: 4px; font: inherit; font-size: 13px; width: 100%; }
+    .al-inp:focus { outline: none; border-color: var(--primary-blue); }
+    .al-num { width: 90px; box-sizing: border-box; min-height: 28px; padding: 3px 6px; background: var(--panel-bg); color: #fff; border: 1px solid var(--border-color); border-radius: 4px; font: inherit; font-size: 13px; text-align: right; }
+    .al-ask { display: flex; gap: 8px; align-items: flex-end; padding: 8px; border: 1px solid var(--primary-blue); border-radius: 6px; background: var(--dark-bg); }
+    .al-ask textarea { flex: 1; resize: vertical; border: none; background: transparent; color: #fff; font: inherit; font-size: 15px; line-height: 1.5; padding: 4px 6px; min-height: 48px; }
+    .al-ask textarea:focus { outline: none; }
+    .al-btn { min-height: 36px; padding: 6px 14px; border-radius: 4px; border: none; background: var(--primary-blue); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .al-btn:disabled { opacity: .55; cursor: default; }
+    .al-btn-ghost { min-height: 36px; padding: 6px 16px; border: 1px solid var(--border-color); border-radius: 4px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+    .al-link { background: none; border: none; color: #4FA3E8; font: inherit; font-size: 13px; cursor: pointer; padding: 4px 0; }
+    .al-link:hover { color: #8CC4F2; text-decoration: underline; }
+    .al-qlist { border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; max-height: 260px; overflow-y: auto; }
+    .al-qrow { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 13px; color: var(--text-secondary); cursor: pointer; }
+    .al-qrow:last-child { border-bottom: none; }
+    .al-qrow.selected { background: rgba(0,120,212,.10); color: #fff; }
+    .al-qrow input { width: 16px; height: 16px; accent-color: var(--primary-blue); }
+    .al-qrow .al-qmeta { font-size: 12px; color: #A0A0A0; white-space: nowrap; }
+    .al-muted { font-size: 12px; color: #A0A0A0; }
+    .al-note { font-size: 13px; color: #B8B8B8; }
+    .al-err { font-size: 13px; color: #F7A898; }
+    .al-ok { font-size: 12px; color: #7EDCC8; }
+    .al-table-wrap { overflow-x: auto; border-radius: 6px; max-height: 320px; overflow-y: auto; }
+    .al-table { width: 100%; border-collapse: collapse; }
+    .al-table th { padding: 8px 10px; font-size: 12px; text-align: left; color: #fff; background: linear-gradient(135deg, #7C3AED, #2563EB); font-weight: 600; position: sticky; top: 0; }
+    .al-table td { padding: 8px 10px; font-size: 12px; color: #E2E8F0; border-bottom: 1px solid #333337; }
+    .al-col { color: var(--accent-green); }
+    .al-rules { border: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    .al-sentence { border: 1px solid var(--border-color); border-radius: 6px; background: var(--dark-bg); padding: 12px 14px; }
+    .al-sentence p { margin: 0; font-size: 15px; line-height: 2; color: #E2E8F0; }
+    .al-chip { display: inline-flex; align-items: center; padding: 1px 8px; margin: 2px 1px; border: none; border-bottom: 2px dotted #4FA3E8; border-radius: 4px; background: rgba(0,120,212,.18); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    .al-sug { min-height: 32px; padding: 5px 12px; border-radius: 16px; border: 1px solid var(--border-color); background: var(--dark-bg); color: var(--text-secondary); font: inherit; font-size: 12px; cursor: pointer; }
+    .al-sug:hover { border-color: var(--primary-blue); color: #fff; }
+    .al-scope { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .al-scope button { min-height: 32px; padding: 4px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--dark-bg); color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+    .al-scope button[aria-pressed=true] { border-color: var(--primary-blue); color: #fff; background: rgba(0,120,212,.10); }
+    .al-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .al-span { grid-column: span 2; }
+    .al-runrow { display: flex; gap: 8px; flex-wrap: wrap; }
+    .al-runrow .al-inp { width: auto; flex: 1 1 120px; }
+    .al-checks { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; color: #E2E8F0; }
+    .al-checks label { display: flex; align-items: center; gap: 8px; }
+    .al-checks input { width: 16px; height: 16px; accent-color: var(--primary-blue); }
+    .al-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; }
+    .al-flash { padding: 10px 14px; border-radius: 6px; font-size: 13px; }
+    .al-flash.err { background: rgba(244,135,113,.12); color: #F7A898; border: 1px solid rgba(244,135,113,.35); }
+    .al-flash.ok { background: rgba(78,201,176,.12); color: #7EDCC8; border: 1px solid rgba(78,201,176,.35); }
+    .al-hidden { display: none !important; }
+    .al-modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; z-index: 1000; overflow-y: auto; }
+    .al-modal { width: min(760px, 100%); background: #292A33; border: 1px solid var(--border-color); border-radius: 10px; box-shadow: 0 20px 50px rgba(0,0,0,.6); }
+    .al-modal-head { padding: 18px 24px 14px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+    .al-modal-body { padding: 20px 24px; }
+    .al-mail { background: #fff; color: #1E1E1E; border-radius: 8px; overflow: hidden; }
+    .al-mail-head { padding: 14px 18px; border-bottom: 1px solid #E5E5E5; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+    .al-mail-head span { color: #5A5A5A; }
+    .al-mail iframe { width: 100%; border: none; min-height: 440px; background: #fff; }
+    .al-modal-foot { padding: 14px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    @media (max-width: 700px) {
+        .al-types, .al-grid { grid-template-columns: 1fr; }
+        .al-span { grid-column: auto; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="al-page">
+    <div>
+        <h1 id="alTitle" style="margin: 0; font-size: 22px; font-weight: 600;">New alert or subscription</h1>
+        <p class="al-subtitle">Saarthi runs the query on a schedule and tells people. Alerts only send when a condition is met.</p>
+    </div>
+
+    <div id="alFlash" class="al-flash al-hidden" role="status"></div>
+
+    <div class="al-types" role="radiogroup" aria-label="Type">
+        <label class="al-opt selected" id="alTypeAlertOpt">
+            <input type="radio" name="alType" value="A" checked>
+            <span><strong>Alert</strong><span class="al-hint">Tell me when a number crosses a limit</span></span>
+        </label>
+        <label class="al-opt" id="alTypeSubOpt">
+            <input type="radio" name="alType" value="S">
+            <span><strong>Subscription</strong><span class="al-hint">Send me this result on a schedule</span></span>
+        </label>
+    </div>
+
+    <!-- 1. Which data? -->
+    <section class="al-card" aria-labelledby="alDataH">
+        <h2 class="al-h" id="alDataH"><span class="al-n">1</span>Which data?</h2>
+        <div class="al-tabs" role="tablist" aria-label="Data source">
+            <button type="button" class="al-tab" role="tab" id="alTabAsk" aria-selected="true">Ask a new question</button>
+            <button type="button" class="al-tab" role="tab" id="alTabExisting" aria-selected="false">Use an existing query</button>
+        </div>
+
+        <div id="alAskPane">
+            <div class="al-ask">
+                <label style="flex: 1; display: flex;">
+                    <span class="al-hidden">Question</span>
+                    <textarea id="alQuestion" rows="2" placeholder="e.g. Show last month's sales amount vs budget by region"></textarea>
+                </label>
+                <button type="button" class="al-btn" id="alAskBtn">Get answer</button>
+            </div>
+            <div class="al-muted" style="margin-top: 8px;">Saarthi answers it the same way as in chat. Database and spreadsheet answers can be scheduled.</div>
+        </div>
+
+        <div id="alExistingPane" class="al-hidden" style="display: flex; flex-direction: column; gap: 10px;">
+            <label><span class="al-hidden">Search your queries</span>
+                <input id="alQuerySearch" class="al-inp" placeholder="Search your queries by question or code"></label>
+            <div class="al-qlist" id="alQueryList"><div class="al-qrow al-muted">Loading your queries...</div></div>
+        </div>
+
+        <div id="alSourceStatus" class="al-note al-hidden"></div>
+        <div id="alPreviewWrap" class="al-hidden" style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="al-muted" id="alPreviewCaption">Latest result (run just now):</div>
+            <div class="al-table-wrap"><table class="al-table" id="alPreviewTable"></table></div>
+        </div>
+    </section>
+
+    <!-- 2a. Alert rule -->
+    <section class="al-card" id="alRuleCard" aria-labelledby="alRuleH">
+        <h2 class="al-h" id="alRuleH"><span class="al-n">2</span>When should Saarthi tell you?</h2>
+        <div id="alRuleEmpty" class="al-note">Pick the data first. Saarthi will suggest rules that fit its numbers.</div>
+        <div id="alRuleBody" class="al-hidden" style="display: flex; flex-direction: column; gap: 14px;">
+            <div class="al-note" id="alRuleIntro"></div>
+            <fieldset class="al-rules" id="alRuleOptions"><legend class="al-hidden">Alert rule</legend></fieldset>
+            <div class="al-scope" id="alScopeRow">
+                <span class="al-muted">Check</span>
+                <button type="button" id="alScopeEach" aria-pressed="true">each row</button>
+                <button type="button" id="alScopeTotal" aria-pressed="false">the total</button>
+            </div>
+            <div class="al-sentence">
+                <p id="alAlertSentence"></p>
+                <div class="al-ok" id="alWouldFire" style="margin-top: 6px;"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 2b. Subscription summary -->
+    <section class="al-card al-hidden" id="alSubCard" aria-labelledby="alSubH">
+        <h2 class="al-h" id="alSubH"><span class="al-n">2</span>When and how to send it</h2>
+        <div class="al-sentence"><p id="alSubSentence"></p></div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+            <span class="al-muted">Or:</span>
+            <button type="button" class="al-sug" data-preset="daily9">Every day at 9 AM</button>
+            <button type="button" class="al-sug" data-preset="monday8">Every Monday at 8 AM</button>
+            <button type="button" class="al-sug" data-preset="monthly1">First day of the month</button>
+            <button type="button" class="al-sug" data-preset="skipempty">Only if the result has rows</button>
+        </div>
+    </section>
+
+    <!-- 3. Standard settings -->
+    <section class="al-card" aria-labelledby="alSetH">
+        <h2 class="al-h" id="alSetH"><span class="al-n">3</span>Standard settings</h2>
+        <div class="al-grid">
+            <div><label class="al-lbl" for="alName">Name</label><input id="alName" class="al-inp" maxlength="200"></div>
+            <div>
+                <label class="al-lbl" for="alFrequency">Run</label>
+                <div class="al-runrow">
+                    <select id="alFrequency" class="al-inp">
+                        <option value="hourly">Hourly</option>
+                        <option value="daily" selected>Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                    <select id="alWeekday" class="al-inp al-hidden" aria-label="Day of the week">
+                        <option value="0">Monday</option><option value="1">Tuesday</option><option value="2">Wednesday</option>
+                        <option value="3">Thursday</option><option value="4">Friday</option><option value="5">Saturday</option><option value="6">Sunday</option>
+                    </select>
+                    <input id="alDayOfMonth" class="al-inp al-hidden" type="number" min="1" max="31" value="1" aria-label="Day of the month">
+                    <input id="alTime" class="al-inp" type="time" value="09:00" aria-label="Time">
+                    <input id="alMinute" class="al-inp al-hidden" type="number" min="0" max="59" value="0" aria-label="Minute past the hour">
+                </div>
+                <div class="al-muted" id="alTzNote" style="margin-top: 4px;"></div>
+            </div>
+            <div id="alGapField">
+                <label class="al-lbl" for="alGap">Minimum gap between two alerts</label>
+                <select id="alGap" class="al-inp">
+                    <option value="once">Only once until it recovers</option>
+                    <option value="0">Every run it is met</option>
+                    <option value="60">1 hour</option>
+                    <option value="1440">1 day</option>
+                    <option value="10080">7 days</option>
+                </select>
+            </div>
+            <div>
+                <label class="al-lbl" for="alRecipients">Send to</label>
+                <input id="alRecipients" class="al-inp" placeholder="you@yourcompany.com, team@yourcompany.com">
+                <div class="al-muted" id="alRecipientsNote" style="margin-top: 4px;"></div>
+            </div>
+            <div class="al-span"><label class="al-lbl" for="alSubject">Subject</label><input id="alSubject" class="al-inp" maxlength="500"></div>
+            <div class="al-span">
+                <label class="al-lbl" for="alMessage">Message</label>
+                <textarea id="alMessage" rows="4" class="al-inp" style="resize: vertical; line-height: 1.5;"></textarea>
+                <div class="al-muted" id="alFillIns" style="margin-top: 4px;"></div>
+            </div>
+            <div class="al-span al-checks">
+                <label><input type="checkbox" id="alAttach" checked> Attach data as Excel</label>
+                <label id="alScopeTriggeredLbl"><input type="radio" name="alAttachScope" value="triggered" checked> Only rows that triggered</label>
+                <label id="alScopeFullLbl"><input type="radio" name="alAttachScope" value="full"> Full result</label>
+                <label><input type="checkbox" id="alIncludeTable" checked> Show the table in the email</label>
+                <label id="alSkipEmptyLbl" class="al-hidden"><input type="checkbox" id="alSkipEmpty"> Skip if there are no rows</label>
+            </div>
+        </div>
+    </section>
+
+    <div class="al-footer">
+        <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="al-link" id="alViewSample">View sample report</button>
+            <button type="button" class="al-link" id="alSendTest">Send me a test now</button>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button type="button" class="al-btn-ghost" id="alCancel">Cancel</button>
+            <button type="button" class="al-btn" id="alSave">Create alert</button>
+        </div>
+    </div>
+</div>
+
+<div class="al-modal-back al-hidden" id="alSampleModal">
+    <div class="al-modal" role="dialog" aria-modal="true" aria-labelledby="alSampleTitle">
+        <div class="al-modal-head">
+            <div>
+                <h2 id="alSampleTitle" style="margin: 0; font-size: 18px; font-weight: 600;">Sample report</h2>
+                <p style="margin: 6px 0 0; font-size: 13px; color: #B8B8B8;" id="alSampleNote">What recipients get, built from today's data. Nothing has been sent.</p>
+            </div>
+            <button type="button" class="al-btn-ghost" id="alSampleClose" aria-label="Close" style="min-height: 32px; padding: 4px 10px;">✕</button>
+        </div>
+        <div class="al-modal-body">
+            <div class="al-mail">
+                <div class="al-mail-head">
+                    <div><span>From:</span> Saarthi</div>
+                    <div><span>To:</span> <b id="alSampleTo"></b></div>
+                    <div style="font-size: 15px; font-weight: 600; margin-top: 4px;" id="alSampleSubject"></div>
+                </div>
+                <iframe id="alSampleFrame" sandbox="" title="Email preview"></iframe>
+            </div>
+        </div>
+        <div class="al-modal-foot">
+            <span class="al-muted" id="alSampleSummary"></span>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" class="al-btn-ghost" id="alSampleBack">Back</button>
+                <button type="button" class="al-btn" id="alSampleSend">Send this to me now</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get('id');
+    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
+    const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const SOURCE_LABELS = { DB: 'Database', SPREADSHEET: 'Spreadsheet' };
+
+    const state = {
+        jobType: params.get('type') === 'S' ? 'S' : 'A',
+        source: null,          // {query_code, question, router_decision, rows, columns, numeric_columns, label_column, suggestions}
+        rule: null,            // the chosen rule
+        ruleChoice: null,      // suggestion id or 'own'
+        scope: 'each',
+        settings: { own_email: '', default_templates: {} },
+        templatesTouched: false,
+        job: null,
+        timezone: tz,
+    };
+
+    const $ = (id) => document.getElementById(id);
+    function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+    function show(el, visible) { el.classList.toggle('al-hidden', !visible); }
+    function flash(message, ok) {
+        const box = $('alFlash');
+        box.textContent = message;
+        box.className = 'al-flash ' + (ok ? 'ok' : 'err');
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    function clearFlash() { $('alFlash').className = 'al-flash al-hidden'; }
+    async function api(url, body, method) {
+        const res = await authFetch(url, {
+            method: method || (body ? 'POST' : 'GET'),
+            headers: body ? { 'Content-Type': 'application/json' } : {},
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        let data = {};
+        try { data = await res.json(); } catch (e) { /* empty body */ }
+        if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+        return data;
+    }
+    function debounce(fn, wait) {
+        let timer = null;
+        return function () { const args = arguments; clearTimeout(timer); timer = setTimeout(() => fn.apply(null, args), wait); };
+    }
+
+    // ---------------- Type ----------------
+    function setType(type) {
+        state.jobType = type;
+        document.querySelectorAll('input[name=alType]').forEach(r => { r.checked = r.value === type; });
+        $('alTypeAlertOpt').classList.toggle('selected', type === 'A');
+        $('alTypeSubOpt').classList.toggle('selected', type === 'S');
+        const isAlert = type === 'A';
+        show($('alRuleCard'), isAlert);
+        show($('alSubCard'), !isAlert);
+        show($('alGapField'), isAlert);
+        show($('alScopeTriggeredLbl'), isAlert);
+        show($('alScopeFullLbl'), isAlert);
+        show($('alSkipEmptyLbl'), !isAlert);
+        $('alSave').textContent = editId ? 'Save changes' : (isAlert ? 'Create alert' : 'Create subscription');
+        if (!state.templatesTouched) applyDefaultTemplates();
+        renderFillIns();
+        renderSentences();
+    }
+    document.querySelectorAll('input[name=alType]').forEach(r => r.addEventListener('change', () => setType(r.value)));
+
+    function applyDefaultTemplates() {
+        const t = (state.settings.default_templates || {})[state.jobType];
+        if (!t) return;
+        $('alSubject').value = t.subject;
+        $('alMessage').value = t.message;
+    }
+    ['alSubject', 'alMessage'].forEach(id => $(id).addEventListener('input', () => { state.templatesTouched = true; }));
+
+    // ---------------- Data: tabs ----------------
+    function setTab(tab) {
+        $('alTabAsk').setAttribute('aria-selected', tab === 'ask');
+        $('alTabExisting').setAttribute('aria-selected', tab === 'existing');
+        show($('alAskPane'), tab === 'ask');
+        show($('alExistingPane'), tab === 'existing');
+        if (tab === 'existing') loadQueries();
+    }
+    $('alTabAsk').addEventListener('click', () => setTab('ask'));
+    $('alTabExisting').addEventListener('click', () => setTab('existing'));
+
+    async function loadQueries() {
+        const list = $('alQueryList');
+        const q = $('alQuerySearch').value.trim();
+        try {
+            const data = await api('/api/alerts/queries' + (q ? `?q=${encodeURIComponent(q)}` : ''));
+            const rows = data.queries || [];
+            if (!rows.length) {
+                list.innerHTML = '<div class="al-qrow al-muted">No database or spreadsheet answers in your Query Logs yet. Ask a new question instead.</div>';
+                return;
+            }
+            list.innerHTML = rows.map(r => `
+                <label class="al-qrow ${state.source && state.source.query_code === r.query_code ? 'selected' : ''}" data-code="${escapeHtml(r.query_code)}">
+                    <input type="radio" name="alQueryPick" value="${escapeHtml(r.query_code)}" ${state.source && state.source.query_code === r.query_code ? 'checked' : ''}>
+                    <span style="flex: 1;">${escapeHtml(r.question)}</span>
+                    <span class="al-qmeta">${escapeHtml(r.query_code)} · ${escapeHtml(SOURCE_LABELS[r.router_decision] || r.router_decision)}</span>
+                </label>`).join('');
+            list.querySelectorAll('input[name=alQueryPick]').forEach(input => input.addEventListener('change', () => {
+                list.querySelectorAll('.al-qrow').forEach(row => row.classList.toggle('selected', row.dataset.code === input.value));
+                loadSource(input.value);
+            }));
+        } catch (e) {
+            list.innerHTML = `<div class="al-qrow al-err">${escapeHtml(e.message)}</div>`;
+        }
+    }
+    $('alQuerySearch').addEventListener('input', debounce(loadQueries, 300));
+
+    function setSourceStatus(text, isError) {
+        const el = $('alSourceStatus');
+        el.textContent = text || '';
+        el.className = (isError ? 'al-err' : 'al-note') + (text ? '' : ' al-hidden');
+    }
+
+    async function loadSource(queryCode) {
+        setSourceStatus('Running the saved query...');
+        show($('alPreviewWrap'), false);
+        try {
+            const body = { query_code: queryCode, job_type: state.jobType };
+            if (editId) body.job_id = editId;
+            const data = await api('/api/alerts/source', body);
+            useSource(data, 'Latest result (run just now):');
+        } catch (e) {
+            setSourceStatus(e.message, true);
+        }
+    }
+
+    $('alAskBtn').addEventListener('click', async function () {
+        const question = $('alQuestion').value.trim();
+        if (!question) { setSourceStatus('Type a question first.', true); return; }
+        const btn = $('alAskBtn');
+        btn.disabled = true; btn.textContent = 'Answering...';
+        setSourceStatus('Saarthi is answering your question...');
+        show($('alPreviewWrap'), false);
+        try {
+            const model = (function () { try { return localStorage.getItem('saarthi_active_model'); } catch (e) { return null; } })();
+            const data = await api('/api/alerts/ask', { question: question, job_type: state.jobType, model_name: model || undefined });
+            if (!data.supported) {
+                state.source = null;
+                setSourceStatus(data.message || 'This answer cannot be scheduled.', true);
+                renderRuleOptions();
+                return;
+            }
+            useSource(data, `Saarthi answered with the normal pipeline (run type ${state.jobType}). Preview:`);
+        } catch (e) {
+            setSourceStatus(e.message, true);
+        } finally {
+            btn.disabled = false; btn.textContent = 'Get answer';
+        }
+    });
+
+    function useSource(data, caption) {
+        state.source = data;
+        const label = SOURCE_LABELS[data.router_decision] || data.router_decision;
+        setSourceStatus(`Using ${data.query_code} · ${label}: "${data.question}"`);
+        $('alPreviewCaption').textContent = caption + (data.row_count > data.rows.length ? ` (first ${data.rows.length} of ${data.row_count} rows)` : '');
+        renderTable(data.rows || [], data.columns || []);
+        if (!$('alName').value.trim()) $('alName').value = (data.question || '').slice(0, 80);
+        if (!state.job || !state.job.rule) { state.rule = null; state.ruleChoice = null; }
+        state.scope = (data.rows || []).length > 1 ? 'each' : 'total';
+        renderRuleOptions();
+        renderFillIns();
+    }
+
+    function renderTable(rows, columns) {
+        const table = $('alPreviewTable');
+        if (!rows.length) {
+            table.innerHTML = '<tbody><tr><td>The query returned no rows today.</td></tr></tbody>';
+        } else {
+            // The server's column order - JSON objects lose it on the way.
+            const cols = columns.length ? columns : Object.keys(rows[0]);
+            table.innerHTML = '<thead><tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead><tbody>' +
+                rows.slice(0, 20).map(r => '<tr>' + cols.map(c => `<td>${escapeHtml(r[c])}</td>`).join('') + '</tr>').join('') +
+                (rows.length > 20 ? `<tr><td colspan="${cols.length}">${rows.length - 20} more rows</td></tr>` : '') + '</tbody>';
+        }
+        show($('alPreviewWrap'), true);
+    }
+
+    // ---------------- Alert rule ----------------
+    function renderRuleOptions() {
+        const src = state.source;
+        show($('alRuleEmpty'), !src);
+        show($('alRuleBody'), !!src);
+        if (!src) return;
+
+        const measures = src.numeric_columns || [];
+        const label = src.label_column;
+        $('alRuleIntro').innerHTML = measures.length
+            ? `This result has ${measures.map(c => `<span class="al-col">${escapeHtml(c)}</span>`).join(' and ')}${label && src.row_count > 1 ? ` for each ${escapeHtml(label)}` : ''}. Pick one, or type your own.`
+            : 'This result has no numbers to watch, but Saarthi can tell you whenever it returns rows.';
+
+        const box = $('alRuleOptions');
+        const options = (src.suggestions || []).map(s => {
+            let text = escapeHtml(s.label);
+            if (s.needs === 'percent') {
+                text = text.replace(/(\d+(?:\.\d+)?)%/, `<input class="al-num" data-sid="${s.id}" data-field="percent" type="number" min="0.1" step="any" value="${s.rule.percent}" aria-label="Percent"> %`);
+            } else if (s.needs === 'value') {
+                text = text.replace('a fixed amount', `<input class="al-num" style="width: 130px;" data-sid="${s.id}" data-field="value" type="number" step="any" placeholder="amount" aria-label="Amount">`);
+            }
+            return `<label class="al-opt" data-sid="${s.id}"><input type="radio" name="alRule" value="${s.id}"><span>${text}</span></label>`;
+        });
+        options.push(`<label class="al-opt" data-sid="own"><input type="radio" name="alRule" value="own"><span style="flex: 1;">In my own words
+            <span style="display: flex; gap: 8px; margin-top: 8px;">
+                <input class="al-inp" id="alOwnWords" placeholder="e.g. tell me if APAC sales drops more than 10%" aria-label="Describe the rule">
+                <button type="button" class="al-btn" id="alOwnWordsBtn">Use this</button>
+            </span>
+            <span class="al-muted" id="alOwnWordsNote" style="display: block; margin-top: 6px;"></span></span></label>`);
+        box.innerHTML = '<legend class="al-hidden">Alert rule</legend>' + options.join('');
+
+        box.querySelectorAll('input[name=alRule]').forEach(r => r.addEventListener('change', () => chooseRule(r.value)));
+        box.querySelectorAll('.al-num').forEach(input => input.addEventListener('input', () => {
+            chooseRule(input.dataset.sid, true);
+        }));
+        box.querySelectorAll('.al-num').forEach(input => input.addEventListener('focus', () => chooseRule(input.dataset.sid, true)));
+        $('alOwnWords').addEventListener('focus', () => selectRadio('own'));
+        $('alOwnWords').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); parseOwnWords(); } });
+        $('alOwnWordsBtn').addEventListener('click', parseOwnWords);
+
+        $('alScopeEach').textContent = label ? `each ${label}` : 'each row';
+        show($('alScopeRow'), (src.row_count || 0) > 1);
+
+        // Keep an existing rule when editing; otherwise pre-pick the first suggestion.
+        if (state.rule && state.ruleChoice === 'own') {
+            selectRadio('own');
+            $('alOwnWords').value = state.rule.text || '';
+        } else if (state.rule && state.job && state.job.rule === state.rule) {
+            const match = (src.suggestions || []).find(s => s.rule.kind === state.rule.kind && s.rule.column === state.rule.column
+                && (s.rule.compare_column || null) === (state.rule.compare_column || null)
+                && (s.rule.operator || null) === (state.rule.operator || null));
+            if (match) {
+                const pct = box.querySelector(`.al-num[data-sid="${match.id}"][data-field="percent"]`);
+                const val = box.querySelector(`.al-num[data-sid="${match.id}"][data-field="value"]`);
+                if (pct && state.rule.percent != null) pct.value = state.rule.percent;
+                if (val && state.rule.value != null) val.value = state.rule.value;
+                chooseRule(match.id, true);
+            } else {
+                state.ruleChoice = 'own';
+                selectRadio('own');
+                $('alOwnWords').value = state.rule.text || '';
+                $('alOwnWordsNote').textContent = 'Saved rule: ' + (state.job.rule_text || '');
+                evaluateRule();
+            }
+        } else if ((src.suggestions || []).length) {
+            chooseRule(src.suggestions[0].id, true);
+        }
+        renderScope();
+        renderSentences();
+    }
+
+    function selectRadio(id) {
+        document.querySelectorAll('input[name=alRule]').forEach(r => { r.checked = r.value === id; });
+        document.querySelectorAll('#alRuleOptions .al-opt').forEach(o => o.classList.toggle('selected', o.dataset.sid === id));
+    }
+
+    function chooseRule(sid, keepFocus) {
+        selectRadio(sid);
+        state.ruleChoice = sid;
+        if (sid === 'own') { if (!keepFocus) $('alOwnWords').focus(); return; }
+        const s = (state.source.suggestions || []).find(x => x.id === sid);
+        if (!s) return;
+        const rule = Object.assign({}, s.rule);
+        const pct = document.querySelector(`.al-num[data-sid="${sid}"][data-field="percent"]`);
+        const val = document.querySelector(`.al-num[data-sid="${sid}"][data-field="value"]`);
+        if (pct) rule.percent = pct.value === '' ? null : Number(pct.value);
+        if (val) rule.value = val.value === '' ? null : Number(val.value);
+        if (rule.kind !== 'row_count') rule.scope = state.scope;
+        state.rule = rule;
+        evaluateRule();
+    }
+
+    async function parseOwnWords() {
+        const text = $('alOwnWords').value.trim();
+        const note = $('alOwnWordsNote');
+        if (!text) { note.textContent = 'Describe when Saarthi should tell you.'; return; }
+        selectRadio('own');
+        state.ruleChoice = 'own';
+        note.textContent = 'Reading it...';
+        try {
+            const data = await api('/api/alerts/rules/parse', { text: text, rows: state.source.rows });
+            state.rule = data.rule;
+            if (data.rule.scope) state.scope = data.rule.scope;
+            renderScope();
+            note.textContent = 'Saarthi read this as: ' + data.sentence + '.';
+            showEvaluation(data.sentence, data.evaluation);
+        } catch (e) {
+            state.rule = null;
+            note.textContent = e.message;
+            renderSentences();
+        }
+    }
+
+    function renderScope() {
+        $('alScopeEach').setAttribute('aria-pressed', state.scope === 'each');
+        $('alScopeTotal').setAttribute('aria-pressed', state.scope === 'total');
+    }
+    function setScope(scope) {
+        state.scope = scope;
+        renderScope();
+        if (state.rule && state.rule.kind !== 'row_count') {
+            state.rule = Object.assign({}, state.rule, { scope: scope });
+            evaluateRule();
+        }
+    }
+    $('alScopeEach').addEventListener('click', () => setScope('each'));
+    $('alScopeTotal').addEventListener('click', () => setScope('total'));
+
+    const evaluateRule = debounce(async function () {
+        if (!state.rule || !state.source) { renderSentences(); return; }
+        try {
+            const data = await api('/api/alerts/rules/evaluate', { rule: state.rule, rows: state.source.rows });
+            showEvaluation(data.sentence, data.evaluation);
+        } catch (e) {
+            state.ruleSentence = '';
+            $('alWouldFire').textContent = e.message;
+            $('alWouldFire').className = 'al-err';
+            renderSentences();
+        }
+    }, 250);
+
+    function showEvaluation(sentence, evaluation) {
+        state.ruleSentence = sentence;
+        const el = $('alWouldFire');
+        el.className = 'al-ok';
+        el.textContent = 'With today\'s data: ' + evaluation.summary;
+        renderSentences();
+    }
+
+    // ---------------- Schedule ----------------
+    function readSchedule() {
+        const frequency = $('alFrequency').value;
+        const schedule = { frequency: frequency, timezone: state.timezone };
+        if (frequency === 'hourly') schedule.minute = Number($('alMinute').value || 0);
+        else schedule.time = $('alTime').value || '09:00';
+        if (frequency === 'weekly') schedule.weekday = Number($('alWeekday').value);
+        if (frequency === 'monthly') schedule.day_of_month = Number($('alDayOfMonth').value || 1);
+        return schedule;
+    }
+    function scheduleText() {
+        const s = readSchedule();
+        if (s.frequency === 'hourly') return `every hour at :${String(s.minute).padStart(2, '0')}`;
+        if (s.frequency === 'daily') return `every day at ${s.time}`;
+        if (s.frequency === 'weekly') return `every ${WEEKDAYS[s.weekday]} at ${s.time}`;
+        const d = s.day_of_month;
+        const suffix = (d % 100 >= 11 && d % 100 <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[d % 10] || 'th');
+        return `on the ${d}${suffix} of every month at ${s.time}`;
+    }
+    function syncScheduleFields() {
+        const f = $('alFrequency').value;
+        show($('alWeekday'), f === 'weekly');
+        show($('alDayOfMonth'), f === 'monthly');
+        show($('alTime'), f !== 'hourly');
+        show($('alMinute'), f === 'hourly');
+        renderSentences();
+    }
+    ['alFrequency', 'alWeekday', 'alDayOfMonth', 'alTime', 'alMinute'].forEach(id => $(id).addEventListener('change', syncScheduleFields));
+    $('alTzNote').textContent = `Times are in ${tz}.`;
+
+    document.querySelectorAll('#alSubCard .al-sug').forEach(btn => btn.addEventListener('click', () => {
+        const preset = btn.dataset.preset;
+        if (preset === 'daily9') { $('alFrequency').value = 'daily'; $('alTime').value = '09:00'; }
+        if (preset === 'monday8') { $('alFrequency').value = 'weekly'; $('alWeekday').value = '0'; $('alTime').value = '08:00'; }
+        if (preset === 'monthly1') { $('alFrequency').value = 'monthly'; $('alDayOfMonth').value = '1'; $('alTime').value = '09:00'; }
+        if (preset === 'skipempty') { $('alSkipEmpty').checked = true; }
+        syncScheduleFields();
+    }));
+
+    // ---------------- Sentences with clickable parts ----------------
+    function recipientsText() {
+        const list = $('alRecipients').value.split(/[,;\s]+/).filter(Boolean);
+        if (!list.length) return 'nobody yet';
+        const own = (state.settings.own_email || '').toLowerCase();
+        const names = list.map(e => e.toLowerCase() === own ? 'you' : e);
+        return names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(' and ');
+    }
+    function chip(text, target) {
+        return `<button type="button" class="al-chip" data-target="${target}">${escapeHtml(text)}</button>`;
+    }
+    function renderSentences() {
+        const how = $('alAttach').checked ? 'an email with Excel attached' : 'an email';
+        $('alSubSentence').innerHTML = `${chip(scheduleText().replace(/^./, c => c.toUpperCase()), 'alFrequency')}, send this result to ${chip(recipientsText(), 'alRecipients')} as ${chip(how, 'alAttach')}${$('alSkipEmpty').checked ? ', unless it has no rows' : ''}.`;
+        const rule = state.ruleSentence && state.rule ? state.ruleSentence : 'the rule you pick is met';
+        $('alAlertSentence').innerHTML = `${chip(scheduleText().replace(/^./, c => c.toUpperCase()), 'alFrequency')}, check the result. If ${chip(rule, 'alRuleOptions')}, email ${chip(recipientsText(), 'alRecipients')}.`;
+        document.querySelectorAll('.al-chip').forEach(c => c.addEventListener('click', () => {
+            const el = $(c.dataset.target);
+            if (!el) return;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (el.focus) el.focus();
+        }));
+    }
+    ['alRecipients', 'alAttach', 'alSkipEmpty'].forEach(id => $(id).addEventListener('input', renderSentences));
+    $('alAttach').addEventListener('change', renderSentences);
+    $('alSkipEmpty').addEventListener('change', renderSentences);
+
+    function renderFillIns() {
+        const base = ['name', 'question', 'run_date', 'run_time', 'row_count'];
+        const alertOnly = state.jobType === 'A' ? ['rule', 'triggered_count', 'triggered_list', 'value', 'threshold', 'gap_percent'] : [];
+        const cols = state.source ? (state.source.columns || []) : [];
+        $('alFillIns').innerHTML = 'Fill-ins: ' + base.concat(alertOnly, cols).map(f => `<code>{${escapeHtml(f)}}</code>`).join(' ') +
+            (cols.length ? '. Column fill-ins take the first row that met the rule (or the first row).' : '');
+    }
+
+    // ---------------- Collect + save ----------------
+    function collect() {
+        const gap = $('alGap').value;
+        const payload = {
+            job_type: state.jobType,
+            name: $('alName').value.trim(),
+            source_query_code: state.source ? state.source.query_code : (state.job ? state.job.source_query_code : null),
+            schedule: readSchedule(),
+            min_gap_minutes: gap === 'once' ? 0 : Number(gap),
+            notify_once_until_recovered: gap === 'once',
+            recipients: $('alRecipients').value,
+            subject_template: $('alSubject').value,
+            message_template: $('alMessage').value,
+            attach_excel: $('alAttach').checked,
+            attach_scope: (document.querySelector('input[name=alAttachScope]:checked') || {}).value || 'triggered',
+            include_table: $('alIncludeTable').checked,
+            skip_if_empty: $('alSkipEmpty').checked,
+        };
+        if (state.jobType === 'A') payload.rule = state.rule;
+        if (editId) payload.id = Number(editId);
+        return payload;
+    }
+
+    function checkReady() {
+        if (!state.source && !(state.job && state.job.source_query_code)) return 'Pick the data first: ask a question or choose an existing query.';
+        if (state.jobType === 'A' && !state.rule) return 'Choose when Saarthi should send the alert.';
+        return null;
+    }
+
+    $('alSave').addEventListener('click', async function () {
+        clearFlash();
+        const problem = checkReady();
+        if (problem) { flash(problem); return; }
+        const btn = $('alSave');
+        btn.disabled = true;
+        try {
+            const payload = collect();
+            const data = editId
+                ? await api(`/api/alerts/${editId}`, payload, 'PUT')
+                : await api('/api/alerts', payload);
+            window.location.href = `/alerts?saved=${encodeURIComponent(data.job.job_code)}`;
+        } catch (e) {
+            flash(e.message);
+        } finally {
+            btn.disabled = false;
+        }
+    });
+    $('alCancel').addEventListener('click', () => { window.location.href = editId ? '/alerts' : '/index'; });
+
+    // ---------------- Sample report + test ----------------
+    async function openSample() {
+        clearFlash();
+        const problem = checkReady();
+        if (problem) { flash(problem); return; }
+        $('alViewSample').disabled = true;
+        try {
+            const data = await api('/api/alerts/preview', collect());
+            $('alSampleTo').textContent = (data.to || []).join(', ');
+            $('alSampleSubject').textContent = data.subject;
+            $('alSampleFrame').srcdoc = data.html;
+            const parts = [data.summary];
+            if (data.attachment_name) parts.push('Attachment: ' + data.attachment_name);
+            if (!data.would_send) parts.push(state.jobType === 'A' ? 'With today\'s data this alert would not send.' : 'With today\'s data this would be skipped.');
+            $('alSampleSummary').textContent = parts.filter(Boolean).join(' · ');
+            show($('alSampleModal'), true);
+            $('alSampleClose').focus();
+        } catch (e) {
+            flash(e.message);
+        } finally {
+            $('alViewSample').disabled = false;
+        }
+    }
+    async function sendTest() {
+        clearFlash();
+        const problem = checkReady();
+        if (problem) { flash(problem); return; }
+        try {
+            const data = await api('/api/alerts/test', collect());
+            closeSample();
+            flash(data.logged_only
+                ? `Test built for ${data.to}. Email isn't set up on this server, so it was written to the server log instead.`
+                : `Test sent to ${data.to}. Nobody else received it.`, true);
+        } catch (e) {
+            flash(e.message);
+        }
+    }
+    function closeSample() { show($('alSampleModal'), false); }
+    $('alViewSample').addEventListener('click', openSample);
+    $('alSendTest').addEventListener('click', sendTest);
+    $('alSampleSend').addEventListener('click', sendTest);
+    $('alSampleClose').addEventListener('click', closeSample);
+    $('alSampleBack').addEventListener('click', closeSample);
+    $('alSampleModal').addEventListener('click', (e) => { if (e.target === $('alSampleModal')) closeSample(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSample(); });
+
+    // ---------------- Edit mode ----------------
+    function fillFromJob(job) {
+        state.job = job;
+        state.templatesTouched = true;
+        $('alTitle').textContent = `Edit ${job.job_type === 'A' ? 'alert' : 'subscription'} ${job.job_code}`;
+        document.querySelectorAll('input[name=alType]').forEach(r => { r.disabled = r.value !== job.job_type; });
+        setType(job.job_type);
+        $('alName').value = job.name;
+        const s = job.schedule || {};
+        $('alFrequency').value = s.frequency || 'daily';
+        if (s.time) $('alTime').value = s.time;
+        if (s.minute != null) $('alMinute').value = s.minute;
+        if (s.weekday != null) $('alWeekday').value = String(s.weekday);
+        if (s.day_of_month != null) $('alDayOfMonth').value = s.day_of_month;
+        if (s.timezone) { state.timezone = s.timezone; $('alTzNote').textContent = `Times are in ${s.timezone}.`; }
+        $('alGap').value = job.notify_once_until_recovered ? 'once'
+            : (['0', '60', '1440', '10080'].includes(String(job.min_gap_minutes)) ? String(job.min_gap_minutes) : '0');
+        $('alRecipients').value = (job.recipients || []).join(', ');
+        $('alSubject').value = job.subject_template;
+        $('alMessage').value = job.message_template;
+        $('alAttach').checked = job.attach_excel;
+        document.querySelectorAll('input[name=alAttachScope]').forEach(r => { r.checked = r.value === job.attach_scope; });
+        $('alIncludeTable').checked = job.include_table;
+        $('alSkipEmpty').checked = job.skip_if_empty;
+        if (job.rule) {
+            state.rule = job.rule;
+            state.scope = job.rule.scope || 'each';
+            state.job.rule = state.rule;
+        }
+        syncScheduleFields();
+        $('alQuestion').value = job.question || '';
+        setTab('existing');
+        loadSource(job.source_query_code || '');
+    }
+
+    // ---------------- Start ----------------
+    async function start() {
+        const createIcon = document.getElementById('alertsCreateIcon');
+        if (createIcon) createIcon.classList.add('active');
+        try {
+            state.settings = await api('/api/alerts/settings');
+        } catch (e) { /* defaults stay */ }
+        $('alRecipientsNote').textContent = 'Any email addresses, separated by commas. "me" means you.';
+        if (!$('alRecipients').value && state.settings.own_email) $('alRecipients').value = state.settings.own_email;
+
+        setType(state.jobType);
+        syncScheduleFields();
+        renderRuleOptions();
+
+        if (editId) {
+            try {
+                const data = await api(`/api/alerts/${editId}`);
+                fillFromJob(data.job);
+            } catch (e) { flash(e.message); }
+        } else if (params.get('query_code')) {
+            setTab('existing');
+            loadSource(params.get('query_code'));
+        }
+    }
+    start();
+})();
+</script>
+{% endblock %}

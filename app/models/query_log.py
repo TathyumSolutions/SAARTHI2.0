@@ -52,6 +52,15 @@ class QueryLog(db.Model):
     # answer even if that related query is edited/deleted later.
     related_queries = db.Column(db.JSON, nullable=True)
 
+    # Why this query ran: 'Q' a regular chat question, 'A' an alert, 'S' a
+    # subscription - set from get_smart_response's run_type when an alert or
+    # subscription is being set up, and by every scheduled run. Defaults to
+    # 'Q' so rows logged before this column existed stay regular queries.
+    run_type = db.Column(db.String(1), nullable=False, default='Q', index=True)
+    # The ScheduledJob a scheduled run belongs to; empty for chat questions
+    # and for the one-off question asked while setting a job up.
+    scheduled_job_id = db.Column(db.Integer, nullable=True, index=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
     def to_dict(self):
@@ -71,5 +80,7 @@ class QueryLog(db.Model):
             'feedback_type': self.feedback_type,
             'remarks': self.remarks,
             'related_queries': self.related_queries or [],
+            'run_type': self.run_type or 'Q',
+            'scheduled_job_id': self.scheduled_job_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block title %}Saarthi - Alerts & Subscriptions{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .center-panel { overflow-y: auto; }
+    .am-page { max-width: 1200px; display: flex; flex-direction: column; gap: 18px; padding-bottom: 40px; }
+    .am-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+    .am-sub { margin: 6px 0 0; font-size: 13px; color: #B8B8B8; }
+    .am-new { min-height: 36px; box-sizing: border-box; display: flex; align-items: center; padding: 6px 16px; border-radius: 4px; background: var(--primary-blue); color: #fff; text-decoration: none; font-size: 13px; font-weight: 600; }
+    .am-filters { display: flex; flex-wrap: wrap; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--panel-bg); width: fit-content; max-width: 100%; }
+    .am-filters button { min-height: 34px; padding: 6px 14px; border: none; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+    .am-filters button[aria-selected=true] { background: var(--primary-blue); color: #fff; }
+    .am-box { border: 1px solid var(--border-color); border-radius: 8px; background: var(--sidebar-bg); overflow-x: auto; }
+    .am-table { width: 100%; border-collapse: collapse; min-width: 960px; }
+    .am-table th { padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 600; color: #A0A0A0; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+    .am-table td { padding: 12px; font-size: 13px; color: #E2E8F0; border-bottom: 1px solid #333337; vertical-align: top; }
+    .am-sub2 { font-size: 12px; color: #A0A0A0; margin-top: 3px; }
+    .am-tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+    .am-tag-A { background: rgba(206,145,120,.2); color: #E8B49C; }
+    .am-tag-S { background: rgba(78,201,176,.15); color: #7EDCC8; }
+    .am-status { font-size: 12px; padding: 3px 10px; border-radius: 12px; white-space: nowrap; }
+    .am-status-active { background: rgba(78,201,176,.15); color: #7EDCC8; }
+    .am-status-triggered { background: rgba(206,145,120,.18); color: #E8B49C; }
+    .am-status-paused { background: rgba(255,255,255,.08); color: var(--text-secondary); }
+    .am-status-error { background: rgba(244,135,113,.15); color: #F7A898; }
+    .am-actions { white-space: nowrap; display: flex; gap: 4px; flex-wrap: wrap; }
+    .am-ib { min-height: 30px; padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--panel-bg); color: var(--text-secondary); font: inherit; font-size: 12px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+    .am-ib:hover { color: #fff; border-color: #5A5A5E; }
+    .am-ib.danger:hover { color: #F7A898; border-color: rgba(244,135,113,.5); }
+    .am-history td { padding: 0 12px 12px 60px; }
+    .am-runs { border: 1px solid var(--border-color); border-radius: 6px; background: var(--dark-bg); }
+    .am-run { font-size: 12px; color: var(--text-secondary); padding: 6px 12px; border-bottom: 1px solid #333337; display: flex; gap: 16px; flex-wrap: wrap; }
+    .am-run:last-child { border-bottom: none; }
+    .am-run-sent { color: #E8B49C; }
+    .am-run-ok { color: #7EDCC8; }
+    .am-run-failed { color: #F7A898; }
+    .am-empty { color: var(--text-secondary); font-size: 13px; padding: 40px 0; text-align: center; }
+    .am-flash { padding: 10px 14px; border-radius: 6px; font-size: 13px; }
+    .am-flash.err { background: rgba(244,135,113,.12); color: #F7A898; border: 1px solid rgba(244,135,113,.35); }
+    .am-flash.ok { background: rgba(78,201,176,.12); color: #7EDCC8; border: 1px solid rgba(78,201,176,.35); }
+    .am-hidden { display: none !important; }
+    .am-link { color: #4FA3E8; text-decoration: none; }
+    .am-link:hover { text-decoration: underline; }
+    .am-toggle { background: none; border: none; color: #4FA3E8; font: inherit; font-size: 12px; cursor: pointer; padding: 0; margin-top: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="am-page">
+    <div class="am-top">
+        <div>
+            <h1 style="margin: 0; font-size: 22px; font-weight: 600;">Alerts &amp; Subscriptions</h1>
+            <p class="am-sub" id="amSubtitle">Everything you have scheduled, with its recent runs.</p>
+        </div>
+        <a href="/alerts/new" class="am-new">+ New</a>
+    </div>
+
+    <div id="amFlash" class="am-flash am-hidden" role="status"></div>
+
+    <div class="am-filters" role="tablist" aria-label="Filter" id="amFilters">
+        <button type="button" role="tab" data-filter="all" aria-selected="true">All</button>
+        <button type="button" role="tab" data-filter="A" aria-selected="false">Alerts</button>
+        <button type="button" role="tab" data-filter="S" aria-selected="false">Subscriptions</button>
+        <button type="button" role="tab" data-filter="triggered" aria-selected="false">Triggered</button>
+        <button type="button" role="tab" data-filter="paused" aria-selected="false">Paused</button>
+        <button type="button" role="tab" data-filter="error" aria-selected="false">Error</button>
+    </div>
+
+    <div class="am-box">
+        <table class="am-table">
+            <thead><tr>
+                <th>Type</th><th>Name</th><th>Rule or schedule</th><th>Recipients</th><th>Last run</th><th>Next run</th><th>Status</th><th><span class="am-hidden">Actions</span></th>
+            </tr></thead>
+            <tbody id="amBody"><tr><td colspan="8" class="am-empty">Loading...</td></tr></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    const FILTER_LABELS = { all: 'All', A: 'Alerts', S: 'Subscriptions', triggered: 'Triggered', paused: 'Paused', error: 'Error' };
+    const RUN_LABELS = { sent: 'Sent', ok: 'Checked, not met', fired: 'Met, not sent', skipped: 'Skipped', failed: 'Failed' };
+    const TRIGGER_LABELS = { schedule: '', manual: 'Run now', test: 'Test' };
+    let filter = 'all';
+    let isAdmin = false;
+    const openHistory = new Set();
+
+    const $ = (id) => document.getElementById(id);
+    function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+    function when(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return d.toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+    function flash(message, ok) {
+        const box = $('amFlash');
+        box.textContent = message;
+        box.className = 'am-flash ' + (ok ? 'ok' : 'err');
+    }
+    async function api(url, method) {
+        const res = await authFetch(url, { method: method || 'GET' });
+        let data = {};
+        try { data = await res.json(); } catch (e) { /* empty body */ }
+        if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+        return data;
+    }
+
+    function statusOf(job) {
+        if (job.status === 'paused') return ['paused', 'Paused'];
+        if (job.status === 'error') return ['error', 'Error'];
+        if (job.job_type === 'A' && job.is_triggered) return ['triggered', 'Triggered'];
+        return ['active', job.job_type === 'A' ? 'Watching' : 'Active'];
+    }
+
+    function lastRunText(job) {
+        const run = job.last_run;
+        if (!run) return '<span class="am-sub2">Not run yet</span>';
+        let detail = RUN_LABELS[run.status] || run.status;
+        if (run.status === 'sent') detail = `Sent to ${(run.notified_to || []).length} ${(run.notified_to || []).length === 1 ? 'person' : 'people'}`;
+        if (run.status === 'failed') detail = run.error || 'Failed';
+        return `${escapeHtml(when(run.run_at))}<div class="am-sub2" style="${run.status === 'failed' ? 'color:#F48771;' : ''}">${escapeHtml(detail)}</div>`;
+    }
+
+    function recipientsText(job) {
+        const list = job.recipients || [];
+        if (!list.length) return '';
+        return escapeHtml(list.slice(0, 2).join(', ')) + (list.length > 2 ? `<div class="am-sub2">and ${list.length - 2} more</div>` : '');
+    }
+
+    async function load() {
+        const body = $('amBody');
+        const params = new URLSearchParams();
+        if (filter === 'A' || filter === 'S') params.set('type', filter);
+        else if (filter !== 'all') params.set('status', filter);
+        try {
+            const data = await api('/api/alerts/?' + params.toString());
+            isAdmin = data.is_company_admin;
+            if (isAdmin) $('amSubtitle').textContent = 'Every alert and subscription in your company, with its recent runs.';
+            const counts = data.counts || {};
+            document.querySelectorAll('#amFilters button').forEach(b => {
+                const key = b.dataset.filter;
+                const n = counts[key];
+                b.textContent = FILTER_LABELS[key] + (n != null ? ` (${n})` : '');
+            });
+            render(data.jobs || []);
+        } catch (e) {
+            body.innerHTML = `<tr><td colspan="8" class="am-empty">${escapeHtml(e.message)}</td></tr>`;
+        }
+    }
+
+    function render(jobs) {
+        const body = $('amBody');
+        if (!jobs.length) {
+            body.innerHTML = `<tr><td colspan="8" class="am-empty">${filter === 'all'
+                ? 'No alerts or subscriptions yet. <a class="am-link" href="/alerts/new">Create one</a>.'
+                : 'Nothing matches this filter.'}</td></tr>`;
+            return;
+        }
+        body.innerHTML = jobs.map(job => {
+            const [statusKey, statusLabel] = statusOf(job);
+            const rule = job.job_type === 'A'
+                ? `${escapeHtml(job.rule_text)}<div class="am-sub2">${escapeHtml(job.schedule_text)}</div>`
+                : `Email${job.attach_excel ? ' with Excel' : ''}<div class="am-sub2">${escapeHtml(job.schedule_text)}</div>`;
+            const owner = isAdmin && job.owner_name ? ` · ${escapeHtml(job.owner_name)}` : '';
+            const source = job.source_query_code ? `from ${escapeHtml(job.source_query_code)}` : '';
+            const runLabel = job.status === 'error' ? 'Retry' : 'Run now';
+            const pauseBtn = job.status === 'paused'
+                ? `<button type="button" class="am-ib" data-act="resume" data-id="${job.id}">Resume</button>`
+                : `<button type="button" class="am-ib" data-act="pause" data-id="${job.id}">Pause</button>`;
+            const history = openHistory.has(job.id)
+                ? `<tr class="am-history" data-history="${job.id}"><td colspan="8"><div class="am-runs" id="amRuns${job.id}"><div class="am-run">Loading runs...</div></div></td></tr>`
+                : '';
+            return `
+                <tr>
+                    <td><span class="am-tag am-tag-${job.job_type}">${job.job_type === 'A' ? 'ALERT' : 'SUBSCRIPTION'}</span></td>
+                    <td><div style="font-weight: 600;">${escapeHtml(job.name)}</div>
+                        <div class="am-sub2">${escapeHtml(job.job_code)} ${source}${owner}</div>
+                        <button type="button" class="am-toggle" data-act="history" data-id="${job.id}" aria-expanded="${openHistory.has(job.id)}">${openHistory.has(job.id) ? 'Hide runs' : 'Recent runs'}</button></td>
+                    <td>${rule}</td>
+                    <td>${recipientsText(job)}</td>
+                    <td>${lastRunText(job)}</td>
+                    <td>${job.status === 'paused' ? '<span class="am-sub2">Paused</span>' : escapeHtml(when(job.next_run_at))}</td>
+                    <td><span class="am-status am-status-${statusKey}">${statusLabel}</span>
+                        ${job.status === 'error' && job.last_error ? `<div class="am-sub2" style="color:#F48771; max-width: 220px;">${escapeHtml(job.last_error)}</div>` : ''}</td>
+                    <td><div class="am-actions">
+                        <a class="am-ib" href="/alerts/new?id=${job.id}">Edit</a>
+                        <button type="button" class="am-ib" data-act="run" data-id="${job.id}">${runLabel}</button>
+                        ${pauseBtn}
+                        <button type="button" class="am-ib" data-act="duplicate" data-id="${job.id}">Duplicate</button>
+                        <button type="button" class="am-ib danger" data-act="delete" data-id="${job.id}" data-name="${escapeHtml(job.name)}">Delete</button>
+                    </div></td>
+                </tr>${history}`;
+        }).join('');
+
+        body.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => act(btn)));
+        openHistory.forEach(id => loadRuns(id));
+    }
+
+    async function loadRuns(id) {
+        const box = document.getElementById('amRuns' + id);
+        if (!box) return;
+        try {
+            const data = await api(`/api/alerts/${id}/runs`);
+            const runs = data.runs || [];
+            if (!runs.length) { box.innerHTML = '<div class="am-run">No runs yet.</div>'; return; }
+            box.innerHTML = '<div class="am-run" style="color:#A0A0A0; font-weight: 600;">Recent runs</div>' + runs.map(r => {
+                const cls = r.status === 'sent' ? 'am-run-sent' : (r.status === 'failed' ? 'am-run-failed' : 'am-run-ok');
+                const who = (r.notified_to || []).length ? `Emailed ${(r.notified_to || []).join(', ')}` : 'Nothing sent';
+                const trigger = TRIGGER_LABELS[r.trigger] ? ` (${TRIGGER_LABELS[r.trigger]})` : '';
+                return `<div class="am-run">
+                    <span>${escapeHtml(when(r.run_at))}${escapeHtml(trigger)}</span>
+                    <span class="${cls}">${escapeHtml(RUN_LABELS[r.status] || r.status)}${r.value ? ': ' + escapeHtml(r.value) : ''}${r.error ? ': ' + escapeHtml(r.error) : ''}</span>
+                    <span>${escapeHtml(who)}</span>
+                    ${r.query_code ? `<a class="am-link" href="/query_logs?q=${encodeURIComponent(r.query_code)}">${escapeHtml(r.query_code)}</a>` : ''}
+                </div>`;
+            }).join('');
+        } catch (e) {
+            box.innerHTML = `<div class="am-run am-run-failed">${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    async function act(btn) {
+        const id = Number(btn.dataset.id);
+        const action = btn.dataset.act;
+        if (action === 'history') {
+            if (openHistory.has(id)) openHistory.delete(id); else openHistory.add(id);
+            load();
+            return;
+        }
+        if (action === 'delete' && !window.confirm(`Delete "${btn.dataset.name}"? Its run history goes too.`)) return;
+        btn.disabled = true;
+        try {
+            if (action === 'delete') {
+                await api(`/api/alerts/${id}`, 'DELETE');
+                flash('Deleted.', true);
+            } else if (action === 'run') {
+                const data = await api(`/api/alerts/${id}/run`, 'POST');
+                const run = data.run;
+                flash(run.status === 'failed'
+                    ? `The run failed: ${run.error}`
+                    : `Ran just now: ${RUN_LABELS[run.status] || run.status}${run.value ? '. ' + run.value : ''}`, run.status !== 'failed');
+                openHistory.add(id);
+            } else if (action === 'duplicate') {
+                const data = await api(`/api/alerts/${id}/duplicate`, 'POST');
+                flash(`Made ${data.job.job_code}, a paused copy. Edit it, then resume it.`, true);
+            } else {
+                await api(`/api/alerts/${id}/${action}`, 'POST');
+            }
+            load();
+        } catch (e) {
+            flash(e.message);
+            btn.disabled = false;
+        }
+    }
+
+    document.querySelectorAll('#amFilters button').forEach(b => b.addEventListener('click', () => {
+        filter = b.dataset.filter;
+        document.querySelectorAll('#amFilters button').forEach(x => x.setAttribute('aria-selected', x === b));
+        load();
+    }));
+
+    const listIcon = document.getElementById('alertsListIcon');
+    if (listIcon) listIcon.classList.add('active');
+    const saved = new URLSearchParams(window.location.search).get('saved');
+    if (saved) flash(`Saved ${saved}. It runs on its schedule from now on.`, true);
+    load();
+})();
+</script>
+{% endblock %}

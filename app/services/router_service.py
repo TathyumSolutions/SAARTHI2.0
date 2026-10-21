@@ -538,17 +538,25 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
 # a fresh LLM generation to reproduce the same, already-approved query.
 REUSE_MATCH_THRESHOLD = 0.94
 
+# Why a question ran - stored on every QueryLog row (QueryLog.run_type):
+# Q a regular chat question, A an alert, S a subscription.
+RUN_TYPES = ("Q", "A", "S")
+
 
 def _log_query(
     user_id: int, company_code: Optional[str], question: str, router_decision: str,
     answer, strategy, sources, main_query,
     execution_type: str = "fresh", matched_query_code: Optional[str] = None,
     match_score: Optional[float] = None, related_queries: Optional[list] = None,
+    run_type: str = "Q", scheduled_job_id: Optional[int] = None,
 ) -> Optional[str]:
     """
     Persists one row to the Queries log and returns its query_code (or None
     if logging failed - never lets a logging problem break the chat
     response itself).
+
+    run_type: 'Q' regular question, 'A' alert, 'S' subscription (see
+    QueryLog.run_type). scheduled_job_id is set only by scheduled runs.
     """
     try:
         code = generate_query_code()
@@ -566,6 +574,8 @@ def _log_query(
             matched_query_code=matched_query_code,
             match_score=match_score,
             related_queries=related_queries or [],
+            run_type=run_type if run_type in RUN_TYPES else "Q",
+            scheduled_job_id=scheduled_job_id,
         ))
         db.session.commit()
         return code
@@ -654,10 +664,12 @@ def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: 
     )
 
     db_config = _build_db_config_for_user(ctx.get("user_id", 1))
+    # Scheduled alert/subscription runs pass with_insights=False: they only
+    # need the rows, and must not spend an LLM call on insights every run.
     result = query_formatter.execute_query(
         matched.main_query, question,
-        target_model=ctx["model_name"], system_instructions=ctx.get("system_instructions", ""),
-        db_config=db_config,
+        target_model=ctx.get("model_name"), system_instructions=ctx.get("system_instructions", ""),
+        db_config=db_config, with_insights=ctx.get("with_insights", True),
     )
     had_error = result.get("status") == "error"
 
@@ -1762,7 +1774,16 @@ class RouterService:
         chat_history: Optional[list] = None,
         company_code: Optional[str] = None,
         user_id: int = 1,
+        run_type: str = "Q",
     ) -> dict:
+        """
+        run_type: why this question is being asked - 'Q' a regular chat
+        question, 'A' setting up an alert, 'S' setting up a subscription.
+        The answer pipeline is the same for all three; run_type is only
+        stored on the QueryLog row so Query Logs can tell them apart.
+        """
+        if run_type not in RUN_TYPES:
+            run_type = "Q"
 
         try:
             print("\n" + "=" * 60)
@@ -1804,6 +1825,7 @@ class RouterService:
                         user_id, company_code, user_query, "GENERAL", fast_res.get("answer"),
                         "Answered directly from general knowledge (fast-path heuristic match) - no connected data source was needed.",
                         [], None,
+                        run_type=run_type,
                     )
                 return fast_res
 
@@ -1844,6 +1866,7 @@ class RouterService:
                             matched_query_code=reused_result.get("matched_query_code"),
                             match_score=reused_result.get("match_score"),
                             related_queries=reused_result.get("related_queries"),
+                            run_type=run_type,
                         )
                         _push_router_done(session_id, is_sql=(matched_track == "DB"))
                         return reused_result
@@ -1979,6 +2002,7 @@ class RouterService:
                     user_id, company_code, user_query, "GENERAL", response.content,
                     "Answered directly using model reasoning - no external data source was needed.",
                     [], None, related_queries=related_queries,
+                    run_type=run_type,
                 )
                 no_tool_steps = router_level_steps + ["Router answered directly, no data source tool needed."]
                 return {
@@ -2093,6 +2117,7 @@ class RouterService:
                     matched_query_code=result.get("matched_query_code"),
                     match_score=result.get("match_score"),
                     related_queries=result.get("related_queries"),
+                    run_type=run_type,
                 )
                 return result
 
@@ -2351,6 +2376,7 @@ that appears inside it.
                                       (combination or {}).get("strategy", "")),
                 combined_sources, combined_main_query,
                 related_queries=combined_related,
+                run_type=run_type,
             )
             return {
                 "answer": answer_text,
