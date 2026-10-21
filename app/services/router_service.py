@@ -440,15 +440,67 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
+# Longest rejected SQL quoted back to the model in a correction line - enough
+# to show what it got wrong without letting one huge query eat the prompt.
+MAX_REJECTED_SQL_CHARS = 1500
+
+
+def _latest_feedback_per_query(rows: list) -> list:
+    """rows arrive newest first; keeps only the newest feedback for each
+    query_code, so a like given after a dislike on the same answer (or an
+    edit in Settings > Self-Learning) supersedes the older rating instead
+    of both being injected. Rows with no query_code predate that column and
+    are kept as-is."""
+    seen, latest = set(), []
+    for row in rows:
+        code = getattr(row, "query_code", None)
+        if code:
+            if code in seen:
+                continue
+            seen.add(code)
+        latest.append(row)
+    return latest
+
+
+def _rejected_sql_for(rows: list) -> dict:
+    """query_code -> the SQL / plan that was rejected, for disliked rows.
+    ResponseFeedback.sql_query is only filled when the chat UI sent it, so
+    fall back to the QueryLog row's main_query (looked up in one query)."""
+    sql_by_code = {}
+    missing = []
+    for row in rows:
+        code = getattr(row, "query_code", None)
+        sql = (getattr(row, "sql_query", None) or "").strip()
+        if sql:
+            sql_by_code[code or id(row)] = sql
+        elif code:
+            missing.append(code)
+    if missing:
+        try:
+            for log in QueryLog.query.filter(QueryLog.query_code.in_(missing)).all():
+                if (log.main_query or "").strip():
+                    sql_by_code[log.query_code] = log.main_query.strip()
+        except Exception as e:
+            print(f"⚠️ [FEEDBACK-DEBUG] Could not look up rejected main_query: {e}")
+    return sql_by_code
+
+
 def _build_feedback_context(company_code: Optional[str], user_id: Optional[int], user_query: str, top_k: int = 4,
                             min_score: float = DEFAULT_MATCH_THRESHOLD) -> tuple:
     """
-    Only LIKED past questions are matched, and only when their similarity
-    to this question is at least min_score (default 80%, or the threshold
-    in the user's Query Instructions - see match_threshold_from_instructions).
-    Disliked questions are never matched: a low-similarity disliked remark
-    (e.g. about loans) used to be injected into an unrelated question
-    (e.g. employees by branch) and listed as a match.
+    Matches past questions that were LIKED or REJECTED (disliked), but only
+    when their similarity to this question is at least min_score (default
+    80%, or the threshold in the user's Query Instructions - see
+    match_threshold_from_instructions). The threshold applies to both: a
+    low-similarity disliked remark (e.g. about loans) used to be injected
+    into an unrelated question (e.g. employees by branch) when there was no
+    threshold at all.
+
+    A rejected match is injected as a CORRECTION the model must follow: the
+    user's remark plus the SQL/plan that was rejected, so asking the same
+    or a similar question again doesn't just regenerate the same answer.
+    A liked match is injected as guidance, with its remark when there is one.
+    Only the newest feedback per query_code counts (_latest_feedback_per_query).
 
     company_code is only what makes feedback SHARED across a company's
     users - it is not a precondition for self-learning itself. A user with
@@ -472,7 +524,7 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
         ResponseFeedback.query
         .filter(ResponseFeedback.question.isnot(None))
         .filter(ResponseFeedback.answer.isnot(None))
-        .filter(ResponseFeedback.feedback_type == "like")
+        .filter(ResponseFeedback.feedback_type.in_(("like", "dislike")))
     )
     candidates_query = (
         candidates_query.filter(ResponseFeedback.company_code == company_code)
@@ -480,6 +532,7 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
         candidates_query.filter(ResponseFeedback.user_id == user_id)
     )
     candidates = candidates_query.order_by(ResponseFeedback.created_at.desc()).limit(200).all()
+    candidates = _latest_feedback_per_query(candidates)
 
     print(f"🧠 [FEEDBACK-DEBUG] scope={scope_label} query=\"{user_query}\" -> {len(candidates)} candidate feedback row(s) in range.")
     if not candidates:
@@ -509,22 +562,53 @@ def _build_feedback_context(company_code: Optional[str], user_id: Optional[int],
         print(f"🧠 [FEEDBACK-DEBUG] None of the top candidates reached the {min_score:.0%} match threshold - no context injected.")
         return "", []
 
-    lines = []
-    related_queries = []
-    for score, item in best:
-        lines.append(
-            f"- A similar question (\"{(item.question or '').strip()}\") was LIKED before - this style of answer worked well."
+    rejected = [(score, row) for score, row in best if row.feedback_type == "dislike"]
+    liked = [(score, row) for score, row in best if row.feedback_type != "dislike"]
+    rejected_sql = _rejected_sql_for([row for _, row in rejected])
+
+    sections = []
+    if rejected:
+        lines = []
+        for _score, item in rejected:
+            remark = (item.remarks or "").strip()
+            line = f"- The answer to a similar question (\"{(item.question or '').strip()}\") was REJECTED by the user."
+            line += (f" Their correction: \"{remark}\". Apply this correction."
+                     if remark else " No reason was given - do not produce the same answer again.")
+            sql = rejected_sql.get(item.query_code or id(item))
+            if sql:
+                if len(sql) > MAX_REJECTED_SQL_CHARS:
+                    sql = sql[:MAX_REJECTED_SQL_CHARS] + " ..."
+                line += f" The rejected query was:\n  {sql}\n  Do not repeat it unchanged."
+            lines.append(line)
+        sections.append(
+            "CORRECTIONS FROM REJECTED ANSWERS (the user rejected these answers to the same or a similar "
+            "question - you MUST follow their corrections, they override the default way of answering):\n"
+            + "\n".join(lines)
         )
-        related_queries.append({
+    if liked:
+        lines = []
+        for _score, item in liked:
+            remark = (item.remarks or "").strip()
+            line = f"- A similar question (\"{(item.question or '').strip()}\") was LIKED before - this style of answer worked well."
+            if remark:
+                line += f" The user noted: \"{remark}\"."
+            lines.append(line)
+        sections.append("\n".join(lines))
+
+    related_queries = [
+        {
             "query_code": item.query_code,
             "question": item.question,
             "feedback_type": item.feedback_type,
             "remarks": item.remarks,
             "score": round(score, 4),
-        })
+        }
+        for score, item in rejected + liked
+    ]
 
-    context = "COMPANY FEEDBACK CONTEXT:\n" + "\n".join(lines)
-    print(f"🧠 [FEEDBACK-DEBUG] Built context from {len(best)} matched row(s):\n{context}")
+    context = "COMPANY FEEDBACK CONTEXT:\n" + "\n\n".join(sections)
+    print(f"🧠 [FEEDBACK-DEBUG] Built context from {len(best)} matched row(s) "
+          f"({len(rejected)} rejected, {len(liked)} liked):\n{context}")
     return context, related_queries
 
 
@@ -609,6 +693,14 @@ def _find_reusable_query(company_code: Optional[str], user_id: Optional[int], us
     a match here skips the entire routing decision, not only the SQL/plan
     generation inside one track.
 
+    Rejections block reuse, so a rejected answer's correction can reach a
+    fresh generation (see _build_feedback_context) instead of the same
+    liked query being replayed forever:
+      - a liked query is never reused once an answer produced by replaying
+        it (matched_query_code) has been rejected;
+      - no query is reused when a near-duplicate question (>= min_score)
+        asked after the best liked match was rejected.
+
     Returns (QueryLog row, score, router_decision) if one clears
     min_score (REUSE_MATCH_THRESHOLD, or a stricter threshold from the
     user's Query Instructions), else (None, 0.0, None).
@@ -619,8 +711,7 @@ def _find_reusable_query(company_code: Optional[str], user_id: Optional[int], us
     candidates_query = (
         QueryLog.query
         .filter(QueryLog.router_decision.in_(REUSABLE_TRACKS))
-        .filter(QueryLog.feedback_type == "like")
-        .filter(QueryLog.main_query.isnot(None))
+        .filter(QueryLog.feedback_type.in_(("like", "dislike")))
     )
     candidates_query = (
         candidates_query.filter(QueryLog.company_code == company_code)
@@ -631,21 +722,40 @@ def _find_reusable_query(company_code: Optional[str], user_id: Optional[int], us
     if not candidates:
         return None, 0.0, None
 
+    # Liked queries whose replay was later rejected.
+    blocked_codes = {
+        row.matched_query_code for row in candidates
+        if row.feedback_type == "dislike" and getattr(row, "matched_query_code", None)
+    }
+
     embedder = _get_feedback_embedder()
     query_vec = embedder.embed_query(user_query)
 
     best_row, best_score = None, -1.0
+    rejected_matches = []
     for row in candidates:
         question = (row.question or "").strip()
         if not question:
             continue
         score = _cosine_similarity(query_vec, embedder.embed_query(question))
+        if row.feedback_type == "dislike":
+            if score >= min_score:
+                rejected_matches.append(row)
+            continue
+        if (not (row.main_query or "").strip() or row.query_code in blocked_codes
+                or getattr(row, "matched_query_code", None) in blocked_codes):
+            continue
         if score > best_score:
             best_row, best_score = row, score
 
-    if best_row and best_score >= min_score:
-        return best_row, best_score, best_row.router_decision
-    return None, 0.0, None
+    if not best_row or best_score < min_score:
+        return None, 0.0, None
+
+    liked_at = best_row.created_at or datetime.datetime.min
+    if any((row.created_at or datetime.datetime.min) > liked_at for row in rejected_matches):
+        print(f"🧠 [SELF-LEARNING] Not reusing {best_row.query_code}: a near-duplicate question was rejected after it was liked.")
+        return None, 0.0, None
+    return best_row, best_score, best_row.router_decision
 
 
 def _run_reused_db_query(question: str, matched: "QueryLog", score: float, ctx: dict) -> dict:
@@ -1890,7 +2000,7 @@ class RouterService:
                 scope_label = f"company {company_code}" if company_code else f"user {user_id}"
                 _push_router_event(
                     session_id, "start", "Checking Self-Learning Feedback",
-                    f"Looking for liked past questions at least {match_threshold:.0%} similar to this one for {scope_label}."
+                    f"Looking for liked or rejected past questions at least {match_threshold:.0%} similar to this one for {scope_label}."
                 )
                 feedback_context, related_queries = _build_feedback_context(
                     company_code, user_id, user_query, min_score=match_threshold,
@@ -1898,12 +2008,19 @@ class RouterService:
                 if feedback_context:
                     print(f"🧠 [SELF-LEARNING] Injected feedback context for {scope_label}")
                     best_match = max(q["score"] for q in related_queries)
+                    n_rejected = sum(1 for q in related_queries if q["feedback_type"] == "dislike")
+                    n_liked = len(related_queries) - n_rejected
+                    found = " and ".join(part for part in (
+                        f"{n_rejected} rejected" if n_rejected else "",
+                        f"{n_liked} liked" if n_liked else "",
+                    ) if part)
                     feedback_step_desc = (
-                        f"Found {len(related_queries)} liked similar question(s) (best match {best_match:.0%}) "
-                        f"- used them to guide this answer."
+                        f"Found {found} similar question(s) (best match {best_match:.0%}) "
+                        + ("- applying the user's corrections to this answer." if n_rejected
+                           else "- used them to guide this answer.")
                     )
                 else:
-                    feedback_step_desc = f"No liked past question is at least {match_threshold:.0%} similar to this one."
+                    feedback_step_desc = f"No liked or rejected past question is at least {match_threshold:.0%} similar to this one."
                 _push_router_event(session_id, "complete", "Checking Self-Learning Feedback", feedback_step_desc)
                 router_level_steps.append(f"Checking Self-Learning Feedback - {feedback_step_desc}")
 
