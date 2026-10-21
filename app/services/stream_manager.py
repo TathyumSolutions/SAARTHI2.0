@@ -52,6 +52,14 @@ class StepStreamManager:
         self.session_history[session_id] = []
         self.pending_tracks[session_id] = 1
 
+    def clear(self, session_id):
+        """Drops a session's buffered steps. For runs nobody listens to
+        (scheduled alert/subscription replays), whose steps would otherwise
+        sit in session_history forever."""
+        session_id = str(session_id)
+        self.session_history.pop(session_id, None)
+        self.pending_tracks.pop(session_id, None)
+
     def begin_tracks(self, session_id, count):
         """Call this once a question has been split into `count` independent
         tracks (e.g. router tool calls dispatched in parallel), so a single

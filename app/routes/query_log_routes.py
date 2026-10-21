@@ -24,6 +24,7 @@ def list_query_logs():
       data_source - free-text match against the specific tables/tools listed in "sources"
       feedback   - accepted | rejected | unrated | all (default all)
       execution  - fresh | reused | all (default all)
+      run_type   - Q (regular) | A (alert) | S (subscription) | all (default all)
       user_id    - restrict to a specific user's queries (defaults to everyone visible to the caller)
       limit      - max rows to return (default 100, capped at 300)
     Response: { "queries": [...], "count": N }
@@ -59,6 +60,10 @@ def list_query_logs():
     execution = (request.args.get('execution') or 'all').strip().lower()
     if execution in ('fresh', 'reused'):
         query = query.filter(QueryLog.execution_type == execution)
+
+    run_type = (request.args.get('run_type') or 'all').strip().upper()
+    if run_type in ('Q', 'A', 'S'):
+        query = query.filter(QueryLog.run_type == run_type)
 
     source = (request.args.get('source') or 'all').strip().upper()
     if source != 'ALL':

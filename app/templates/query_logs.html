@@ -24,6 +24,10 @@
     .qy-badge-accepted { background: rgba(78, 201, 176, 0.18); color: var(--accent-green); }
     .qy-badge-rejected { background: rgba(244, 135, 113, 0.18); color: #F48771; }
     .qy-badge-unrated { background: rgba(255,255,255,0.08); color: var(--text-secondary); }
+    .qy-badge-alert { background: rgba(206, 145, 120, 0.2); color: #E8B49C; }
+    .qy-badge-subscription { background: rgba(78, 201, 176, 0.15); color: #7EDCC8; }
+    .qy-schedule-link { font-size: 12px; color: #60A5FA; text-decoration: none; }
+    .qy-schedule-link:hover { text-decoration: underline; }
     .qy-field { font-size: 12px; color: var(--text-secondary); }
     .qy-field strong { color: var(--text-primary); font-weight: 600; }
     .qy-remarks { font-size: 12px; color: var(--text-secondary); border-left: 2px solid var(--border-color); padding-left: 8px; margin-top: 2px; }
@@ -76,6 +80,12 @@
             <button type="button" class="ds-filter-btn" data-source="SPREADSHEET">Spreadsheet</button>
             <button type="button" class="ds-filter-btn" data-source="GENERAL">General</button>
         </div>
+        <div class="qy-filter-group" id="qyRunTypeFilters">
+            <button type="button" class="ds-filter-btn active" data-runtype="all">All Runs</button>
+            <button type="button" class="ds-filter-btn" data-runtype="Q">Questions</button>
+            <button type="button" class="ds-filter-btn" data-runtype="A">Alerts</button>
+            <button type="button" class="ds-filter-btn" data-runtype="S">Subscriptions</button>
+        </div>
     </div>
 
     <div id="qyList">
@@ -86,6 +96,13 @@
 
 {% block extra_scripts %}
 <script>
+    const RUN_TYPE_BADGES = {
+        A: '<span class="qy-badge qy-badge-alert">Alert</span>',
+        S: '<span class="qy-badge qy-badge-subscription">Subscription</span>',
+    };
+    const SCHEDULABLE_SOURCES = ['DB', 'SPREADSHEET'];
+    let currentUserId = null;
+
     const SOURCE_LABELS = { DB: 'Database', API: 'API', FILES: 'Files', SPREADSHEET: 'Spreadsheet', GENERAL: 'General', MULTI: 'Multi-source' };
 
     function escapeHtml(value) {
@@ -119,6 +136,7 @@
         params.set('feedback', activeValue('qyFeedbackFilters', 'feedback'));
         params.set('execution', activeValue('qyExecutionFilters', 'execution'));
         params.set('source', activeValue('qySourceFilters', 'source'));
+        params.set('run_type', activeValue('qyRunTypeFilters', 'runtype'));
 
         try {
             const res = await authFetch(`/api/query-logs/?${params.toString()}`);
@@ -161,6 +179,12 @@
             const mainQueryHtml = item.main_query
                 ? `<details class="qy-main-query"><summary>Main Query</summary><pre class="ds-meta-pre">${escapeHtml(item.main_query)}</pre></details>`
                 : '';
+            // Only the asker's own database/spreadsheet answers can back an
+            // alert or subscription (the create screen checks this too).
+            const scheduleHtml = (SCHEDULABLE_SOURCES.includes(item.router_decision) && item.main_query
+                && !item.scheduled_job_id && String(item.user_id) === String(currentUserId))
+                ? `<div><a class="qy-schedule-link" href="/alerts/new?query_code=${encodeURIComponent(item.query_code)}">Set up an alert on this</a></div>`
+                : '';
             const relatedQueries = item.related_queries || [];
             const relatedQueriesHtml = relatedQueries.length
                 ? `<details class="qy-main-query"><summary>Related Queries (${relatedQueries.length})</summary>
@@ -199,6 +223,7 @@
                         <div class="qy-question">${escapeHtml(item.question)}</div>
                         <div class="qy-badges">
                             <span class="qy-badge qy-badge-source">${escapeHtml(sourceLabel)}</span>
+                            ${RUN_TYPE_BADGES[item.run_type] || ''}
                             ${executionBadge}
                             ${feedbackBadge}
                         </div>
@@ -211,15 +236,19 @@
                     ${relatedQueriesHtml}
                     ${matchedHtml}
                     ${remarksHtml}
+                    ${scheduleHtml}
                 </div>
             `;
         }).join('');
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+        // ?q= pre-fills the search, e.g. a run's QUERY code linked from
+        // Reports > Alerts & Subscriptions.
+        document.getElementById('qySearch').value = new URLSearchParams(window.location.search).get('q') || '';
         document.getElementById('qySearch').addEventListener('input', debounce(loadQueryLogs, 300));
         document.getElementById('qyDataSourceSearch').addEventListener('input', debounce(loadQueryLogs, 300));
-        ['qyFeedbackFilters', 'qyExecutionFilters', 'qySourceFilters'].forEach(function (groupId) {
+        ['qyFeedbackFilters', 'qyExecutionFilters', 'qySourceFilters', 'qyRunTypeFilters'].forEach(function (groupId) {
             document.querySelectorAll(`#${groupId} .ds-filter-btn`).forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     document.querySelectorAll(`#${groupId} .ds-filter-btn`).forEach(function (b) { b.classList.remove('active'); });
@@ -229,7 +258,11 @@
             });
         });
 
-        loadQueryLogs();
+        authFetch('/api/alerts/settings')
+            .then(function (res) { return res.ok ? res.json() : null; })
+            .then(function (settings) { currentUserId = settings ? settings.user_id : null; })
+            .catch(function () { /* the alert links just stay hidden */ })
+            .finally(loadQueryLogs);
     });
 </script>
 {% endblock %}

@@ -48,6 +48,19 @@ def query_logs_page():
     """Query log directory: every logged chat query with its strategy, sources, and feedback."""
     return render_template('query_logs.html')
 
+# Alerts & Subscriptions - Reports list (manage, run history) and the
+# Management create/edit screen
+@bp.route('/alerts')
+def alerts_page():
+    """Every alert and subscription the user can manage, with recent runs."""
+    return render_template('alerts_manage.html')
+
+
+@bp.route('/alerts/new')
+def alerts_create_page():
+    """Create (or, with ?id=, edit) an alert or subscription."""
+    return render_template('alerts_create.html')
+
 # LLM Calls - Every individual LLM invocation across the app, with token counts and cost
 @bp.route('/llm_calls')
 def llm_calls_page():

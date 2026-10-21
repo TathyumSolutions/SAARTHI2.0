@@ -445,7 +445,9 @@ class QueryFormatterAgent:
         self.state = {}
         self.insight_generator = DataInsightGeneratorAgent(llm_url=llm_url, model=model)
 
-    def execute_query(self, sql_query: str, user_query: str = "",target_model: str = None,system_instructions: str = "", db_config: dict = None) -> dict:
+    def execute_query(self, sql_query: str, user_query: str = "",target_model: str = None,system_instructions: str = "", db_config: dict = None, with_insights: bool = True) -> dict:
+        # with_insights=False skips the insight generator's LLM call - for
+        # scheduled alert/subscription replays, which only need the rows.
         # db_config, if given, overrides self.db_config's env-var/hardcoded
         # defaults (the app's own database) with the specific external
         # connection this request's schema actually came from - see
@@ -571,7 +573,7 @@ class QueryFormatterAgent:
             
             raw_insights = self.insight_generator.generate_insights(
                 data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions
-            )
+            ) if with_insights else {}
             
             # FIX: Ensure it always builds a dict with BOTH keys so the bottom code doesn't break
             if isinstance(raw_insights, dict):
@@ -598,7 +600,7 @@ class QueryFormatterAgent:
             columns_list = list(df.columns)
             raw_insights = self.insight_generator.generate_insights(
                 data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions
-            )
+            ) if with_insights else {}
             if isinstance(raw_insights, dict):
                 insights_data = {
                     "insights": raw_insights.get("insights", []),
@@ -622,7 +624,7 @@ class QueryFormatterAgent:
 
             insights_data = self.insight_generator.generate_insights(
                 data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions
-            )
+            ) if with_insights else {}
 
 
 

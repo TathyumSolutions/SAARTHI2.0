@@ -464,6 +464,37 @@ def stream_message():
     pass
 
 
+def resolve_model_credentials(model_name, company_code, custom_key='', model_base_url=''):
+    """
+    For a configured api:// or ollama:// model, the saved custom key and
+    base URL from its ModelConfiguration (preferring the one saved for this
+    company) - unless the request already supplied them. Returns
+    (custom_key, model_base_url).
+    """
+    if model_name.startswith('api://') or model_name.startswith('ollama://'):
+        # Querying the record to fetch credentials securely on the server
+        config_rows = ModelConfiguration.query.filter_by(model=model_name).all()
+        selected_config = None
+        for row in config_rows:
+            row_settings = row.settings if isinstance(row.settings, dict) else {}
+            if str(row_settings.get('company_code') or '').strip() == company_code:
+                selected_config = row
+                break
+        if not selected_config and config_rows:
+            selected_config = config_rows[0]
+
+        if selected_config:
+            db_settings = selected_config.settings or {}
+            # If a custom key was saved, use it to override the default credentials pipeline
+            if not custom_key and db_settings.get('custom_key'):
+                custom_key = db_settings.get('custom_key')
+                print(f"DEBUG: Successfully intercepted database router '{model_name}'. Injecting secure custom credentials token.")
+            if not model_base_url and db_settings.get('base_url'):
+                model_base_url = db_settings.get('base_url')
+
+    return custom_key, model_base_url
+
+
 llm_service = LLMService()
 router_service = RouterService()
 
@@ -494,26 +525,16 @@ def send_message():
     
     company_ctx = _resolve_company_context()
 
-    if model_name.startswith('api://') or model_name.startswith('ollama://'):
-        # Querying the record to fetch credentials securely on the server
-        config_rows = ModelConfiguration.query.filter_by(model=model_name).all()
-        selected_config = None
-        for row in config_rows:
-            row_settings = row.settings if isinstance(row.settings, dict) else {}
-            if str(row_settings.get('company_code') or '').strip() == company_ctx['company_code']:
-                selected_config = row
-                break
-        if not selected_config and config_rows:
-            selected_config = config_rows[0]
+    custom_key, model_base_url = resolve_model_credentials(
+        model_name, company_ctx['company_code'], custom_key, model_base_url
+    )
 
-        if selected_config:
-            db_settings = selected_config.settings or {}
-            # If a custom key was saved, use it to override the default credentials pipeline
-            if not custom_key and db_settings.get('custom_key'):
-                custom_key = db_settings.get('custom_key')
-                print(f"DEBUG: Successfully intercepted database router '{model_name}'. Injecting secure custom credentials token.")
-            if not model_base_url and db_settings.get('base_url'):
-                model_base_url = db_settings.get('base_url')
+    # Why this question is being asked: Q a regular chat question (default),
+    # A or S when an alert or subscription is being set up. Stored on the
+    # QueryLog row - see RouterService.get_smart_response.
+    run_type = str(data.get('run_type') or 'Q').upper()
+    if run_type not in ('Q', 'A', 'S'):
+        return jsonify({"error": "run_type must be Q, A or S"}), 400
 
     try:
         # STEP 1: Get the answer from your RAG logic in LLMService
@@ -533,6 +554,7 @@ def send_message():
             system_instructions=system_instructions,
             company_code=company_code,
             user_id=user_id,
+            run_type=run_type,
         )
         print(f"DEBUG: AI Response from Service: {ai_response}")
 
