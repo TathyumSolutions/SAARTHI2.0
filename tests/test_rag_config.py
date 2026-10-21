@@ -20,4 +20,4 @@ def test_rag_config_loader_reads_expected_defaults():
 
 def test_get_rag_setting_supports_nested_keys():
     assert get_rag_setting("retrieval.top_k") == 3
-    assert get_rag_setting("chunking.table.enabled") is False
+    assert get_rag_setting("chunking.table.enabled") is True

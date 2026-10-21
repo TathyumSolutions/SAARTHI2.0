@@ -4,7 +4,6 @@ import ssl
 import time
 import re
 from langchain_community.document_loaders import (
-    PyMuPDFLoader,
     Docx2txtLoader,
     TextLoader,
     UnstructuredMarkdownLoader,
@@ -22,6 +21,17 @@ import requests
 import json
 from app.models.model_config import ModelConfiguration
 from .rag_config import load_rag_config
+from .document_extraction import (
+    IMAGE_CAPTION_PROMPT,
+    build_table_chunks,
+    expand_table_siblings,
+    extract_pdf_images,
+    extract_pdf_tables,
+    format_context,
+    load_pdf_text,
+    pages_without_text,
+    transcribe_scanned_pages,
+)
 from .llm_call_logger import tracked_invoke, record_ollama_call
 #from .databridge_services import run_data_bridge_agent
 try:
@@ -209,56 +219,8 @@ class LLMService:
     def validate_sql(self, sql_query, database_schema):
         pass
 
-    def _table_to_markdown(self, rows):
-        """Turns a list-of-rows table into a clean markdown table string."""
-        if not rows:
-            return ""
-        header = rows[0]
-        lines = ["| " + " | ".join(str(c or "") for c in header) + " |"]
-        lines.append("|" + "|".join(["---"] * len(header)) + "|")
-        for row in rows[1:]:
-            lines.append("| " + " | ".join(str(c or "") for c in row) + " |")
-        return "\n".join(lines)
-
-    def _extract_pdf_tables(self, file_path, document_code):
-        import pdfplumber
-        from langchain_core.documents import Document
-        import uuid
-
-        table_cfg = self.rag_config["chunking"]["table"]
-        chunks = []
-        try:
-            with pdfplumber.open(file_path) as pdf:
-                for page_num, page in enumerate(pdf.pages):
-                    for table_index, table in enumerate(page.extract_tables()):
-                        if not table or len(table) < 2:
-                            continue
-                        table_id = f"{document_code}_table_p{page_num}_{table_index}_{uuid.uuid4().hex[:6]}"
-                        header, body_rows = table[0], table[1:]
-                        if len(body_rows) <= table_cfg["keep_whole_if_under_rows"]:
-                            chunks.append(Document(
-                                page_content=self._table_to_markdown(table),
-                                metadata={"document_code": document_code, "table_id": table_id,
-                                          "source": "pdf_table", "chunk_type": "table", "page": page_num}
-                            ))
-                        else:
-                            group_size = table_cfg["keep_whole_if_under_rows"]
-                            for i in range(0, len(body_rows), group_size):
-                                group = body_rows[i:i + group_size]
-                                piece_rows = ([header] + group) if table_cfg["repeat_headers_on_split"] else group
-                                chunks.append(Document(
-                                    page_content=self._table_to_markdown(piece_rows),
-                                    metadata={"document_code": document_code, "table_id": table_id,
-                                              "source": "pdf_table", "chunk_type": "table", "page": page_num}
-                                ))
-        except Exception as e:
-            print(f"⚠️ [RAG] Could not extract PDF tables from {file_path}: {e}")
-        return chunks
-
     def _extract_docx_tables(self, file_path, document_code):
         from docx import Document as DocxDocument
-        from langchain_core.documents import Document
-        import uuid
 
         table_cfg = self.rag_config["chunking"]["table"]
         chunks = []
@@ -266,24 +228,7 @@ class LLMService:
             doc = DocxDocument(file_path)
             for table_index, table in enumerate(doc.tables):
                 rows = [[cell.text for cell in row.cells] for row in table.rows]
-                if len(rows) < 2:
-                    continue
-                table_id = f"{document_code}_table_{table_index}_{uuid.uuid4().hex[:6]}"
-                header, body_rows = rows[0], rows[1:]
-                if len(body_rows) <= table_cfg["keep_whole_if_under_rows"]:
-                    chunks.append(Document(
-                        page_content=self._table_to_markdown(rows),
-                        metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table", "chunk_type": "table"}
-                    ))
-                else:
-                    group_size = table_cfg["keep_whole_if_under_rows"]
-                    for i in range(0, len(body_rows), group_size):
-                        group = body_rows[i:i + group_size]
-                        piece_rows = ([header] + group) if table_cfg["repeat_headers_on_split"] else group
-                        chunks.append(Document(
-                            page_content=self._table_to_markdown(piece_rows),
-                            metadata={"document_code": document_code, "table_id": table_id, "source": "docx_table", "chunk_type": "table"}
-                        ))
+                chunks.extend(build_table_chunks(rows, document_code, table_cfg, source="docx_table", table_index=table_index))
         except Exception as e:
             print(f"⚠️ [RAG] Could not extract DOCX tables from {file_path}: {e}")
         return chunks
@@ -333,43 +278,11 @@ class LLMService:
 
         return chunks
 
-    def _extract_pdf_images(self, file_path, document_code):
-        import fitz
-        import base64
-        from langchain_core.documents import Document
-        import uuid
-
-        image_cfg = self.rag_config["ingestion"]["images"]
-        chunks = []
-        try:
-            pdf_doc = fitz.open(file_path)
-            for page_num in range(len(pdf_doc)):
-                page = pdf_doc[page_num]
-                for img_index, img in enumerate(page.get_images(full=True)):
-                    xref = img[0]
-                    base_image = pdf_doc.extract_image(xref)
-                    image_bytes = base_image["image"]
-                    if len(image_bytes) < image_cfg["min_image_size_bytes"]:
-                        continue
-                    b64_image = base64.b64encode(image_bytes).decode("utf-8")
-                    caption = self._caption_image(b64_image, base_image["ext"])
-                    if caption:
-                        image_id = f"{document_code}_image_p{page_num}_{img_index}_{uuid.uuid4().hex[:6]}"
-                        chunks.append(Document(
-                            page_content=caption,
-                            metadata={"document_code": document_code, "image_id": image_id,
-                                      "source": "pdf_image", "chunk_type": "image", "page": page_num}
-                        ))
-            pdf_doc.close()
-        except Exception as e:
-            print(f"⚠️ [RAG] Could not extract PDF images from {file_path}: {e}")
-        return chunks
-
-    def _caption_image(self, b64_image, image_ext):
+    def _caption_image(self, b64_image, image_ext, prompt=IMAGE_CAPTION_PROMPT):
         try:
             vision_llm = ChatOpenAI(model="gpt-4o-mini", temperature=self.rag_config["generation"]["temperature"], openai_api_key=os.getenv("OPENAI_API_KEY"))
             message = HumanMessage(content=[
-                {"type": "text", "text": "Describe this image in 2-3 sentences, focusing on any data, numbers, chart values, or important details a business user would need to know."},
+                {"type": "text", "text": prompt},
                 {"type": "image_url", "image_url": {"url": f"data:image/{image_ext};base64,{b64_image}"}}
             ])
             response = tracked_invoke(vision_llm, [message], purpose="rag.image_caption", model_name="gpt-4o-mini", provider="openai")
@@ -377,6 +290,66 @@ class LLMService:
         except Exception as e:
             print(f"⚠️ [RAG] Could not caption image: {e}")
             return None
+
+    def _load_pdf(self, file_path, document_code):
+        """
+        A PDF as (text_documents, table_chunks, image_chunks): tables come
+        out as markdown chunks with their area cut from the body text,
+        scanned pages are transcribed by the vision model, and embedded
+        images are described - each gated by rag_config.yaml.
+        """
+        table_cfg = self.rag_config["chunking"]["table"]
+        images_cfg = self.rag_config["ingestion"]["images"]
+
+        table_chunks, table_bboxes = [], {}
+        if table_cfg.get("enabled"):
+            try:
+                table_chunks, table_bboxes = extract_pdf_tables(file_path, document_code, table_cfg)
+            except Exception as e:
+                print(f"⚠️ [RAG] Could not extract PDF tables from {file_path}: {e}")
+            if not table_cfg.get("remove_table_text_from_body", True):
+                table_bboxes = {}
+
+        documents = load_pdf_text(file_path, table_bboxes)
+
+        scanned = []
+        if images_cfg.get("ocr_scanned_pages", True):
+            scanned = pages_without_text(file_path)[: int(images_cfg.get("max_ocr_pages", 30))]
+            if scanned:
+                print(f"🔎 [RAG] Transcribing {len(scanned)} scanned page(s) of {file_path}")
+                documents.extend(transcribe_scanned_pages(file_path, scanned, self._caption_image))
+                documents.sort(key=lambda d: d.metadata.get("page", 0))
+
+        image_chunks = []
+        if images_cfg.get("extract_from_pdf"):
+            try:
+                # A scanned page is one big image - it's already transcribed above.
+                image_chunks = extract_pdf_images(file_path, document_code, images_cfg, self._caption_image, skip_pages=scanned)
+            except Exception as e:
+                print(f"⚠️ [RAG] Could not extract PDF images from {file_path}: {e}")
+
+        return documents, table_chunks, image_chunks
+
+    def _fetch_table_pieces(self, client, table_id, qdrant_filter):
+        """Every stored chunk of one table, for expand_table_siblings."""
+        from qdrant_client.http import models as qmodels
+        from langchain_core.documents import Document
+
+        must = [qmodels.FieldCondition(key="metadata.table_id", match=qmodels.MatchValue(value=table_id))]
+        if qdrant_filter is not None:
+            # Never widen retrieval past what this user can see.
+            must.extend(qdrant_filter.must or [])
+        points, _ = client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=qmodels.Filter(must=must),
+            limit=200,
+            with_payload=True,
+            with_vectors=False,
+        )
+        return [
+            Document(page_content=(p.payload or {}).get("page_content", ""), metadata=(p.payload or {}).get("metadata", {}))
+            for p in points
+        ]
 
     def _generate_hyde_document(self, query):
         """Writes a short hypothetical answer to search with, instead of the raw question."""
@@ -463,50 +436,44 @@ class LLMService:
         
         try:
             # 1. Loader Selection
+            # PDFs go through a structure-aware path (see document_extraction.py):
+            # tables become markdown chunks instead of garbled body text,
+            # scanned pages are transcribed, and images are described.
+            table_chunks, image_chunks = [], []
             if ext == ".pdf":
-                loader = PyMuPDFLoader(file_path)
-            elif ext in [".docx", ".doc"]:
-                loader = Docx2txtLoader(file_path)
-            elif ext == ".md":
-                loader = UnstructuredMarkdownLoader(file_path)
-            elif ext == ".rtf":
-                loader = UnstructuredRTFLoader(file_path)
+                documents, table_chunks, image_chunks = self._load_pdf(file_path, document_code)
             else:
-                loader = TextLoader(file_path)
+                if ext in [".docx", ".doc"]:
+                    loader = Docx2txtLoader(file_path)
+                elif ext == ".md":
+                    loader = UnstructuredMarkdownLoader(file_path)
+                elif ext == ".rtf":
+                    loader = UnstructuredRTFLoader(file_path)
+                else:
+                    loader = TextLoader(file_path)
+                documents = loader.load()
 
-            # Load the data
-            documents = loader.load()
+                # NOTE: Docx2txtLoader still also pulls DOCX table content as
+                # plain text - some duplication is expected, not a bug.
+                if ext in [".docx", ".doc"] and self.rag_config["chunking"]["table"]["enabled"]:
+                    table_chunks = self._extract_docx_tables(file_path, document_code)
+                if ext in [".docx", ".doc"] and self.rag_config["ingestion"]["images"].get("extract_from_docx"):
+                    if ext == ".doc":
+                        print("⚠️ [RAG] Image extraction not supported for legacy .doc format, only .docx")
+                    else:
+                        image_chunks = self._extract_docx_images(file_path, document_code)
 
             # Content-aware summary of what this document actually covers -
             # shown as its MetaMind summary in the Knowledge Base Details
             # popup, so a user (or the AI router) can tell what's inside
             # without opening it. Generated once here, from the full loaded
-            # text, rather than on every router config regen (see
-            # automated_metamind.py's introspect_qdrant, which only counts
-            # chunks - it has no access to their text and regenerates too
-            # often to re-summarize on every run).
-            content_summary = self._summarize_document_topics(documents)
-
-            # Extract tables and images separately, gated by rag_config.yaml so this
-            # is a no-op until those settings are turned on.
-            # NOTE: the normal text loader above will still also pull table content
-            # as garbled plain text - some duplication is expected, not a bug.
-            table_chunks = []
-            if self.rag_config["chunking"]["table"]["enabled"]:
-                if ext == ".pdf":
-                    table_chunks = self._extract_pdf_tables(file_path, document_code)
-                elif ext in [".docx", ".doc"]:
-                    table_chunks = self._extract_docx_tables(file_path, document_code)
-
-            image_chunks = []
-            images_cfg = self.rag_config["ingestion"]["images"]
-            if ext == ".pdf" and images_cfg.get("extract_from_pdf"):
-                image_chunks = self._extract_pdf_images(file_path, document_code)
-            elif ext in [".docx", ".doc"] and images_cfg.get("extract_from_docx"):
-                if ext == ".doc":
-                    print("⚠️ [RAG] Image extraction not supported for legacy .doc format, only .docx")
-                else:
-                    image_chunks = self._extract_docx_images(file_path, document_code)
+            # content (tables and image descriptions included, so a mostly
+            # tabular or scanned document still gets a real summary), rather
+            # than on every router config regen (see automated_metamind.py's
+            # introspect_qdrant, which only counts chunks - it has no access
+            # to their text and regenerates too often to re-summarize on
+            # every run).
+            content_summary = self._summarize_document_topics(documents + table_chunks + image_chunks)
 
             # 2. Chunking
             text_splitter = RecursiveCharacterTextSplitter(
@@ -522,6 +489,12 @@ class LLMService:
 
             chunks.extend(table_chunks)
             chunks.extend(image_chunks)
+
+            if not chunks:
+                return {"error": (
+                    "No readable content found in this file. If it is a scanned PDF, "
+                    "turn on 'Scanned page transcription' in Settings and upload it again."
+                )}
 
             for chunk in chunks:
                 chunk.metadata.update(extra_metadata or {})
@@ -863,7 +836,15 @@ class LLMService:
                 docs = self._merge_and_dedupe_docs(doc_lists)
             else:
                 docs = vector_store.similarity_search(search_queries[0], k=retrieval_cfg["top_k"], filter=qdrant_filter)
-            context_text = "\n\n".join([doc.page_content for doc in docs])
+            if retrieval_cfg.get("group_table_siblings"):
+                # A hit on one slice of a split table brings back the rest of
+                # that table, so totals/comparisons see every row.
+                docs = expand_table_siblings(
+                    docs,
+                    lambda table_id: self._fetch_table_pieces(client, table_id, qdrant_filter),
+                    max_pieces=retrieval_cfg.get("max_table_pieces", 8),
+                )
+            context_text = format_context(docs)
             
             retrieval_msg = f"Found {len(docs)} relevant sections in your documents."
             
@@ -898,6 +879,11 @@ class LLMService:
                 "Don't front-load every supporting detail from the context - if "
                 "there's more worth surfacing, end with a short offer such as "
                 "'Want more detail on this?' instead of including it all.\n\n"
+                "Each context section is tagged with its type and page. [Table] "
+                "sections are markdown tables - read values by matching the row "
+                "and the column header, and do arithmetic on them carefully. "
+                "[Image description] sections describe a chart or picture in the "
+                "document. Mention the page when it helps the user find the source.\n\n"
                 f"CONTEXT:\n{context_text}"
             )
             if system_instructions.strip():
