@@ -493,6 +493,58 @@ def test_get_smart_response_stores_run_type(people):
     assert log.call_args_list[1].kwargs["run_type"] == "Q"
 
 
+def _call(name, question, tables):
+    return {"name": name, "args": {"question": question, "tables": tables}, "id": question}
+
+
+def test_scheduling_merges_per_table_database_calls_into_one():
+    from app.services import router_service
+
+    question = "Inspections and production orders with defect rate above 5%"
+    calls = [_call("query_database", "inspections", ["inspection"]),
+             _call("query_database", "orders", ["production_order", "inspection"])]
+    merged = router_service._merge_calls_for_scheduling(calls, question)
+    assert len(merged) == 1
+    assert merged[0]["name"] == "query_database"
+    assert merged[0]["args"] == {"question": question, "tables": ["inspection", "production_order"]}
+
+
+def test_scheduling_leaves_mixed_or_single_calls_alone():
+    from app.services import router_service
+
+    mixed = [_call("query_database", "a", ["t1"]), _call("query_spreadsheet_data", "b", ["s1"])]
+    assert router_service._merge_calls_for_scheduling(mixed, "q") == mixed
+    single = [_call("query_database", "a", ["t1"])]
+    assert router_service._merge_calls_for_scheduling(single, "q") == single
+    docs = [{"name": "search_documents", "args": {"question": "a", "document_codes": []}},
+            {"name": "search_documents", "args": {"question": "b", "document_codes": ["D1"]}}]
+    assert router_service._merge_calls_for_scheduling(docs, "q") == docs
+
+
+def test_router_prompt_asks_for_one_query_only_when_scheduling():
+    from app.services import router_service
+
+    def prompt(scheduled):
+        with patch.object(router_service, "_log_build_router_messages_params"), \
+             patch.object(router_service, "_log_strategy_event"):
+            return router_service._build_router_messages(
+                "q", [], {}, "", "", scheduled_setup=scheduled)[0].content
+    assert "SCHEDULED QUESTION" in prompt(True)
+    assert "SCHEDULED QUESTION" not in prompt(False)
+
+
+@pytest.mark.parametrize("decision, words", [
+    ("MULTI", "more than one data source"),
+    ("FILES", "files and documents"),
+    ("GENERAL", "without looking up your data"),
+    ("SOMETHING_NEW", "another kind of source"),
+])
+def test_unsupported_answers_say_where_they_came_from(app, people, decision, words):
+    _query(people["asha"], decision=decision)
+    res = app.test_client().post("/api/alerts", json=_alert_payload(), headers=_headers(people["asha"]))
+    assert res.status_code == 400 and words in res.json["error"]
+
+
 # ------------------------------------------------------------------
 # The API
 # ------------------------------------------------------------------

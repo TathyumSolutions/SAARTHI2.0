@@ -26,7 +26,12 @@ as its owner, so it only sees data the owner can see in chat, whoever edits it.
    `RouterService.get_smart_response`, with `run_type` `A` or `S`), or *use an
    existing query* from your Query Logs. Only database and spreadsheet answers
    can be scheduled for now, because they are the ones a scheduled run can
-   replay without AI.
+   replay without AI. A question asked here tells the router to answer with a
+   single database (or spreadsheet) query that joins every table it needs, and
+   if the router still splits it into one database call per table, those calls
+   are merged back into one. When an answer still can't be scheduled, the
+   screen says where it came from (several sources, files, an API, or no data
+   at all).
 2. **When should Saarthi tell you?** (alerts) Saarthi reads the result's columns
    and suggests rules that fit, for example *sales_amount falls below
    budget_amount*, *more than 10% below budget*, *drops more than 15% from the
