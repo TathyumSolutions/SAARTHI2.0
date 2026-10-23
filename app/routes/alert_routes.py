@@ -45,6 +45,23 @@ bp = Blueprint('alerts', __name__, url_prefix='/api/alerts')
 PREVIEW_ROWS = 100
 UNSUPPORTED_SOURCE = ("Alerts and subscriptions can use database or spreadsheet answers for now. "
                       "This answer came from another kind of source.")
+# Where an answer that can't be scheduled actually came from, so the user
+# knows what to change in the question.
+UNSUPPORTED_SOURCE_REASONS = {
+    'MULTI': ("This answer combined more than one data source, so there is no single query to re-run. "
+              "Try asking about just the database tables, or just one spreadsheet."),
+    'FILES': "This answer came from your files and documents, not from a database or spreadsheet.",
+    'API': "This answer came from a live API integration, not from a database or spreadsheet.",
+    'GENERAL': ("Saarthi answered this without looking up your data. "
+                "Try naming the tables or columns the numbers come from."),
+}
+
+
+def _unsupported_message(router_decision):
+    reason = UNSUPPORTED_SOURCE_REASONS.get(router_decision)
+    if not reason:
+        return UNSUPPORTED_SOURCE
+    return "Alerts and subscriptions can use database or spreadsheet answers for now. " + reason
 
 
 # ------------------------------------------------------------------
@@ -91,7 +108,7 @@ def _owned_source(owner, query_code):
     if not row or row.user_id != owner.id:
         raise ValueError("That query was not found in your Query Logs.")
     if row.router_decision not in SCHEDULABLE_TRACKS or not row.main_query:
-        raise ValueError(UNSUPPORTED_SOURCE)
+        raise ValueError(_unsupported_message(row.router_decision))
     return row
 
 
@@ -335,7 +352,7 @@ def ask_question():
         payload['supported'] = False
         payload['message'] = "Saarthi couldn't answer that from your data. Try rephrasing the question."
     elif not payload['supported']:
-        payload['message'] = UNSUPPORTED_SOURCE
+        payload['message'] = _unsupported_message(router_decision)
     return jsonify(payload)
 
 

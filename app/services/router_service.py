@@ -679,6 +679,45 @@ def _log_query(
 REUSABLE_TRACKS = ("DB", "SPREADSHEET")
 
 
+# Questions asked while setting up an alert or subscription (run_type A/S)
+# are only useful if their answer can be replayed on a schedule, and only a
+# single DB or SPREADSHEET answer can (see REUSABLE_TRACKS). The router
+# tends to split a question naming several tables ("inspections and
+# production orders and employees ...") into one query_database call per
+# table, which lands the answer in MULTI even though one SQL query with
+# joins answers it - so for these questions it is told to prefer one call,
+# and same-tool calls it still splits are merged back into one.
+SCHEDULED_SETUP_ROUTER_NOTE = """SCHEDULED QUESTION:
+This question is being set up as a scheduled alert or subscription, so its
+answer must come from ONE query that can be re-run later. If the question is
+about database tables, answer it with a SINGLE query_database call that names
+every table it needs (the SQL agent joins them) - never one call per table.
+Likewise use a single query_spreadsheet_data call for spreadsheet tables.
+Only use another tool if the data genuinely isn't in the database or a
+spreadsheet."""
+
+_MERGEABLE_SCHEDULED_TOOLS = ("query_database", "query_spreadsheet_data")
+
+
+def _merge_calls_for_scheduling(tool_calls: list, user_query: str) -> list:
+    """For an alert/subscription setup question: several calls to the same
+    query_database (or query_spreadsheet_data) tool become one call asking
+    the whole question over all their tables, so the answer is a single
+    replayable query rather than a MULTI combination. Calls to different
+    tools are left as they are."""
+    names = {c["name"] for c in tool_calls}
+    if len(tool_calls) < 2 or len(names) != 1 or next(iter(names)) not in _MERGEABLE_SCHEDULED_TOOLS:
+        return tool_calls
+    tables = []
+    for call in tool_calls:
+        for table in (call.get("args") or {}).get("tables") or []:
+            if table not in tables:
+                tables.append(table)
+    merged = dict(tool_calls[0])
+    merged["args"] = {**(tool_calls[0].get("args") or {}), "question": user_query, "tables": tables}
+    return [merged]
+
+
 def _find_reusable_query(company_code: Optional[str], user_id: Optional[int], user_query: str,
                          min_score: float = REUSE_MATCH_THRESHOLD):
     """
@@ -1015,7 +1054,8 @@ def _log_build_router_messages_params(
 
 def _build_router_messages(user_query: str, chat_history, router_config: dict,
                             live_tools_summary: str, system_instructions: str,
-                            feedback_context: str = "", session_id: str = None) -> list:
+                            feedback_context: str = "", session_id: str = None,
+                            scheduled_setup: bool = False) -> list:
     """
     Assembles the message list for the routing LLM call under a fixed token
     budget. Priority order when something has to be cut:
@@ -1195,6 +1235,9 @@ CURRENT DATA SOURCE CONFIGURATION (router_metamind.json — may be trimmed for l
 """
     if feedback_context:
         system_prompt += f"\n\n{feedback_context}"
+
+    if scheduled_setup:
+        system_prompt += f"\n\n{SCHEDULED_SETUP_ROUTER_NOTE}"
 
     if system_instructions and system_instructions.strip():
         system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
@@ -1889,8 +1932,10 @@ class RouterService:
         """
         run_type: why this question is being asked - 'Q' a regular chat
         question, 'A' setting up an alert, 'S' setting up a subscription.
-        The answer pipeline is the same for all three; run_type is only
-        stored on the QueryLog row so Query Logs can tell them apart.
+        run_type is stored on the QueryLog row so Query Logs can tell them
+        apart. For A and S the router is also steered toward one replayable
+        database or spreadsheet query (see SCHEDULED_SETUP_ROUTER_NOTE);
+        otherwise the pipeline is the same for all three.
         """
         if run_type not in RUN_TYPES:
             run_type = "Q"
@@ -2047,6 +2092,7 @@ class RouterService:
                 system_instructions,
                 feedback_context,
                 session_id=session_id,
+                scheduled_setup=run_type in ("A", "S"),
             )
 
             # ------------------------------------------------
@@ -2089,6 +2135,12 @@ class RouterService:
                     continue
                 seen_calls.add(dedup_key)
                 tool_calls.append(call)
+            if run_type in ("A", "S"):
+                merged_calls = _merge_calls_for_scheduling(tool_calls, user_query)
+                if len(merged_calls) < len(tool_calls):
+                    print(f"🗓️ [SCHEDULED SETUP] Merged {len(tool_calls)} {tool_calls[0]['name']} calls into one "
+                          f"so the answer can be replayed on a schedule.")
+                tool_calls = merged_calls
 
             print(f"🧠 Router selected tools: {[c['name'] for c in tool_calls]}")
             _log_strategy_event(
