@@ -1,0 +1,80 @@
+SAARTHI 2.0 - Manufacturing Demo Questions
+==========================================
+Data sources: demo_manufacturing database (16 tables), Excel reference workbooks
+(demo_manufacturing/output/excel/), and policy documents (demo_manufacturing/output/guidelines/).
+
+
+A. DATABASE - SIMPLE LOOKUPS
+----------------------------
+1. How many active plants do we have, and in which regions?
+2. List all machines that are currently under Breakdown status.
+3. How many employees are there in each plant?
+4. Show all suppliers with a quality rating below 3.0.
+5. Which customers are of type Export Client?
+6. What is the standard cost and selling price of the Hydraulic Cylinder Assembly?
+7. List all raw materials in the Plastic Resin category with their standard unit price.
+
+
+B. DATABASE - AGGREGATIONS & KPIs
+---------------------------------
+8. What is the total production order value by plant?
+9. What is the overall rejection rate (quantity rejected / quantity produced) by product?
+10. Which are the top 5 customers by total order value?
+11. How many production orders are currently Delayed, and what is the average delay in days?
+12. What is the total machine downtime in hours by downtime category?
+13. Which machine type has the highest total maintenance cost?
+14. What is the total purchase order spend by raw material?
+15. How many shipments are In Transit, and what is their total invoice amount?
+16. What is the total amount of overdue payables by plant?
+17. What is the pass / rework / fail split of quality inspections by inspection stage?
+
+
+C. DATABASE - MULTI-TABLE / ANALYTICAL
+--------------------------------------
+18. Which plant has the highest downtime minutes per shift in the production log?
+19. Which suppliers have the most rejected purchase orders, and what are the rejection reasons?
+20. Show production orders that are flagged at-risk along with customer name and plant.
+21. What is the gross margin (selling price - standard cost) per product, and which product earns the most margin in total sales?
+22. Which machines have logged 3 or more High/Critical downtime events?
+23. Compare planned vs produced quantity by shift (Morning / Afternoon / Night).
+24. Which products have the highest defect rate in Final Inspection?
+25. Show the month-wise trend of production order value for the last 12 months.
+26. Which customers have total order value exceeding their credit limit?
+27. What is the raw material requirement (from the bill of materials) for all open production orders of the Brake Caliper Assembly?
+
+
+D. EXCEL REFERENCE WORKBOOKS
+----------------------------
+28. What is the benchmark market price for Copper Wire, and how does it compare to our standard unit price?   (01_raw_material_price_benchmarks.xlsx)
+29. Which plants have more than 5 machines according to the plant master?                                       (02_plant_master.xlsx)
+30. What empanelment tier and payment terms apply to a supplier rated 4.6?                                       (03_vendor_rating_card.xlsx)
+31. What is the preventive maintenance frequency and estimated PM downtime for a Hydraulic Press?                 (04_machine_maintenance_schedule.xlsx)
+
+
+E. POLICY DOCUMENTS
+-------------------
+32. What is the PM frequency for a CNC lathe?                                                                     (Equipment Maintenance Policy)
+33. What defect rate leads to a lot being rejected outright?                                                      (Quality Management Policy)
+34. When is a supplier quality audit triggered?                                                                   (Quality Management Policy)
+35. What PPE is mandatory for machine operators on CNC and welding stations?                                      (EHS Safety Policy)
+36. How often are fire mock drills conducted?                                                                     (EHS Safety Policy)
+37. When is a purchase order auto-flagged for price review?                                                       (Vendor Management Policy)
+38. Under what conditions is a supplier debarred?                                                                 (Vendor Management Policy)
+39. Within what time must an emission limit exceedance be reported to Head Office EHS?                            (Environmental Compliance Policy)
+
+
+F. CROSS-SOURCE (DATABASE + EXCEL + DOCUMENTS)
+----------------------------------------------
+40. Which purchase orders were raised at a unit price above the market benchmark in the price reference card?
+41. Which suppliers' quality rating puts them in the "Approved (Watch List)" or "Under Review / Suspended" tier of the vendor rating card, and how many open POs do they still have?
+42. Which machines have exceeded the estimated PM downtime from the maintenance schedule?
+43. As per the quality policy, which inspections should have been marked Fail, and are any recorded with a different result?
+44. Which machines should be escalated for a condition assessment as per the equipment maintenance policy?
+45. Does the employee and machine count in the plant master Excel match the database?
+
+
+G. ALERTS & SUBSCRIPTIONS (try saving these as alerts)
+------------------------------------------------------
+46. Alert me when any machine goes into Breakdown status.
+47. Notify me daily of production orders delayed by more than 5 days.
+48. Send me a weekly summary of the quality inspection fail rate by plant.
