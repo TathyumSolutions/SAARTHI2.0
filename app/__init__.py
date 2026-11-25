@@ -75,6 +75,9 @@ def create_app(config_name='development'):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
+    # Sign everyone out when the server restarts (see app/utils/server_session.py).
+    from app.utils.server_session import register_jwt_session_checks
+    register_jwt_session_checks(jwt)
     # Flask-Limiter reads its storage backend from config at init time - set
     # it to Redis (already used elsewhere in this app) so limits are shared
     # across gunicorn's multiple worker processes, instead of each worker
