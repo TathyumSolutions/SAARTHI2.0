@@ -451,6 +451,8 @@
             }
 
             showStatus('Configuration saved successfully!', 'success');
+            // Make the new main model the active one in the chat bar too.
+            try { localStorage.setItem('saarthi_active_model', mainModel); } catch (e) { /* storage blocked */ }
             
             // Update user config state
             const data = await res.json();

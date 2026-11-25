@@ -340,6 +340,9 @@ USER QUESTION:
                         "model": actual_model,
                         "prompt": prompt,
                         "stream": False,
+                        # The plan is parsed as JSON below; small local models
+                        # (e.g. Llama 2 7B) otherwise wrap it in prose.
+                        "format": "json",
                         "options": {"temperature": 0.0}
                     }
                     _t0 = time.monotonic()

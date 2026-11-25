@@ -991,6 +991,7 @@
                 const selectedValue = this.value;
                 if (selectedValue && (selectedValue.startsWith("api://") || selectedValue.startsWith("gpt-"))) {
                     window.activeBackendModelName = selectedValue;
+                    localStorage.setItem('saarthi_active_model', selectedValue);
                     console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
                 } else {
                     this.selectedIndex = 0;
@@ -1003,6 +1004,7 @@
                 const selectedValue = this.value;
                 if (selectedValue && (selectedValue.startsWith("ollama://") || selectedValue.startsWith("api://") || selectedValue === "llama3")) {
                     window.activeBackendModelName = selectedValue;
+                    localStorage.setItem('saarthi_active_model', selectedValue);
                     console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
                 } else {
                     this.selectedIndex = 0;
@@ -1187,9 +1189,12 @@
                 const configuredModel = pipelineData && pipelineData.config && pipelineData.config.main_model;
                 const savedModel = localStorage.getItem('saarthi_active_model');
                 const bareModel = value => String(value || '').replace(/^(ollama|api):\/\//, '');
-                const option = Array.from(document.querySelectorAll(
+                // The model last picked in this bar wins; the LLM Mapping
+                // main model is only the default for a first visit.
+                const findOption = model => model && Array.from(document.querySelectorAll(
                     '#standard-llm-dropdown option, #opensource-llm-dropdown option'
-                )).find(item => bareModel(item.value) === bareModel(configuredModel || savedModel));
+                )).find(item => item.value && bareModel(item.value) === bareModel(model));
+                const option = findOption(savedModel) || findOption(configuredModel);
 
                 standardDropdown.selectedIndex = 0;
                 opensourceDropdown.selectedIndex = 0;

@@ -13,13 +13,18 @@ import json
 import os
 import sys
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 from app.services import router_service
+from app.services.router_llm import RouterModel
+
+# Stand-in for the tool-capable model select_router_model() would build;
+# tracked_invoke is patched, so it is never actually called.
+_FAKE_ROUTER_MODEL = RouterModel(label="gpt-4o-mini", provider="openai", chat_model=MagicMock())
 
 QUESTION = ("What was the total disbursed amount, and what commission would be payable "
             "if every loan were paid at the lowest slab rate?")
@@ -86,7 +91,7 @@ def test_db_plus_spreadsheet_answer_is_combined_computed_and_logged():
          patch.object(router_service, "_log_query", side_effect=fake_log_query), \
          patch.object(router_service, "_generate_chart_for_merged_table",
                       return_value={"bar": {"combined": True}}) as chart_gen, \
-         patch.object(router_service, "ChatOpenAI"):
+         patch.object(router_service, "select_router_model", return_value=_FAKE_ROUTER_MODEL):
         response = router_service.RouterService().get_smart_response(QUESTION, session_id="s1")
 
     assert response["router_decision"] == "MULTI"
@@ -130,7 +135,7 @@ def test_spreadsheet_only_answer_is_logged_as_spreadsheet():
          patch.object(router_service, "_build_router_messages", return_value=[]), \
          patch.object(router_service, "_log_query",
                       side_effect=lambda *a, **k: logged.setdefault("decision", a[3]) and "Q2"), \
-         patch.object(router_service, "ChatOpenAI"):
+         patch.object(router_service, "select_router_model", return_value=_FAKE_ROUTER_MODEL):
         response = router_service.RouterService().get_smart_response("slab rates", session_id="s2")
 
     # Previously fell through to "GENERAL", so spreadsheet answers could
