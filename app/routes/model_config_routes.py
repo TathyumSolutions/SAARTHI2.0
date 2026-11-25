@@ -98,24 +98,57 @@ def _list_company_configs(company_code: str):
     return scoped
 
 
+# Open-source models every company gets out of the box (see ollama-init in
+# docker-compose.yml for what is actually pulled).
+DEFAULT_SEEDED_MODELS = (
+    {
+        "name": "Llama 2 7B",
+        "model": "ollama://llama2:7b",
+        "provider": "ollama",
+    },
+)
+DEFAULT_SEEDED_MODEL_IDS = frozenset(item["model"] for item in DEFAULT_SEEDED_MODELS)
+
+
+def _dismissed_seeded_models(user_id: int) -> set:
+    """Seeded default models this user deleted - never re-seed those."""
+    cfg = ModelConfiguration.query.filter_by(name='global_default', user_id=user_id).first()
+    settings = cfg.settings if cfg and isinstance(cfg.settings, dict) else {}
+    return set(settings.get("dismissed_seeded_models") or [])
+
+
+def _remember_dismissed_seed(company_ctx: dict, model: str) -> None:
+    """Record on the user's global_default row that they deleted a seeded
+    default model, so _seed_default_open_source_models doesn't bring it back
+    on the next page load. The caller must have run
+    _ensure_default_model_setup() first (so the row exists) and commits."""
+    cfg = ModelConfiguration.query.filter_by(
+        name='global_default', user_id=company_ctx["user_id"]
+    ).first()
+    if cfg is None:
+        return
+    settings = dict(cfg.settings) if isinstance(cfg.settings, dict) else {}
+    dismissed = set(settings.get("dismissed_seeded_models") or [])
+    dismissed.add(model)
+    settings["dismissed_seeded_models"] = sorted(dismissed)
+    cfg.settings = settings  # reassign so the JSON column is flagged dirty
+
+
 def _seed_default_open_source_models(company_ctx: dict):
     """Seed the single open-source model installed by default (Llama 2 7B).
 
     Also drops any configurations this function auto-seeded in the past
     (e.g. the earlier Llama 3 / Qwen 2.5 3B defaults) that are no longer
-    part of the default set, without touching models a user configured
-    themselves.
+    part of the default set, and collapses duplicate seeded rows (the page
+    fires several model-config requests in parallel on first load, and
+    each one could seed its own copy), without touching models a user
+    configured themselves. Seeded models the user deleted stay deleted.
     """
     company_code = company_ctx["company_code"]
     existing = _list_company_configs(company_code=company_code)
+    dismissed = _dismissed_seeded_models(company_ctx["user_id"])
 
-    defaults = [
-        {
-            "name": "Llama 2 7B",
-            "model": "ollama://llama2:7b",
-            "provider": "ollama",
-        },
-    ]
+    defaults = DEFAULT_SEEDED_MODELS
     default_models = {item["model"] for item in defaults}
 
     stale = [
@@ -125,6 +158,19 @@ def _seed_default_open_source_models(company_ctx: dict):
         and row.settings.get("seeded_default")
         and row.model not in default_models
     ]
+    # Keep the oldest seeded row per model, drop concurrent-seed duplicates.
+    kept_seeded = set()
+    for row in sorted(existing, key=lambda r: r.id or 0):
+        if row in stale or row.name == "global_default":
+            continue
+        if not (isinstance(row.settings, dict) and row.settings.get("seeded_default")):
+            continue
+        key = (row.user_id, row.model)
+        if key in kept_seeded:
+            stale.append(row)
+        else:
+            kept_seeded.add(key)
+
     for row in stale:
         db.session.delete(row)
 
@@ -135,7 +181,7 @@ def _seed_default_open_source_models(company_ctx: dict):
 
     created_any = bool(stale)
     for item in defaults:
-        if item["model"] in existing_models:
+        if item["model"] in existing_models or item["model"] in dismissed:
             continue
         cfg = ModelConfiguration(
             name=item["name"],
@@ -382,8 +428,14 @@ def update_configuration(config_id):
     current_user = get_current_user()
     if not current_user:
         return jsonify({"error": "Authentication required"}), 401
+    ctx = _resolve_company_context()
+    _ensure_default_model_setup(ctx)  # before any edits: it may seed/commit
     config = ModelConfiguration.query.filter_by(id=config_id, user_id=current_user.id).first_or_404()
+    if config.name == 'global_default':
+        return jsonify({"error": "Use /global-selection to change the global model selection."}), 400
     data = request.get_json() or {}
+
+    original_model = config.model
 
     if 'name' in data:
         config.name = data['name']
@@ -401,7 +453,18 @@ def update_configuration(config_id):
         existing_settings = config.settings if isinstance(config.settings, dict) else {}
         config.settings = {**existing_settings, **data['settings']}
 
-    db.session.commit()
+    # An edited row belongs to the user now: the seeder must not treat it as
+    # a stale default and delete it, nor re-add the default it replaced.
+    if isinstance(config.settings, dict) and config.settings.get("seeded_default"):
+        config.settings = {**config.settings, "seeded_default": False}
+    if original_model in DEFAULT_SEEDED_MODEL_IDS and config.model != original_model:
+        _remember_dismissed_seed(ctx, original_model)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Database write failed: {str(e)}"}), 500
     return jsonify({
         "configuration": config.to_dict(),
         "message": "Configuration updated successfully."
@@ -418,10 +481,20 @@ def delete_configuration(config_id):
     current_user = get_current_user()
     if not current_user:
         return jsonify({"error": "Authentication required"}), 401
+    ctx = _resolve_company_context()
+    _ensure_default_model_setup(ctx)  # before any edits: it may seed/commit
     config = ModelConfiguration.query.filter_by(id=config_id, user_id=current_user.id).first_or_404()
-    
-    db.session.delete(config)
-    db.session.commit()
+    if config.name == 'global_default':
+        return jsonify({"error": "The global model selection cannot be deleted."}), 400
+
+    try:
+        if config.model in DEFAULT_SEEDED_MODEL_IDS:
+            _remember_dismissed_seed(ctx, config.model)
+        db.session.delete(config)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Database delete failed: {str(e)}"}), 500
     return jsonify({"message": f"Configuration '{config.name}' deleted successfully."}), 200
 
 @bp.route('/templates', methods=['GET'])

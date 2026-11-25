@@ -700,7 +700,7 @@
 <div class="modal-overlay" id="modelModal">
     <div class="modal-content">
         <div class="modal-header">
-            <span class="modal-title">Configure New AI Model</span>
+            <span class="modal-title" id="modelModalTitle">Configure New AI Model</span>
             <button class="modal-close" onclick="closeModal('modelModal')">×</button>
         </div>
         <div class="modal-body">
@@ -740,8 +740,8 @@
 
             <div class="form-group">
                 <label class="form-label">API Endpoint URL</label>
-                <input type="text" id="modalEndpointUrl" class="form-input" placeholder="https://api.example.com/v1/chat/completions">
-                <div class="form-help">Base URL for API requests</div>
+                <input type="text" id="modalEndpointUrl" class="form-input" placeholder="https://api.example.com/v1">
+                <div class="form-help">Filled in from the selected provider - change it for a proxy or self-hosted endpoint</div>
             </div>
 
             <div class="form-group">
@@ -768,7 +768,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeModal('modelModal')">Cancel</button>
-            <button class="btn btn-primary" onclick="saveModel()">Save Configuration</button>
+            <button class="btn btn-primary" id="modelModalSaveBtn" onclick="saveModel()">Save Configuration</button>
         </div>
     </div>
 </div>
@@ -787,6 +787,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/model_config_modal.js') }}"></script>
 <script>
     let selfLearningModeEnabled = false;
     let lastUserQuestion = '';
@@ -1016,103 +1017,36 @@
 
         const qs = new URLSearchParams(window.location.search);
         if (qs.get('configure_model') === '1') {
-            const modal = document.getElementById('modelModal');
-            if (modal) {
-                modal.classList.add('active');
-                modal.style.display = 'flex';
-            }
+            openModelEditor(null);
+        }
+        const editModelId = qs.get('edit_model');
+        if (editModelId && window.modelSelectionReady) {
+            window.modelSelectionReady.then(() => {
+                const config = (window.configuredModelsById || {})[editModelId];
+                if (config) openModelEditor(config);
+            });
         }
     });
 
-    // ==========================================
-    // SAVE NEW MODEL CONFIGURATION
-    // ==========================================
-    function saveModel() {
-        const modelName = document.getElementById('modalModelName').value.trim();
-        const apiKey = document.getElementById('modalApiKey').value.trim();
-        const endpointUrl = (document.getElementById('modalEndpointUrl').value || '').trim();
-
-        const isStandard = document.getElementById('standardApi').checked;
-        const modelType = isStandard ? 'api' : 'open_source';
-
-        const providerSelector = document.getElementById('modalProviderSelect');
-        const modelProvider = providerSelector ? providerSelector.value : "Unknown";
-
-        if (!modelName) {
-            alert("Please provide a Model Name!");
-            return;
-        }
-        const normalizedModelSlug = modelName.toLowerCase().replace(/\s+/g, '-');
-        const looksLikeOllama = endpointUrl.toLowerCase().includes('ollama');
-        const effectivePrefix = (!isStandard && (!endpointUrl || looksLikeOllama)) ? 'ollama' : 'api';
-        const prefixedModelString = `${effectivePrefix}://${normalizedModelSlug}`;
-
-        const payload = {
-            name: modelName,
-            model: prefixedModelString,
-            provider: effectivePrefix === 'ollama' ? 'ollama' : modelProvider,
-            settings: {
-                custom_key: apiKey ? apiKey : null,
-                base_url: endpointUrl || null,
-                model_engine: effectivePrefix === 'ollama' ? 'ollama' : 'openai_compatible'
-            },
-            workspace_id: 1
-        };
-
-        authFetch('/api/model-config/configurations', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => {
-            if (!response.ok) {
-                return response.json()
-                    .catch(() => null)
-                    .then(body => {
-                        throw new Error((body && body.error) || `Database registration rejected with status code: ${response.status}`);
-                    });
-            }
-            return response.json();
-        })
-        .then(data => {
-            window.modelConfigMap[prefixedModelString] = payload.settings;
-
-            let targetDropdown = (effectivePrefix === 'ollama') ? document.getElementById('opensource-llm-dropdown') : document.getElementById('standard-llm-dropdown');
-            if (targetDropdown) {
-                const newOption = document.createElement('option');
-                newOption.value = prefixedModelString;
-                newOption.innerHTML = modelName;
-
-                targetDropdown.appendChild(newOption);
-                targetDropdown.value = newOption.value;
-
-                window.activeBackendModelName = newOption.value;
-                console.log(`🎯 Active Custom Model Activated: ${window.activeBackendModelName}`);
-            }
-
-            const plusBtnElement = document.getElementById('plusModelBtn');
-            if (plusBtnElement) {
-                const sidebarWrapper = plusBtnElement.parentElement;
-                const newSidebarItem = document.createElement('div');
-                newSidebarItem.className = 'sub-item';
-                newSidebarItem.innerHTML = `<span style="margin-right: 8px;">✓</span>${modelName}<span class="badge" style="margin-left: auto; background: var(--accent-green);">Active</span>`;
-                sidebarWrapper.insertBefore(newSidebarItem, plusBtnElement);
-            }
-
-            alert(`Model "${modelName}" configured and activated successfully!`);
-            closeModal('modelModal');
-
-            document.getElementById('modalModelName').value = '';
-            document.getElementById('modalApiKey').value = '';
-            document.getElementById('modalEndpointUrl').value = '';
-        })
-        .catch(error => {
-            console.error("Error saving model configuration:", error);
-            alert(`Failed to save model: ${error.message}`);
+    // Sidebar delete / modal save: reload dropdowns + sidebar, and make a
+    // newly created model the active one (as the old inline save did).
+    document.addEventListener('saarthi:models-changed', function (event) {
+        const detail = (event && event.detail) || {};
+        window.modelSelectionReady = loadSavedDatabaseModels().then(() => {
+            if (detail.action !== 'created' || !detail.config || !detail.config.model) return;
+            const option = Array.from(document.querySelectorAll(
+                '#standard-llm-dropdown option, #opensource-llm-dropdown option'
+            )).find(item => item.value === detail.config.model);
+            if (!option) return;
+            document.getElementById('standard-llm-dropdown').selectedIndex = 0;
+            document.getElementById('opensource-llm-dropdown').selectedIndex = 0;
+            option.selected = true;
+            window.activeBackendModelName = option.value;
+            localStorage.setItem('saarthi_active_model', option.value);
         });
-    }
+    });
+
+    // Add / edit model modal: see static/js/model_config_modal.js
 
     // ==========================================
     // CHAT MESSAGE INJECTOR INTERCEPTOR
@@ -1211,66 +1145,40 @@
                     opensourceDropdown.innerHTML = '<option value="" selected disabled>Select Open Source Model...</option>';
                 }
 
-                const sidebarList = document.getElementById('configuredModelsList');
-                const plusBtnElement = document.getElementById('plusModelBtn');
-                if (sidebarList) {
-                    sidebarList.innerHTML = '';
-                }
-
                 window.modelConfigMap = {};
+                window.configuredModelsById = {};
 
+                // One option per model: "ollama://llama2:7b" (DB config) and
+                // "llama2:7b" (registry) are the same model. The config is
+                // added first so it wins - it carries base_url / custom_key.
+                const seenModels = new Set();
                 const addOption = (dropdown, value, label) => {
-                    if (!dropdown || !value || dropdown.querySelector(`option[value="${CSS.escape(value)}"]`)) return;
+                    const key = normalizeModelId(value);
+                    if (!dropdown || !key || seenModels.has(key)) return;
+                    seenModels.add(key);
                     const newOption = document.createElement('option');
                     newOption.value = value;
                     newOption.textContent = label || value;
                     dropdown.appendChild(newOption);
                 };
 
-                const sidebarModels = new Set();
-                const addSidebarModel = (modelName, label, source) => {
-                    if (!sidebarList || !modelName || sidebarModels.has(modelName)) return;
-                    sidebarModels.add(modelName);
-                    const item = document.createElement('div');
-                    item.className = 'sub-item';
-                    item.title = modelName;
-                    const marker = source === 'registry' ? '•' : '✓';
-                    item.textContent = `${marker} ${label || modelName}`;
-                    sidebarList.appendChild(item);
-                };
-
-                registryModels.forEach(model => {
-                    const value = model.type === 'open_source' ? model.name : model.name;
-                    const targetDropdown = model.type === 'open_source' ? opensourceDropdown : standardDropdown;
-                    addOption(targetDropdown, value, model.display_name || model.name);
-                    if (model.type === 'open_source') {
-                        addSidebarModel(model.name, model.display_name || model.name, 'registry');
-                    }
-                });
-
                 configurations.forEach(config => {
                     const settings = config.settings || {};
+                    window.configuredModelsById[String(config.id)] = config;
                     window.modelConfigMap[config.model] = {
                         custom_key: settings.custom_key || '',
                         base_url: settings.base_url || '',
                     };
-
-                    const isOllama = config.provider === 'ollama' || config.model.startsWith('ollama://');
-                    let targetDropdown = isOllama ? document.getElementById('opensource-llm-dropdown') : document.getElementById('standard-llm-dropdown');
-
-                    if (targetDropdown) {
-                        if (!targetDropdown.querySelector(`option[value="${config.model}"]`)) {
-                            addOption(targetDropdown, config.model, config.name);
-                            console.log(`✅ Restored model option: ${config.name} -> ${targetDropdown.id}`);
-                        }
-                    }
-
-                    addSidebarModel(config.model, config.name, 'configured');
+                    const isOllama = config.provider === 'ollama' || String(config.model || '').startsWith('ollama://');
+                    addOption(isOllama ? opensourceDropdown : standardDropdown, config.model, config.name);
                 });
 
-                if (sidebarList && plusBtnElement) {
-                    sidebarList.appendChild(plusBtnElement);
-                }
+                registryModels.forEach(model => {
+                    const targetDropdown = model.type === 'open_source' ? opensourceDropdown : standardDropdown;
+                    addOption(targetDropdown, model.name, model.display_name || model.name);
+                });
+
+                renderConfiguredModelsSidebar(configurations, registryModels);
 
                 const configuredModel = pipelineData && pipelineData.config && pipelineData.config.main_model;
                 const savedModel = localStorage.getItem('saarthi_active_model');
