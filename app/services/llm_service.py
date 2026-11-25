@@ -1059,7 +1059,10 @@ class LLMService:
             elif _ollama_model_name(model_name):
                 actual_model = _ollama_model_name(model_name)
                 _, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
-                ollama_url = runtime_base_url or self.ollama_config["url"]
+                ollama_url = (
+                    resolve_ollama_endpoint(runtime_base_url, "generate")
+                    if runtime_base_url else self.ollama_config["url"]
+                )
                 print(f"📦 Dynamic RAG Routing payload to Custom Local Ollama model: {actual_model}")
                 ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
                 

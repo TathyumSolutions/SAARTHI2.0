@@ -466,8 +466,6 @@ def update_configuration(config_id):
         return jsonify({"error": "Use /global-selection to change the global model selection."}), 400
     data = request.get_json() or {}
 
-    original_model = config.model
-
     if 'name' in data:
         config.name = data['name']
     if 'model' in data:
@@ -488,11 +486,10 @@ def update_configuration(config_id):
         config.settings = {**existing_settings, **data['settings']}
 
     # An edited row belongs to the user now: the seeder must not treat it as
-    # a stale default and delete it, nor re-add the default it replaced.
+    # a stale default and delete it. If its model id moved off a default,
+    # the seeder simply re-adds that default on the next load.
     if isinstance(config.settings, dict) and config.settings.get("seeded_default"):
         config.settings = {**config.settings, "seeded_default": False}
-    if original_model in DEFAULT_SEEDED_MODEL_IDS and config.model != original_model:
-        _remember_dismissed_seed(ctx, original_model)
 
     try:
         db.session.commit()

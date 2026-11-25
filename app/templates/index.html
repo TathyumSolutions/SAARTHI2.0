@@ -1173,9 +1173,13 @@
                     addOption(isOllama ? opensourceDropdown : standardDropdown, config.model, config.name);
                 });
 
+                // Open-source registry models are sent as "ollama://<name>" -
+                // the form every Ollama route (and the dropdown's change
+                // handler) expects; a bare "llama2:7b" is rejected there.
                 registryModels.forEach(model => {
-                    const targetDropdown = model.type === 'open_source' ? opensourceDropdown : standardDropdown;
-                    addOption(targetDropdown, model.name, model.display_name || model.name);
+                    const isOpenSource = model.type === 'open_source';
+                    const value = isOpenSource ? `ollama://${model.name}` : model.name;
+                    addOption(isOpenSource ? opensourceDropdown : standardDropdown, value, model.display_name || model.name);
                 });
 
                 renderConfiguredModelsSidebar(configurations, registryModels);

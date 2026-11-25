@@ -184,14 +184,13 @@
         let modelId = derived.model;
         let prefix = derived.prefix;
 
-        // Keep an existing model id unless the name or type actually changed:
-        // seeded ids like "ollama://llama2:7b" cannot be rebuilt from the
-        // display name "Llama 2 7B".
+        // Editing never rebuilds the model id from the display name: the id
+        // is what Ollama / the provider is called with ("ollama://llama2:7b"
+        // cannot be derived from "Llama 2 7B"). Only the prefix follows a
+        // change of model type.
         if (editingConfig) {
-            const oldPrefix = String(editingConfig.model || '').startsWith('ollama://') ? 'ollama' : 'api';
-            if (modelName === editingConfig.name && prefix === oldPrefix) {
-                modelId = editingConfig.model;
-            }
+            const bareId = String(editingConfig.model || '').replace(/^(ollama|api):\/\//, '');
+            modelId = `${prefix}://${bareId}`;
         }
 
         const settings = {
