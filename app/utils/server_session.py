@@ -81,8 +81,15 @@ def session_claims() -> dict:
 
 
 def register_jwt_session_checks(jwt_manager) -> None:
-    """Rejects tokens issued before the current server run with 401."""
+    """Stamps every access token with the current server run and rejects
+    tokens issued before it with 401. Registered as an
+    additional_claims_loader, so every create_access_token() call - login,
+    tests, any future flow - gets the claim without having to remember it."""
     from flask import jsonify
+
+    @jwt_manager.additional_claims_loader
+    def _stamp_server_run(_identity):
+        return session_claims()
 
     @jwt_manager.token_verification_loader
     def _token_is_from_this_run(_jwt_header, jwt_data):

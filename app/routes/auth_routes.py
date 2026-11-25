@@ -7,7 +7,6 @@ import secrets
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from app.utils.server_session import session_claims
 from app import db, limiter
 from app.models.user import User, ROLE_ADMIN, ROLE_USER, STATUS_ACTIVE, STATUS_PENDING, STATUS_REJECTED
 from app.models.company import Company
@@ -206,7 +205,7 @@ def login():
     user.last_login = datetime.utcnow()
     db.session.commit()
 
-    access_token = create_access_token(identity=str(user.id), additional_claims=session_claims())
+    access_token = create_access_token(identity=str(user.id))
     log_event('login_success', company_code=user.company_code, user_id=user.id)
 
     return jsonify({
