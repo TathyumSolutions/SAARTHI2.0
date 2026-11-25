@@ -90,6 +90,8 @@
         el('standardApi').checked = true;
         el('modalProviderSelect').selectedIndex = 0;
         el('modalModelName').value = '';
+        el('modalModelId').value = '';
+        el('modalModelId').dataset.userEdited = '0';
         el('modalApiKey').value = '';
         el('modalEndpointUrl').value = '';
         el('modalEndpointUrl').dataset.userEdited = '0';
@@ -131,6 +133,8 @@
         providerSelect.value = match ? match.value : 'Custom Provider';
 
         el('modalModelName').value = config.name || '';
+        el('modalModelId').value = bareModelId(config.model);
+        el('modalModelId').dataset.userEdited = '1';
         el('modalApiKey').value = '';
 
         const endpoint = el('modalEndpointUrl');
@@ -152,14 +156,55 @@
             applyDefaultEndpoint();
         }
         setModalMode(Boolean(editingConfig));
+        refreshModelIdHelp();
         showModal();
     }
 
-    function buildModelId(modelName, isStandard, endpointUrl) {
-        const slug = modelName.toLowerCase().replace(/\s+/g, '-');
+    function bareModelId(model) {
+        return String(model || '').trim().replace(/^(ollama|api):\/\//, '');
+    }
+
+    function slugFromName(name) {
+        return String(name || '').trim().toLowerCase().replace(/\s+/g, '-');
+    }
+
+    function modelPrefix(isStandard, endpointUrl) {
         const looksLikeOllama = endpointUrl.toLowerCase().includes('ollama');
-        const prefix = (!isStandard && (!endpointUrl || looksLikeOllama)) ? 'ollama' : 'api';
-        return { prefix: prefix, model: `${prefix}://${slug}` };
+        return (!isStandard && (!endpointUrl || looksLikeOllama)) ? 'ollama' : 'api';
+    }
+
+    // Open Source: offer the models Ollama actually has, so an id like
+    // "llama-2-7b" (which Ollama does not know) is not saved by accident.
+    function refreshModelIdHelp() {
+        const help = el('modalModelIdHelp');
+        const options = el('ollamaModelOptions');
+        if (!help || !options) return;
+        options.innerHTML = '';
+        if (!isOpenSourceSelected()) {
+            help.textContent = 'Exact identifier the provider expects';
+            return;
+        }
+        help.textContent = 'Checking which models Ollama has installed...';
+        authFetch('/api/model-config/ollama-models')
+            .then(function (response) { return response.ok ? response.json() : { reachable: false, models: [] }; })
+            .then(function (data) {
+                if (!isOpenSourceSelected()) return;
+                (data.models || []).forEach(function (name) {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    options.appendChild(option);
+                });
+                if (!data.reachable) {
+                    help.textContent = 'Ollama is not reachable right now - check that the ollama container is running.';
+                } else if (!(data.models || []).length) {
+                    help.textContent = 'Ollama has no models installed yet (pull one, e.g. llama2:7b).';
+                } else {
+                    help.textContent = `Installed in Ollama: ${data.models.join(', ')}`;
+                }
+            })
+            .catch(function () {
+                help.textContent = 'Could not check the models installed in Ollama.';
+            });
     }
 
     function saveModel() {
@@ -174,24 +219,22 @@
             return;
         }
 
+        const bareId = bareModelId(el('modalModelId').value) || slugFromName(modelName);
+        if (/\s/.test(bareId)) {
+            alert('Model ID cannot contain spaces - use the exact identifier, e.g. "gpt-4o" or "llama2:7b".');
+            return;
+        }
+
         const generation = readGenerationSettings();
         if (generation.error) {
             alert(generation.error);
             return;
         }
 
-        const derived = buildModelId(modelName, isStandard, endpointUrl);
-        let modelId = derived.model;
-        let prefix = derived.prefix;
-
-        // Editing never rebuilds the model id from the display name: the id
-        // is what Ollama / the provider is called with ("ollama://llama2:7b"
-        // cannot be derived from "Llama 2 7B"). Only the prefix follows a
-        // change of model type.
-        if (editingConfig) {
-            const bareId = String(editingConfig.model || '').replace(/^(ollama|api):\/\//, '');
-            modelId = `${prefix}://${bareId}`;
-        }
+        // The id comes from the Model ID field, never from the display
+        // name ("ollama://llama2:7b" cannot be derived from "Llama 2 7B").
+        const prefix = modelPrefix(isStandard, endpointUrl);
+        const modelId = `${prefix}://${bareId}`;
 
         const settings = {
             base_url: endpointUrl || null,
@@ -251,7 +294,20 @@
         if (providerSelect) providerSelect.addEventListener('change', applyDefaultEndpoint);
         document.querySelectorAll('input[name="modelType"]').forEach(function (radio) {
             radio.addEventListener('change', applyDefaultEndpoint);
+            radio.addEventListener('change', refreshModelIdHelp);
         });
+
+        // Until the user types their own Model ID, suggest one from the name.
+        const nameInput = el('modalModelName');
+        const idInput = el('modalModelId');
+        if (nameInput && idInput) {
+            nameInput.addEventListener('input', function () {
+                if (idInput.dataset.userEdited !== '1') idInput.value = slugFromName(nameInput.value);
+            });
+            idInput.addEventListener('input', function () {
+                idInput.dataset.userEdited = idInput.value.trim() ? '1' : '0';
+            });
+        }
         if (endpoint) {
             endpoint.addEventListener('input', function () {
                 endpoint.dataset.userEdited = isAutofillable(endpoint.value) ? '0' : '1';

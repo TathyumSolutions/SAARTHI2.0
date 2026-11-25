@@ -735,7 +735,15 @@
             <div class="form-group">
                 <label class="form-label">Model Name</label>
                 <input type="text" id="modalModelName" class="form-input" placeholder="e.g., Claude 4.5 Sonnet, GPT-4o, Llama 3.3">
-                <div class="form-help">Enter the exact model identifier</div>
+                <div class="form-help">Display name shown in Saarthi</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Model ID</label>
+                <input type="text" id="modalModelId" class="form-input" list="ollamaModelOptions" autocomplete="off"
+                       placeholder="e.g., gpt-4o, claude-3-5-sonnet, llama2:7b">
+                <datalist id="ollamaModelOptions"></datalist>
+                <div class="form-help" id="modalModelIdHelp">Exact identifier the provider expects</div>
             </div>
 
             <div class="form-group">
@@ -787,7 +795,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="{{ url_for('static', filename='js/model_config_modal.js') }}"></script>
+<script src="{{ asset_url('js/model_config_modal.js') }}"></script>
 <script>
     let selfLearningModeEnabled = false;
     let lastUserQuestion = '';
@@ -1150,20 +1158,6 @@
                 window.modelConfigMap = {};
                 window.configuredModelsById = {};
 
-                // One option per model: "ollama://llama2:7b" (DB config) and
-                // "llama2:7b" (registry) are the same model. The config is
-                // added first so it wins - it carries base_url / custom_key.
-                const seenModels = new Set();
-                const addOption = (dropdown, value, label) => {
-                    const key = normalizeModelId(value);
-                    if (!dropdown || !key || seenModels.has(key)) return;
-                    seenModels.add(key);
-                    const newOption = document.createElement('option');
-                    newOption.value = value;
-                    newOption.textContent = label || value;
-                    dropdown.appendChild(newOption);
-                };
-
                 configurations.forEach(config => {
                     const settings = config.settings || {};
                     window.configuredModelsById[String(config.id)] = config;
@@ -1171,17 +1165,17 @@
                         custom_key: settings.custom_key || '',
                         base_url: settings.base_url || '',
                     };
-                    const isOllama = config.provider === 'ollama' || String(config.model || '').startsWith('ollama://');
-                    addOption(isOllama ? opensourceDropdown : standardDropdown, config.model, config.name);
                 });
 
-                // Open-source registry models are sent as "ollama://<name>" -
-                // the form every Ollama route (and the dropdown's change
-                // handler) expects; a bare "llama2:7b" is rejected there.
-                registryModels.forEach(model => {
-                    const isOpenSource = model.type === 'open_source';
-                    const value = isOpenSource ? `ollama://${model.name}` : model.name;
-                    addOption(isOpenSource ? opensourceDropdown : standardDropdown, value, model.display_name || model.name);
+                // Same list as the sidebar (buildModelCatalog in
+                // static/js/model_sidebar.js), so the two always match.
+                buildModelCatalog(configurations, registryModels).forEach(entry => {
+                    const dropdown = entry.openSource ? opensourceDropdown : standardDropdown;
+                    if (!dropdown) return;
+                    const option = document.createElement('option');
+                    option.value = entry.value;
+                    option.textContent = entry.label;
+                    dropdown.appendChild(option);
                 });
 
                 renderConfiguredModelsSidebar(configurations, registryModels);

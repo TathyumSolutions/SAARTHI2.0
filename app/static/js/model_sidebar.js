@@ -90,30 +90,85 @@
         return item;
     }
 
+    /**
+     * The one list of selectable models, shared by this sidebar and the chat
+     * page's two dropdowns so they can never disagree. One entry per model:
+     * a saved configuration wins over the registry entry for the same id
+     * (it is editable and carries the endpoint/key). Open-source registry
+     * models use the "ollama://<name>" value every Ollama route expects.
+     * Entries that share a display name get their model id appended, so two
+     * different models are never shown under the same label.
+     */
+    function buildModelCatalog(configurations, registryModels) {
+        const entries = [];
+        const seen = new Set();
+        const add = function (entry) {
+            const key = normalizeModelId(entry.value);
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            entries.push(entry);
+        };
+
+        (configurations || []).forEach(function (config) {
+            const value = String(config.model || '');
+            const isOpenSource = config.provider === 'ollama' || value.startsWith('ollama://');
+            add({ value: value, label: config.name || value, openSource: isOpenSource, config: config });
+        });
+        (registryModels || []).forEach(function (model) {
+            const isOpenSource = model.type === 'open_source';
+            add({
+                value: isOpenSource ? `ollama://${model.name}` : model.name,
+                label: model.display_name || model.name,
+                openSource: isOpenSource,
+                config: null
+            });
+        });
+
+        const labelCounts = {};
+        entries.forEach(function (e) { labelCounts[e.label] = (labelCounts[e.label] || 0) + 1; });
+        entries.forEach(function (e) {
+            if (labelCounts[e.label] > 1) e.label = `${e.label} (${normalizeModelId(e.value)})`;
+        });
+        return entries;
+    }
+
+    // Flag open-source models Ollama does not have - they fail on every
+    // question with "model not found".
+    function markUninstalledModels(wrapper) {
+        authFetch('/api/model-config/ollama-models')
+            .then(function (response) { return response.ok ? response.json() : null; })
+            .then(function (data) {
+                if (!data || !data.reachable) return;
+                const installed = new Set((data.models || []).map(function (m) { return String(m).toLowerCase(); }));
+                wrapper.querySelectorAll('.model-sub-item[data-open-source="1"]').forEach(function (item) {
+                    const id = item.dataset.modelId;
+                    const ok = installed.has(id) || (!id.includes(':') && installed.has(`${id}:latest`));
+                    if (ok) return;
+                    item.classList.add('model-not-installed');
+                    item.title = `${item.title} - not installed in Ollama`;
+                    const label = item.querySelector('.model-sub-item-label');
+                    if (label) label.textContent = `⚠ ${label.textContent.replace(/^\S+\s/, '')}`;
+                });
+            })
+            .catch(function () { /* marker is best-effort */ });
+    }
+
     function renderConfiguredModelsSidebar(configurations, registryModels) {
         const wrapper = document.getElementById('configuredModelsList');
         if (!wrapper) return;
 
         const plusBtn = document.getElementById('plusModelBtn');
         wrapper.innerHTML = '';
-        const seen = new Set();
+        const catalog = buildModelCatalog(configurations, registryModels);
 
-        (configurations || []).forEach(function (config) {
-            const key = normalizeModelId(config.model);
-            if (!key || seen.has(key)) return;
-            seen.add(key);
-            wrapper.appendChild(buildItem(config.name || config.model, config.model, '✓', config));
+        catalog.forEach(function (entry) {
+            const item = buildItem(entry.label, entry.value, entry.config ? '✓' : '•', entry.config);
+            item.dataset.modelId = normalizeModelId(entry.value);
+            item.dataset.openSource = entry.openSource ? '1' : '0';
+            wrapper.appendChild(item);
         });
 
-        (registryModels || []).forEach(function (model) {
-            if (model.type !== 'open_source') return;
-            const key = normalizeModelId(model.name);
-            if (!key || seen.has(key)) return;
-            seen.add(key);
-            wrapper.appendChild(buildItem(model.display_name || model.name, model.name, '•', null));
-        });
-
-        if (seen.size === 0) {
+        if (catalog.length === 0) {
             const emptyItem = document.createElement('div');
             emptyItem.className = 'sub-item';
             emptyItem.style.color = '#64748b';
@@ -124,6 +179,7 @@
         }
 
         if (plusBtn) wrapper.appendChild(plusBtn);
+        if (catalog.some(function (e) { return e.openSource; })) markUninstalledModels(wrapper);
     }
 
     function loadConfiguredModelsSidebar() {
@@ -147,6 +203,7 @@
     }
 
     window.normalizeModelId = normalizeModelId;
+    window.buildModelCatalog = buildModelCatalog;
     window.renderConfiguredModelsSidebar = renderConfiguredModelsSidebar;
     window.loadConfiguredModelsSidebar = loadConfiguredModelsSidebar;
 

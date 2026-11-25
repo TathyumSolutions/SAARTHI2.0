@@ -290,15 +290,23 @@
             white-space: nowrap;
         }
 
+        /* Always visible (hover-only actions were easy to miss); full
+           strength on hover/focus. */
         .model-sub-item-actions {
-            display: none;
-            gap: 4px;
+            display: inline-flex;
+            gap: 2px;
             margin-left: 6px;
+            flex-shrink: 0;
+            opacity: 0.6;
         }
 
         .model-sub-item:hover .model-sub-item-actions,
         .model-sub-item:focus-within .model-sub-item-actions {
-            display: inline-flex;
+            opacity: 1;
+        }
+
+        .model-sub-item.model-not-installed .model-sub-item-label {
+            color: #f59e0b;
         }
 
         .model-action-btn {
@@ -872,7 +880,7 @@
             fetchSavedSessions();
         });
     </script>
-    <script src="{{ url_for('static', filename='js/model_sidebar.js') }}"></script>
+    <script src="{{ asset_url('js/model_sidebar.js') }}"></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

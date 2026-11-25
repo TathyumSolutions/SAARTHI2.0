@@ -17,6 +17,7 @@ from app.services.model_selection_service import (
     get_recommended_preset_payload,
 )
 from app.services.llm_providers import validate_dynamic_model_id
+from app.services.ollama_service import list_installed_models, missing_model_error
 
 
 def _reject_bare_api_model(model_value):
@@ -410,6 +411,10 @@ def create_configuration():
     if settings_error:
         return jsonify({"error": settings_error}), 400
 
+    ollama_error = missing_model_error(data.get('model'), settings.get('base_url'))
+    if ollama_error:
+        return jsonify({"error": ollama_error}), 400
+
     settings.setdefault('company_code', current_user.company_code or 'default_company')
     settings.setdefault('company_name', getattr(current_user, 'name', '') or '')
 
@@ -465,6 +470,14 @@ def update_configuration(config_id):
     if config.name == 'global_default':
         return jsonify({"error": "Use /global-selection to change the global model selection."}), 400
     data = request.get_json() or {}
+
+    new_model = data.get('model', config.model)
+    old_settings = config.settings if isinstance(config.settings, dict) else {}
+    new_base_url = (data.get('settings') or {}).get('base_url', old_settings.get('base_url'))
+    if new_model != config.model or new_base_url != old_settings.get('base_url'):
+        ollama_error = missing_model_error(new_model, new_base_url)
+        if ollama_error:
+            return jsonify({"error": ollama_error}), 400
 
     if 'name' in data:
         config.name = data['name']
@@ -527,6 +540,16 @@ def delete_configuration(config_id):
         db.session.rollback()
         return jsonify({"error": f"Database delete failed: {str(e)}"}), 500
     return jsonify({"message": f"Configuration '{config.name}' deleted successfully."}), 200
+
+@bp.route('/ollama-models', methods=['GET'])
+@jwt_required()
+def get_ollama_models():
+    """Models installed in Ollama, for the Configure Model form and the
+    sidebar's "not installed" marker.
+    Response: { "reachable": bool, "models": ["llama2:7b", ...] }"""
+    installed = list_installed_models()
+    return jsonify({"reachable": installed is not None, "models": installed or []}), 200
+
 
 @bp.route('/templates', methods=['GET'])
 @jwt_required()
