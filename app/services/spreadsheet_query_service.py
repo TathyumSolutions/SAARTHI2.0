@@ -145,7 +145,8 @@ def _invoke_llm(model_name: str, custom_key: str, system_content: str, user_cont
         import requests
         actual_model = model_name.replace("ollama://", "") if str(model_name).startswith("ollama://") else "llama3"
         prompt = f"{system_content}\n\n{user_content}"
-        ollama_url = model_base_url or "http://ollama:11434/api/generate"
+        from app.services.llm_providers import resolve_ollama_endpoint
+        ollama_url = resolve_ollama_endpoint(model_base_url, "generate")
         response = requests.post(
             ollama_url,
             json={"model": actual_model, "prompt": prompt, "stream": False, "options": {"temperature": 0}},

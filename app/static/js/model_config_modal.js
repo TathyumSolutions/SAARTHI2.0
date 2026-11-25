@@ -36,6 +36,12 @@
         ...Object.values(PROVIDER_DEFAULT_ENDPOINTS).filter(Boolean)
     ]);
 
+    // Same bounds as GET /api/model-config/parameters.
+    const DEFAULT_MAX_TOKENS = 4096;
+    const DEFAULT_TEMPERATURE = 0.7;
+    const MAX_TOKENS_RANGE = Object.freeze({ min: 1, max: 128000 });
+    const TEMPERATURE_RANGE = Object.freeze({ min: 0, max: 2 });
+
     let editingConfig = null;
 
     const el = function (id) { return document.getElementById(id); };
@@ -87,6 +93,29 @@
         el('modalApiKey').value = '';
         el('modalEndpointUrl').value = '';
         el('modalEndpointUrl').dataset.userEdited = '0';
+        el('modalMaxTokens').value = String(DEFAULT_MAX_TOKENS);
+        el('modalTemperature').value = String(DEFAULT_TEMPERATURE);
+        el('modalDescription').value = '';
+    }
+
+    /** Parsed generation settings, or {error} when a value is out of range. */
+    function readGenerationSettings() {
+        const maxTokensRaw = el('modalMaxTokens').value.trim();
+        const temperatureRaw = el('modalTemperature').value.trim();
+        const maxTokens = maxTokensRaw === '' ? DEFAULT_MAX_TOKENS : Number(maxTokensRaw);
+        const temperature = temperatureRaw === '' ? DEFAULT_TEMPERATURE : Number(temperatureRaw);
+
+        if (!Number.isInteger(maxTokens) || maxTokens < MAX_TOKENS_RANGE.min || maxTokens > MAX_TOKENS_RANGE.max) {
+            return { error: `Max Tokens must be a whole number between ${MAX_TOKENS_RANGE.min} and ${MAX_TOKENS_RANGE.max}.` };
+        }
+        if (!Number.isFinite(temperature) || temperature < TEMPERATURE_RANGE.min || temperature > TEMPERATURE_RANGE.max) {
+            return { error: `Temperature must be between ${TEMPERATURE_RANGE.min} and ${TEMPERATURE_RANGE.max}.` };
+        }
+        return {
+            max_tokens: maxTokens,
+            temperature: temperature,
+            description: el('modalDescription').value.trim() || null
+        };
     }
 
     function fillForm(config) {
@@ -108,6 +137,10 @@
         endpoint.value = settings.base_url || '';
         endpoint.dataset.userEdited = isAutofillable(endpoint.value) ? '0' : '1';
         if (!endpoint.value) applyDefaultEndpoint();
+
+        if (settings.max_tokens != null) el('modalMaxTokens').value = String(settings.max_tokens);
+        if (settings.temperature != null) el('modalTemperature').value = String(settings.temperature);
+        el('modalDescription').value = settings.description || '';
     }
 
     function openModelEditor(config) {
@@ -141,6 +174,12 @@
             return;
         }
 
+        const generation = readGenerationSettings();
+        if (generation.error) {
+            alert(generation.error);
+            return;
+        }
+
         const derived = buildModelId(modelName, isStandard, endpointUrl);
         let modelId = derived.model;
         let prefix = derived.prefix;
@@ -158,7 +197,10 @@
         const settings = {
             base_url: endpointUrl || null,
             model_engine: prefix === 'ollama' ? 'ollama' : 'openai_compatible',
-            provider_label: providerLabel
+            provider_label: providerLabel,
+            max_tokens: generation.max_tokens,
+            temperature: generation.temperature,
+            description: generation.description
         };
         // On edit a blank key means "keep the stored one" (the backend merges settings).
         if (apiKey || !editingConfig) settings.custom_key = apiKey || null;

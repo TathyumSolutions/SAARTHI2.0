@@ -9,7 +9,28 @@ temperature, key-fallback, and unrecognized-provider handling by passing
 those in explicitly.
 """
 import os
-from typing import Optional
+from typing import Literal, Optional
+
+DEFAULT_OLLAMA_HOST = "http://ollama:11434"
+
+# Path suffixes a stored Ollama endpoint may end with. A model configuration
+# can hold the host root, the OpenAI-compatible /v1 path, /api/chat or
+# /api/generate - and different callers need different endpoints.
+_OLLAMA_PATH_SUFFIXES = ("/api/chat", "/api/generate", "/api", "/v1")
+
+
+def resolve_ollama_endpoint(base_url: Optional[str],
+                            endpoint: Literal["chat", "generate"],
+                            default_host: str = DEFAULT_OLLAMA_HOST) -> str:
+    """Returns the Ollama URL for `endpoint` ("chat" for a messages
+    payload, "generate" for a prompt payload), whatever form the configured
+    base_url was saved in. Falls back to default_host when none is set."""
+    url = str(base_url or "").strip().rstrip("/")
+    for suffix in _OLLAMA_PATH_SUFFIXES:
+        if url.endswith(suffix):
+            url = url[: -len(suffix)]
+            break
+    return f"{url or default_host.rstrip('/')}/api/{endpoint}"
 
 # Bare provider-family names a user can type into "Configure New Model" that
 # will always 404 against the provider's API (e.g. "gpt" instead of

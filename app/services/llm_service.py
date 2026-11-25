@@ -17,6 +17,7 @@ from qdrant_client import QdrantClient
 #from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from app.services.llm_providers import resolve_ollama_endpoint
 from dotenv import load_dotenv
 import requests 
 import json
@@ -804,7 +805,11 @@ class LLMService:
                 elif _ollama_model_name(model_name) or model_name == "llama3":
                     actual_model = _ollama_model_name(model_name) or "llama3"
                     _, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
-                    ollama_url = runtime_base_url or self.ollama_config["url"]
+                    # Prompt payload below - normalise a stored /api/chat URL.
+                    ollama_url = (
+                        resolve_ollama_endpoint(runtime_base_url, "generate")
+                        if runtime_base_url else self.ollama_config["url"]
+                    )
                     cot_payload = {
                         "model": actual_model,
                         "prompt": analysis_prompt,

@@ -30,6 +30,23 @@ def _reject_bare_api_model(model_value):
     return validate_dynamic_model_id(value[len("api://"):])
 
 
+def _validate_generation_settings(settings: dict):
+    """None if the optional generation settings are valid, else the error
+    message. Bounds match GET /api/model-config/parameters."""
+    max_tokens = settings.get("max_tokens")
+    if max_tokens is not None:
+        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or not 1 <= max_tokens <= 128000:
+            return "settings.max_tokens must be an integer between 1 and 128000"
+    temperature = settings.get("temperature")
+    if temperature is not None:
+        if isinstance(temperature, bool) or not isinstance(temperature, (int, float)) or not 0.0 <= temperature <= 2.0:
+            return "settings.temperature must be a number between 0 and 2"
+    description = settings.get("description")
+    if description is not None and (not isinstance(description, str) or len(description) > 500):
+        return "settings.description must be text of at most 500 characters"
+    return None
+
+
 bp = Blueprint('model_config', __name__, url_prefix='/api/model-config')
 
 
@@ -108,6 +125,10 @@ DEFAULT_SEEDED_MODELS = (
     },
 )
 DEFAULT_SEEDED_MODEL_IDS = frozenset(item["model"] for item in DEFAULT_SEEDED_MODELS)
+DEFAULT_OLLAMA_CHAT_URL = "http://ollama:11434/api/chat"
+# Endpoint older seeds stored; callers now normalise either form, but new
+# and migrated rows use the chat URL the Configure Model form defaults to.
+_LEGACY_SEEDED_OLLAMA_URL = "http://ollama:11434/api/generate"
 
 
 def _dismissed_seeded_models(user_id: int) -> set:
@@ -180,6 +201,13 @@ def _seed_default_open_source_models(company_ctx: dict):
     }
 
     created_any = bool(stale)
+
+    for row in existing:
+        if row in stale or row.name == "global_default" or not isinstance(row.settings, dict):
+            continue
+        if row.settings.get("seeded_default") and row.settings.get("base_url") == _LEGACY_SEEDED_OLLAMA_URL:
+            row.settings = {**row.settings, "base_url": DEFAULT_OLLAMA_CHAT_URL}
+            created_any = True
     for item in defaults:
         if item["model"] in existing_models or item["model"] in dismissed:
             continue
@@ -193,7 +221,7 @@ def _seed_default_open_source_models(company_ctx: dict):
                 "company_code": company_code,
                 "company_name": company_ctx.get("company_name", ""),
                 "model_engine": "ollama",
-                "base_url": "http://ollama:11434/api/generate",
+                "base_url": DEFAULT_OLLAMA_CHAT_URL,
                 "seeded_default": True,
             },
         )
@@ -378,6 +406,9 @@ def create_configuration():
     settings = data.get('settings', {}) or {}
     if not isinstance(settings, dict):
         return jsonify({"error": "settings must be an object"}), 400
+    settings_error = _validate_generation_settings(settings)
+    if settings_error:
+        return jsonify({"error": settings_error}), 400
 
     settings.setdefault('company_code', current_user.company_code or 'default_company')
     settings.setdefault('company_name', getattr(current_user, 'name', '') or '')
@@ -449,6 +480,9 @@ def update_configuration(config_id):
     if 'settings' in data:
         if not isinstance(data['settings'], dict):
             return jsonify({"error": "settings must be an object"}), 400
+        settings_error = _validate_generation_settings(data['settings'])
+        if settings_error:
+            return jsonify({"error": settings_error}), 400
         # Merge incoming settings into existing configuration JSON field
         existing_settings = config.settings if isinstance(config.settings, dict) else {}
         config.settings = {**existing_settings, **data['settings']}
