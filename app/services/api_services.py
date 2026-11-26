@@ -88,7 +88,7 @@ def _resolve_model_runtime_settings(model_name: str):
     }
 
 
-def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', model_base_url='', ollama_config=None,display_query=None,system_instructions=''):
+def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, session_id=1, custom_key='', model_base_url='', ollama_config=None, display_query=None, system_instructions='', feedback_context='', hint_tool_name=''):
     """
     Dynamically routes queries to models, strictly enforcing tool execution,
     performs the actual API execution, and returns a fully parsed response context.
@@ -99,6 +99,10 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
     actually on offer in llm_tools_list - only a real match is used, so a
     stale or invented name from the router just falls back to letting the
     model choose freely, never a lookup error.
+
+    feedback_context: liked/rejected feedback on past similar questions
+    (router_service._build_feedback_context). Applied to the final answer
+    wording, the same way the GENERAL and FILES tracks apply it.
     """
 
     log_query = display_query if display_query else user_message
@@ -107,9 +111,12 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
 
     forced_tool_name = None
     if hint_tool_name:
+        # The router may pass the display name ("iNDIA Lending Rate") or the
+        # sanitized one ("iNDIA_Lending_Rate") - normalize before matching.
+        normalized_hint = _sanitize_tool_name(hint_tool_name)
         available_names = {t.get("function", {}).get("name") for t in llm_tools_list if isinstance(t, dict)}
-        if hint_tool_name in available_names:
-            forced_tool_name = hint_tool_name
+        if normalized_hint in available_names:
+            forced_tool_name = normalized_hint
 
     def _bind_tools(llm):
         """bind_tools with tool_choice forced to the router's metadata-based
@@ -145,8 +152,11 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
         "3. If the user's request does NOT match any available tool, you must output exactly this text: "
         "'ERROR: No matching workflow tool found to execute this request.' Do not write anything else."
     )
-    if system_instructions.strip():
+    if system_instructions and system_instructions.strip():
         system_prompt += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
+    if forced_tool_name:
+        # Reinforces the tool_choice hint for providers that don't support it.
+        system_prompt += f"\n\nThe tool that best matches this request is '{forced_tool_name}'. Call it unless it clearly does not apply."
 
     try:
         runtime_settings = _resolve_model_runtime_settings(model_name)
@@ -368,6 +378,16 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
                     push_tool_event("start", "Putting Your Answer Together", "Formatting the result into a clear answer.")
 
                     refinement_sys_msg = "You are an expert data analysis engine. Read the following raw API dataset payload context and provide a precise, targeted answer to the user's specific request. Do not include unneeded object structures or JSON syntax wrappers."
+                    if system_instructions and system_instructions.strip():
+                        refinement_sys_msg += f"\n\nUSER CUSTOM FORMATTING INSTRUCTIONS:\n{system_instructions}"
+                    if feedback_context:
+                        print(f"🧠 [FEEDBACK-DEBUG] [API] Using feedback context:\n{feedback_context}")
+                        refinement_sys_msg += (
+                            f"\n\n{feedback_context}\n\n"
+                            "That is feedback on how PAST similar questions were answered, not part of this "
+                            "question. If any of it is still relevant here, apply it to how you answer; "
+                            "ignore whatever doesn't apply to this question."
+                        )
                     refinement_usr_msg = f"User intent request: {user_message}\n\nLive API Fetched Raw Dataset Context:\n{str(raw_data)[:3500]}"
 
                     # Reuses selected local Ollama model identifier cleanly
