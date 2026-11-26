@@ -157,7 +157,7 @@
     <!-- Main Model Selector -->
     <div class="model-section">
         <h3>Main Model Selector</h3>
-        <div class="section-desc">Choose the default model used for pipeline steps that do not have specific overrides. Models are sorted by overall score (best to least).</div>
+        <div class="section-desc">The model the chat uses - changing it here changes the chat bar, and changing the chat bar changes it here. Steps without a specific model below also use it.</div>
         <label class="form-label" for="mainModelSelect">Main model</label>
         <select id="mainModelSelect" class="form-select"></select>
         <div class="model-info" id="mainModelInfo"></div>
@@ -166,7 +166,7 @@
     <!-- Preset Recommendations -->
     <div class="model-section">
         <h3>Recommended Setting</h3>
-        <div class="section-desc">Select a preset to highlight the recommended models for each pipeline step. You can still override individual selections.</div>
+        <div class="section-desc">Pick a preset to fill every step with its recommended model (only models you have configured). You can still change individual steps.</div>
         <div class="recommended-row">
             <label class="recommended-item">
                 <input type="radio" name="presetType" value="oss" id="presetOpenSource" />
@@ -186,7 +186,7 @@
     <!-- Detailed Grid -->
     <div class="model-section">
         <h3>Detailed Grid</h3>
-        <div class="section-desc">Each step shows the recommended model (highlighted). You can select different models for each step to override the main selection.</div>
+        <div class="section-desc">Steps on "Use main model" follow the main model - the same model selected in the chat bar. Choose a specific model only for steps that should use a different one. ⭐ marks the preset's recommendation.</div>
         <table class="grid-table">
             <thead>
                 <tr>
@@ -208,123 +208,105 @@
 
 {% block extra_scripts %}
 <script>
+    // Model Selection - the main model here and the model in the chat bar
+    // are the same setting: the chat bar saves it on every change
+    // (PUT /api/user/model-pipeline/main-model) and reads it on load, so the
+    // two always match. Both use the same model list (buildModelCatalog in
+    // static/js/model_sidebar.js), i.e. the same ids ("api://gpt-4o",
+    // "ollama://llama2:7b").
+    const USE_MAIN = '';
+
     const state = {
-        allModels: [],
-        recommendations: {},
+        catalog: [],          // [{value, label, openSource, config}]
+        registryByName: {},   // bare name -> registry metadata
+        recommendations: {},  // step label -> registry model name
         currentPreset: 'hybrid',
-        userConfig: null,
+        userConfig: {},
     };
 
-    /**
-     * Format model display label with metadata
-     */
-    function formatModelLabel(model) {
-        let label = model.display_name || model.name;
-        const meta = [];
-        
-        if (model.type === 'api') {
-            meta.push(`${model.provider}`);
-        }
-        if (model.speed) {
-            meta.push(`${model.speed}s`);
-        }
-        if (model.cost_per_query) {
-            meta.push(`$${model.cost_per_query}`);
-        }
-        
-        if (meta.length) {
-            label += ` (${meta.join(', ')})`;
-        }
-        return label;
+    function findEntry(model) {
+        if (!model) return null;
+        const target = normalizeModelId(model);
+        return state.catalog.find(e => normalizeModelId(e.value) === target) || null;
     }
 
-    /**
-     * Load all models and user configuration
-     */
+    function formatModelLabel(entry) {
+        const meta = state.registryByName[normalizeModelId(entry.value)];
+        const details = [];
+        if (meta) {
+            if (meta.type === 'api' && meta.provider) details.push(meta.provider);
+            if (meta.speed) details.push(`${meta.speed}s`);
+            if (meta.cost_per_query) details.push(`$${meta.cost_per_query}`);
+        }
+        return details.length ? `${entry.label} (${details.join(', ')})` : entry.label;
+    }
+
+    function addOption(select, value, label) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        select.appendChild(opt);
+        return opt;
+    }
+
     async function loadData() {
         try {
-            // Load all models
-            const modelsRes = await authFetch('/api/models/registry');
-            const modelsData = await modelsRes.json();
-            state.allModels = modelsData.models || [];
+            const [registryRes, configsRes, pipelineRes] = await Promise.all([
+                authFetch('/api/models/registry'),
+                authFetch('/api/model-config/configurations'),
+                authFetch('/api/user/model-pipeline'),
+            ]);
+            const registry = ((await registryRes.json()).models) || [];
+            const configurations = ((await configsRes.json()).configurations) || [];
+            state.userConfig = ((await pipelineRes.json()).config) || {};
 
-            // Load user config
-            const configRes = await authFetch('/api/user/model-pipeline');
-            const configData = await configRes.json();
-            state.userConfig = configData.config || {};
+            state.catalog = buildModelCatalog(configurations, registry);
+            state.registryByName = {};
+            registry.forEach(m => { state.registryByName[normalizeModelId(m.name)] = m; });
 
-            // Populate main model dropdown
             populateMainModelSelect();
 
-            // Load initial recommendations
-            await loadRecommendations('hybrid');
-
-            // Restore user's preference if exists
-            if (state.userConfig.model_type_preference) {
-                const preset = state.userConfig.model_type_preference;
-                document.querySelector(`input[value="${preset}"]`).checked = true;
+            const preset = state.userConfig.model_type_preference;
+            if (preset && document.querySelector(`input[name="presetType"][value="${preset}"]`)) {
+                document.querySelector(`input[name="presetType"][value="${preset}"]`).checked = true;
                 state.currentPreset = preset;
-                await loadRecommendations(preset);
             }
+            await loadRecommendations(state.currentPreset);
 
-            // Restore user's main model selection
-            if (state.userConfig.main_model) {
-                document.getElementById('mainModelSelect').value = state.userConfig.main_model;
-                updateMainModelInfo();
-            }
+            const mainEntry = findEntry(state.userConfig.main_model);
+            document.getElementById('mainModelSelect').value = mainEntry ? mainEntry.value : '';
+            updateMainModelInfo();
 
-            // Rebuild grid with user's step overrides
-            rebuildStepGrid();
-
+            rebuildStepGrid(state.userConfig.step_models || {});
         } catch (error) {
             console.error('Failed to load data:', error);
             showStatus('Failed to load models', 'error');
         }
     }
 
-    /**
-     * Populate main model dropdown
-     */
     function populateMainModelSelect() {
         const select = document.getElementById('mainModelSelect');
-        select.innerHTML = '<option value="">-- Select Main Model --</option>';
-
-        state.allModels.forEach(model => {
-            const opt = document.createElement('option');
-            opt.value = model.name;
-            opt.textContent = formatModelLabel(model);
-            select.appendChild(opt);
-        });
+        select.innerHTML = '';
+        addOption(select, '', '-- Select Main Model --');
+        state.catalog.forEach(entry => addOption(select, entry.value, formatModelLabel(entry)));
     }
 
-    /**
-     * Update main model info display
-     */
     function updateMainModelInfo() {
-        const mainModel = document.getElementById('mainModelSelect').value;
+        const entry = findEntry(document.getElementById('mainModelSelect').value);
         const infoEl = document.getElementById('mainModelInfo');
-        
-        if (!mainModel) {
+        if (!entry) {
             infoEl.textContent = '';
             return;
         }
-
-        const model = state.allModels.find(m => m.name === mainModel);
-        if (!model) return;
-
-        const info = [];
-        info.push(`Type: ${model.type === 'api' ? 'API (' + model.provider + ')' : 'Open Source'}`);
-        info.push(`Speed: ${model.speed}s/query`);
-        if (model.memory) info.push(`Memory: ${model.memory}GB`);
-        if (model.cost_per_query) info.push(`Cost: $${model.cost_per_query}/query`);
-        info.push(`Quality Score: ${(model.quality * 100).toFixed(0)}%`);
-
+        const meta = state.registryByName[normalizeModelId(entry.value)] || {};
+        const info = [`Type: ${entry.openSource ? 'Open Source' : 'API' + (meta.provider ? ` (${meta.provider})` : '')}`];
+        if (meta.speed) info.push(`Speed: ${meta.speed}s/query`);
+        if (meta.memory) info.push(`Memory: ${meta.memory}GB`);
+        if (meta.cost_per_query) info.push(`Cost: $${meta.cost_per_query}/query`);
+        if (meta.quality) info.push(`Quality Score: ${(meta.quality * 100).toFixed(0)}%`);
         infoEl.textContent = info.join(' • ');
     }
 
-    /**
-     * Load recommendations for a preset type
-     */
     async function loadRecommendations(presetType) {
         try {
             const res = await authFetch(`/api/models/recommendations?type=${presetType}`);
@@ -337,56 +319,39 @@
     }
 
     /**
-     * Rebuild step grid with recommendations
+     * One row per step. "Use main model" is the default, so a step only
+     * runs on a different model when one is explicitly chosen. The
+     * preset's recommended model is marked with a star (when it is one of
+     * your models).
      */
-    function rebuildStepGrid() {
+    function rebuildStepGrid(stepModels) {
         const body = document.getElementById('stepGridBody');
         body.innerHTML = '';
 
-        // Get all pipeline steps from recommendations
-        const steps = Object.keys(state.recommendations);
-
-        steps.forEach(stepName => {
+        Object.keys(state.recommendations).forEach(stepName => {
             const tr = document.createElement('tr');
-
-            // Step name cell
             const tdStep = document.createElement('td');
             const stepCell = document.createElement('div');
             stepCell.className = 'step-cell';
-            
             const stepLabel = document.createElement('span');
             stepLabel.textContent = stepName;
             stepCell.appendChild(stepLabel);
-            
             tdStep.appendChild(stepCell);
 
-            // Model select cell
             const tdModel = document.createElement('td');
             const select = document.createElement('select');
             select.className = 'form-select step-model-select';
             select.dataset.step = stepName;
 
-            // Add all models to select
-            state.allModels.forEach(model => {
-                const opt = document.createElement('option');
-                opt.value = model.name;
-                opt.textContent = formatModelLabel(model);
-                
-                // Highlight recommended model
-                if (model.name === state.recommendations[stepName]) {
-                    opt.textContent += ' ⭐ (Recommended)';
-                    opt.selected = true;
-                }
-                
-                select.appendChild(opt);
+            addOption(select, USE_MAIN, 'Use main model');
+            const recommended = findEntry(state.recommendations[stepName]);
+            state.catalog.forEach(entry => {
+                const star = recommended && entry.value === recommended.value ? ' ⭐ (Recommended)' : '';
+                addOption(select, entry.value, formatModelLabel(entry) + star);
             });
 
-            // Restore user's selection if exists
-            if (state.userConfig.step_models && state.userConfig.step_models[stepName]) {
-                select.value = state.userConfig.step_models[stepName];
-            } else if (!select.value && state.recommendations[stepName]) {
-                select.value = state.recommendations[stepName];
-            }
+            const chosen = findEntry(stepModels[stepName]);
+            select.value = chosen ? chosen.value : USE_MAIN;
 
             tdModel.appendChild(select);
             tr.appendChild(tdStep);
@@ -395,96 +360,73 @@
         });
     }
 
-    /**
-     * Get current step selections
-     */
+    /** Fills every step with the preset's recommended model (where it is one of your models). */
+    function applyPresetToGrid() {
+        const stepModels = {};
+        Object.keys(state.recommendations).forEach(stepName => {
+            const entry = findEntry(state.recommendations[stepName]);
+            if (entry) stepModels[stepName] = entry.value;
+        });
+        rebuildStepGrid(stepModels);
+    }
+
+    /** Only explicit overrides - steps on "Use main model" are left out. */
     function getCurrentStepModels() {
         const models = {};
         document.querySelectorAll('.step-model-select').forEach(select => {
-            const step = select.dataset.step;
-            const value = select.value;
-            if (value) {
-                models[step] = value;
-            }
+            if (select.value !== USE_MAIN) models[select.dataset.step] = select.value;
         });
         return models;
     }
 
-    /**
-     * Show status message
-     */
     function showStatus(message, type = 'info') {
         const status = document.getElementById('saveStatus');
         status.textContent = message;
         status.className = 'status ' + type;
     }
 
-    /**
-     * Save user's configuration
-     */
     async function saveConfiguration() {
         const mainModel = document.getElementById('mainModelSelect').value;
-        
         if (!mainModel) {
             showStatus('Please select a main model', 'error');
             return;
         }
-
         showStatus('Saving...');
 
         try {
-            const config = {
-                main_model: mainModel,
-                model_type_preference: state.currentPreset,
-                step_models: getCurrentStepModels()
-            };
-
             const res = await authFetch('/api/user/model-pipeline', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(config)
+                body: JSON.stringify({
+                    main_model: mainModel,
+                    model_type_preference: state.currentPreset,
+                    step_models: getCurrentStepModels(),
+                })
             });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || 'Save failed');
 
-            if (!res.ok) {
-                const error = await res.json();
-                throw new Error(error.message || 'Save failed');
-            }
-
-            showStatus('Configuration saved successfully!', 'success');
-            
-            // Update user config state
-            const data = await res.json();
-            state.userConfig = data.config;
-
+            state.userConfig = data.config || state.userConfig;
+            // The chat bar picks this up on load, and live in other open tabs.
+            try { localStorage.setItem('saarthi_active_model', mainModel); } catch (e) { /* storage blocked */ }
+            showStatus('Configuration saved - the chat now uses this model.', 'success');
         } catch (error) {
             console.error('Save error:', error);
             showStatus(`Failed: ${error.message}`, 'error');
         }
     }
 
-    /**
-     * Event listeners
-     */
     document.addEventListener('DOMContentLoaded', () => {
-        // Main model change
         document.getElementById('mainModelSelect').addEventListener('change', updateMainModelInfo);
 
-        // Preset radio buttons
         document.querySelectorAll('input[name="presetType"]').forEach(radio => {
             radio.addEventListener('change', async (e) => {
-                state.currentPreset = e.target.value;
-                // Switching presets should apply the new preset's recommended
-                // models; drop stale per-step overrides saved under the old preset.
-                state.userConfig.step_models = {};
                 await loadRecommendations(e.target.value);
-                rebuildStepGrid();
+                applyPresetToGrid();
             });
         });
 
-        // Save button
         document.getElementById('saveBtn').addEventListener('click', saveConfiguration);
-
-        // Initial data load
         loadData();
     });
 </script>

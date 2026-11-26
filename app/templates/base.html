@@ -282,6 +282,48 @@
             color: var(--text-primary);
         }
 
+        .model-sub-item-label {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Always visible (hover-only actions were easy to miss); full
+           strength on hover/focus. */
+        .model-sub-item-actions {
+            display: inline-flex;
+            gap: 2px;
+            margin-left: 6px;
+            flex-shrink: 0;
+            opacity: 0.6;
+        }
+
+        .model-sub-item:hover .model-sub-item-actions,
+        .model-sub-item:focus-within .model-sub-item-actions {
+            opacity: 1;
+        }
+
+        .model-sub-item.model-not-installed .model-sub-item-label {
+            color: #f59e0b;
+        }
+
+        .model-action-btn {
+            background: transparent;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        .model-action-btn:hover {
+            background: var(--hover-bg);
+        }
+
         .sub-item .badge {
             margin-left: auto;
             font-size: 9px;
@@ -646,85 +688,7 @@
             });
         });
 
-        function renderConfiguredModelsSidebar(configurations, registryModels) {
-            const wrapper = document.getElementById('configuredModelsList');
-            if (!wrapper) return;
-
-            const plusBtn = document.getElementById('plusModelBtn');
-            wrapper.innerHTML = '';
-            const seenModels = new Set();
-            const addModel = function (modelName, label, marker) {
-                const normalizedName = String(modelName || '').replace(/^(ollama|api):\/\//, '');
-                if (!normalizedName || seenModels.has(normalizedName)) return;
-                seenModels.add(normalizedName);
-                const modelItem = document.createElement('div');
-                modelItem.className = 'sub-item';
-                modelItem.title = modelName;
-                modelItem.textContent = `${marker} ${label || modelName}`;
-                wrapper.appendChild(modelItem);
-            };
-
-            (registryModels || []).forEach(function (model) {
-                if (model.type === 'open_source') {
-                    addModel(model.name, model.display_name || model.name, '•');
-                }
-            });
-            (configurations || []).forEach(function (config) {
-                addModel(config.model, config.name || config.model, '✓');
-            });
-
-            if (seenModels.size === 0) {
-                const emptyItem = document.createElement('div');
-                emptyItem.className = 'sub-item';
-                emptyItem.style.color = '#64748b';
-                emptyItem.style.fontStyle = 'italic';
-                emptyItem.style.pointerEvents = 'none';
-                emptyItem.textContent = 'No configured models found';
-                wrapper.appendChild(emptyItem);
-            }
-
-            if (plusBtn) {
-                wrapper.appendChild(plusBtn);
-            }
-        }
-
-        function loadConfiguredModelsSidebar() {
-            Promise.all([
-                authFetch('/api/model-config/configurations'),
-                authFetch('/api/models/registry')
-            ])
-                .then(function (responses) {
-                    if (!responses[0].ok || !responses[1].ok) throw new Error('Could not load models');
-                    return Promise.all([responses[0].json(), responses[1].json()]);
-                })
-                .then(function (data) {
-                    renderConfiguredModelsSidebar(
-                        (data[0] && data[0].configurations) || [],
-                        (data[1] && data[1].models) || []
-                    );
-                })
-                .catch(function () {
-                    renderConfiguredModelsSidebar([], []);
-                });
-        }
-
-        document.addEventListener('DOMContentLoaded', function () {
-            const plusModelBtn = document.getElementById('plusModelBtn');
-            if (plusModelBtn) {
-                plusModelBtn.addEventListener('click', function () {
-                    if (window.location.pathname !== '/index') {
-                        window.location.href = '/index?configure_model=1';
-                        return;
-                    }
-                    const modal = document.getElementById('modelModal');
-                    if (modal) {
-                        modal.classList.add('active');
-                        modal.style.display = 'flex';
-                    }
-                });
-            }
-            loadConfiguredModelsSidebar();
-        });
+        // Configured Models sidebar: see static/js/model_sidebar.js
 
         // ==========================================
         // CHAT SESSION HISTORY (sidebar "New Chat" / "Recents")
@@ -916,6 +880,7 @@
             fetchSavedSessions();
         });
     </script>
+    <script src="{{ asset_url('js/model_sidebar.js') }}"></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

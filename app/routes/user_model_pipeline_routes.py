@@ -40,6 +40,19 @@ def _registered_model_slugs(user_id: int) -> set:
     return {str(row.model or "").split("://", 1)[-1] for row in configs}
 
 
+def _bare(model_name) -> str:
+    return str(model_name or "").strip().split("://", 1)[-1].lower()
+
+
+def _is_known_model(user_id: int, model_name) -> bool:
+    """A registry model or one of this user's configured models, in either
+    the bare ("gpt-4o") or prefixed ("api://gpt-4o") form the chat bar uses."""
+    bare = _bare(model_name)
+    if not bare:
+        return False
+    return model_exists(bare) or bare in {s.lower() for s in _registered_model_slugs(user_id)}
+
+
 @bp.route('/models/registry', methods=['GET'])
 def get_models_registry():
     """
@@ -154,8 +167,10 @@ def save_user_model_pipeline():
             model_type_preference = 'oss'
         
         # Validate step_models - ensure all selected models exist
+        if main_model and not _is_known_model(user_id, main_model):
+            return jsonify({'status': 'error', 'message': f"Unknown main model '{main_model}'"}), 400
         for step, model in step_models.items():
-            if not model_exists(model):
+            if not _is_known_model(user_id, model):
                 return jsonify({
                     'status': 'error',
                     'message': f"Unknown model '{model}' for step '{step}'"
@@ -179,6 +194,47 @@ def save_user_model_pipeline():
             'message': 'Model pipeline configuration saved',
             'config': config.to_dict()
         }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/user/model-pipeline/main-model', methods=['PUT'])
+@jwt_required()
+def set_main_model():
+    """
+    Set only the main model - called when the model is changed in the chat
+    bar, so Settings > Model Selection always shows what the chat uses.
+
+    Request body: { "main_model": "api://gpt-4o" }
+
+    Per-step overrides that merely repeated the previous main model are
+    dropped so those steps keep following the main model; overrides that
+    deliberately chose a different model are kept.
+    """
+    try:
+        user_id = _get_user_id()
+        main_model = str((request.get_json() or {}).get('main_model') or '').strip()
+        if not _is_known_model(user_id, main_model):
+            return jsonify({'status': 'error', 'message': f"Unknown model '{main_model}'"}), 400
+
+        config = UserModelPipeline.query.filter_by(user_id=user_id).first()
+        if not config:
+            config = UserModelPipeline(user_id=user_id, step_models={})
+
+        previous = _bare(config.main_model)
+        step_models = config.step_models if isinstance(config.step_models, dict) else {}
+        config.step_models = {
+            step: model for step, model in step_models.items()
+            if model and _bare(model) != previous
+        }
+        config.main_model = main_model
+        if config.model_type_preference != 'hybrid':
+            config.model_type_preference = 'oss' if main_model.startswith('ollama://') else 'api'
+
+        db.session.add(config)
+        db.session.commit()
+        return jsonify({'status': 'success', 'config': config.to_dict()}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500

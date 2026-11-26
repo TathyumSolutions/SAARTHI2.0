@@ -13,6 +13,7 @@ from app.utils.redaction import redact_secrets
 from app.utils.crypto import decrypt
 from app.models.api_connector import ApiConnector
 from app.services.llm_call_logger import tracked_invoke, record_ollama_call
+from app.services.llm_providers import resolve_ollama_endpoint
 
 
 def _auth_headers_and_params(auth_type, encrypted_token):
@@ -239,7 +240,8 @@ def ask_dynamic_model_with_tools(user_message, llm_tools_list, model_name, sessi
             if not ollama_config:
                 ollama_config = {"url": "http://localhost:11434/api/chat", "temperature": 0}
             if model_base_url:
-                ollama_config["url"] = model_base_url
+                # Chat payload below - normalise /api/generate, host-only, etc.
+                ollama_config["url"] = resolve_ollama_endpoint(model_base_url, "chat")
             payload = {
                 "model": actual_model,
                 "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],

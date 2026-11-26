@@ -17,6 +17,7 @@ from qdrant_client import QdrantClient
 #from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from app.services.llm_providers import resolve_ollama_endpoint
 from dotenv import load_dotenv
 import requests 
 import json
@@ -98,17 +99,22 @@ class LLMService:
         #)
 
         self.openai_key = os.getenv("OPENAI_API_KEY")
-        
+        # ChatOpenAI refuses to even construct without a key, which stopped
+        # the whole app from starting when only local (Ollama) models or
+        # per-model keys are used. A placeholder lets it start; these two
+        # clients still fail with a clear 401 if called without a real key.
+        _openai_key_or_placeholder = self.openai_key or "not-configured"
+
         self.models = {
                 "gpt-4o-mini": ChatOpenAI(
                     model="gpt-4o-mini",
                     temperature=self.rag_config["generation"]["temperature"],
-                    openai_api_key=self.openai_key
+                    openai_api_key=_openai_key_or_placeholder
                 ),
                 "gpt-4o": ChatOpenAI(
                     model="gpt-4o",
                     temperature=self.rag_config["generation"]["temperature"],
-                    openai_api_key=self.openai_key
+                    openai_api_key=_openai_key_or_placeholder
                 )
             }
         
@@ -804,7 +810,11 @@ class LLMService:
                 elif _ollama_model_name(model_name) or model_name == "llama3":
                     actual_model = _ollama_model_name(model_name) or "llama3"
                     _, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
-                    ollama_url = runtime_base_url or self.ollama_config["url"]
+                    # Prompt payload below - normalise a stored /api/chat URL.
+                    ollama_url = (
+                        resolve_ollama_endpoint(runtime_base_url, "generate")
+                        if runtime_base_url else self.ollama_config["url"]
+                    )
                     cot_payload = {
                         "model": actual_model,
                         "prompt": analysis_prompt,
@@ -1054,7 +1064,10 @@ class LLMService:
             elif _ollama_model_name(model_name):
                 actual_model = _ollama_model_name(model_name)
                 _, runtime_base_url = _resolve_runtime_overrides(model_name, custom_key)
-                ollama_url = runtime_base_url or self.ollama_config["url"]
+                ollama_url = (
+                    resolve_ollama_endpoint(runtime_base_url, "generate")
+                    if runtime_base_url else self.ollama_config["url"]
+                )
                 print(f"📦 Dynamic RAG Routing payload to Custom Local Ollama model: {actual_model}")
                 ollama_prompt = f"{system_prompt}\n\nUSER QUESTION:\n{user_query}"
                 

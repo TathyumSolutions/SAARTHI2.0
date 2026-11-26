@@ -47,7 +47,13 @@ LLM_BACKEND = {
 # introspected schema, instead of a single shared instance baked with one
 # global schema at import time. Everything below is schema-independent and
 # safe to share as a module-level singleton across requests.
-sql_generator = SQLGeneratorAgent(llm_backend=LLM_BACKEND)
+# Module-level instances kept for callers outside the pipeline (e.g. the
+# router's reuse path calls query_formatter.execute_query directly). The
+# pipeline itself never uses them: agents store per-request state on
+# themselves (model, custom_key), so run_data_bridge_agent builds a fresh
+# set per request (_build_request_agents) - otherwise one user's model or
+# API key could leak into another user's request running concurrently.
+sql_generator = SQLGeneratorAgent(llm_backend=dict(LLM_BACKEND))
 
 query_formatter = QueryFormatterAgent()
 
@@ -136,9 +142,8 @@ def sql_generator_node(state: DataBridgeState) -> DataBridgeState:
     step_model = get_model_for_step("sql_generator", requested_main_model=requested_main_model, user_id=user_id)
     if step_model:
         state["model_name"] = step_model
-        sql_generator.llm_backend["model"] = step_model
     print(f"[ModelSelection] sql_generator -> {step_model}")
-    return sql_generator.execute(state)
+    return state["_agents"]["sql_generator"].execute(state)
    
 
 
@@ -156,7 +161,7 @@ def query_formatter_node(state: DataBridgeState) -> DataBridgeState:
     if step_model:
         state["model_name"] = step_model
     print(f"[ModelSelection] query_formatter -> {step_model}")
-    return query_formatter.execute(state)
+    return state["_agents"]["query_formatter"].execute(state)
 
 
 def insight_generator_node(state: DataBridgeState) -> DataBridgeState:
@@ -173,9 +178,8 @@ def insight_generator_node(state: DataBridgeState) -> DataBridgeState:
     step_model = get_model_for_step("data_insight_generator", requested_main_model=requested_main_model, user_id=user_id)
     if step_model:
         state["model_name"] = step_model
-        data_insight_generator.model = step_model
     print(f"[ModelSelection] data_insight_generator -> {step_model}")
-    return data_insight_generator.execute(state)
+    return state["_agents"]["data_insight_generator"].execute(state)
 
 
 def visualizer_node(state: DataBridgeState) -> DataBridgeState:
@@ -191,9 +195,8 @@ def visualizer_node(state: DataBridgeState) -> DataBridgeState:
     step_model = get_model_for_step("data_visualizer", requested_main_model=requested_main_model, user_id=user_id)
     if step_model:
         state["model_name"] = step_model
-        data_visualizer.model = step_model
     print(f"[ModelSelection] data_visualizer -> {step_model}")
-    return data_visualizer.execute(state)
+    return state["_agents"]["data_visualizer"].execute(state)
 
 
 def error_diagnosis_node(state: DataBridgeState) -> DataBridgeState:
@@ -210,7 +213,7 @@ def error_diagnosis_node(state: DataBridgeState) -> DataBridgeState:
     if step_model:
         state["model_name"] = step_model
     print(f"[ModelSelection] error_diagnosis -> {step_model}")
-    return error_diagnosis.execute(state)
+    return state["_agents"]["error_diagnosis"].execute(state)
 
 
 def _compose_final_answer(state: DataBridgeState) -> str:
@@ -458,25 +461,33 @@ def _build_db_config_for_user(user_id: int):
         return None
 
 
+def _build_request_agents(schema: dict, model_name: str) -> dict:
+    """Every pipeline agent, instantiated for one request."""
+    backend = {**LLM_BACKEND, "model": model_name}
+    return {
+        "query_simplifier": QuerySimplifierAgent(schema=schema, model_name=model_name, url=backend["url"]),
+        "query_sense": QuerySenseAgent(schema=schema, ollama_model=model_name, ollama_url=backend["url"]),
+        "query_validator": QueryValidatorAgent(schema=schema),
+        "sql_generator": SQLGeneratorAgent(llm_backend=backend),
+        "query_formatter": QueryFormatterAgent(),
+        "data_insight_generator": DataInsightGeneratorAgent(),
+        "data_visualizer": DataVisualizerAgent(llm_url=backend["url"], model=model_name, top_n=20),
+        "error_diagnosis": ErrorDiagnosisAgent(),
+    }
+
+
 def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int = 1,model_name: str = None,custom_key: str = "",system_instructions: str = "", user_id: int = 1, router_config: dict = None, feedback_context: str = "", hint_tables: list = None) -> dict:
     """Run the Data Bridge agent with error recovery"""
     print(f"\n{'='*80}")
     print(f"🚀 Starting LangGraph Data Bridge Agent with Error Recovery")
     print(f"{'='*80}\n")
     print("RUN_DATA_BRIDGE MODEL =", model_name)
-    if model_name:
-        LLM_BACKEND["model"] = model_name
-
     # Fresh, request-scoped instances built from this user's own schema -
     # not shared module-level singletons, so concurrent requests from
-    # different users never see each other's schema.
+    # different users never see each other's schema, model or API key.
     schema = _build_schema_for_user(user_id, router_config)
     db_config = _build_db_config_for_user(user_id)
-    agents = {
-        "query_simplifier": QuerySimplifierAgent(schema=schema, model_name=LLM_BACKEND["model"], url=LLM_BACKEND["url"]),
-        "query_sense": QuerySenseAgent(schema=schema, ollama_model=LLM_BACKEND["model"], ollama_url=LLM_BACKEND["url"]),
-        "query_validator": QueryValidatorAgent(schema=schema),
-    }
+    agents = _build_request_agents(schema, model_name or LLM_BACKEND["model"])
 
     stream_manager.push_step(
         session_id, 

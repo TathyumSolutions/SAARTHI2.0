@@ -6,6 +6,10 @@ from flask import Blueprint, render_template
 
 bp = Blueprint('pages', __name__)
 
+# {{ asset_url('js/...') }} - cache-busted static URLs, for every template.
+from app.utils.static_assets import asset_url_context  # noqa: E402
+bp.app_context_processor(asset_url_context)
+
 # Home/Dashboard
 
 @bp.route('/')
