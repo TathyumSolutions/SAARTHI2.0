@@ -48,6 +48,8 @@ import requests
 import json
 import re
 
+from .chart_aggregation import AVG, COUNT, MAX, MIN, SUM, choose_aggregation, combine, label_for
+
 # Column-name heuristics used to tell a genuine numeric *measure* (an
 # amount, quantity, price - something worth summing/plotting) apart from a
 # numeric-looking *identifier* (a sales document number, customer ID, key)
@@ -214,29 +216,39 @@ class DataVisualizerAgent:
         except (TypeError, ValueError):
             return 0.0
 
-    def _aggregate_topn(self, data: List[Dict[str, Any]], dim_col: str, measure_col: str, top_n: int = 5, agg: str = "sum"):
-        """Group rows by dim_col, aggregate measure_col, and keep only the top
-        N groups by value (descending, ties broken by label so the cut is
-        stable). Returns (labels, values, total_group_count). No 'Others'
+    def _group_values(self, data: List[Dict[str, Any]], key_col: str, measure_col: str) -> Dict[str, List[float]]:
+        groups: Dict[str, List[float]] = {}
+        for row in data:
+            raw_key = row.get(key_col)
+            key = str(raw_key) if raw_key is not None else "Unknown"
+            groups.setdefault(key, []).append(self._numeric(row.get(measure_col)))
+        return groups
+
+    @staticmethod
+    def _has_multi_row_group(groups: Dict[str, List[float]]) -> bool:
+        return any(len(v) > 1 for v in groups.values())
+
+    def _aggregate_topn(self, data: List[Dict[str, Any]], dim_col: str, measure_col: str, top_n: int = 5, agg: Optional[str] = None):
+        """Group rows by dim_col, combine measure_col per group, and keep only
+        the top N groups by value (descending, ties broken by label so the cut
+        is stable). Returns (labels, values, total_group_count). No 'Others'
         bucket: one bar summing 100+ categories dwarfs the real bars and
         reads as the biggest category - the full list goes to the Excel
-        download instead."""
-        groups: Dict[str, float] = {}
-        for row in data:
-            raw_key = row.get(dim_col)
-            key = str(raw_key) if raw_key is not None else "Unknown"
-            groups[key] = groups.get(key, 0.0) + (1.0 if agg == "count" else self._numeric(row.get(measure_col)))
+        download instead.
 
-        items = sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))
+        ``agg`` defaults to what the column name implies (chart_aggregation):
+        rates/percentages are averaged, never added up."""
+        how = agg or choose_aggregation(measure_col)
+        groups = self._group_values(data, dim_col, measure_col)
+        combined = {k: combine(v, how) for k, v in groups.items()}
+        items = sorted(combined.items(), key=lambda kv: (-kv[1], kv[0]))
         return [k for k, _ in items[:top_n]], [v for _, v in items[:top_n]], len(items)
 
-    def _aggregate_by_date(self, data: List[Dict[str, Any]], date_col: str, measure_col: str):
-        groups: Dict[str, float] = {}
-        for row in data:
-            key = str(row.get(date_col))
-            groups[key] = groups.get(key, 0.0) + self._numeric(row.get(measure_col))
+    def _aggregate_by_date(self, data: List[Dict[str, Any]], date_col: str, measure_col: str, agg: Optional[str] = None):
+        how = agg or choose_aggregation(measure_col)
+        groups = self._group_values(data, date_col, measure_col)
         labels = sorted(groups.keys())
-        return labels, [groups[l] for l in labels]
+        return labels, [combine(groups[l], how) for l in labels]
 
     # -----------------------------
     # Chart generation logic
@@ -337,22 +349,27 @@ class DataVisualizerAgent:
         usable_dims = label_dims or dim_candidates
 
         configs: Dict[str, Any] = {}
-        measure_label = self._pretty(measure_col)
+        how = choose_aggregation(measure_col)
+        how_word = {SUM: "summed", COUNT: "counted", AVG: "averaged", MAX: "took the max of", MIN: "took the min of"}[how]
         truncated = False
         total_categories = None
 
         if date_col:
-            labels, values = self._aggregate_by_date(data, date_col, measure_col)
+            aggregated = self._has_multi_row_group(self._group_values(data, date_col, measure_col))
+            measure_label = label_for(self._pretty(measure_col), how, aggregated)
+            labels, values = self._aggregate_by_date(data, date_col, measure_col, agg=how)
             title = f"{measure_label} by {self._pretty(date_col)}"
             configs["line"] = self._generate_line_chart(labels, values, date_col, measure_col, title=title)
             configs["bar"] = self._generate_bar_chart(labels, values, date_col, measure_col, title=title)
             configs["pie"] = {}
             recommended = "line"
-            note = f"Aggregated {measure_col} over {date_col} across {len(labels)} time bucket(s)."
+            note = f"Aggregated {measure_col} over {date_col} across {len(labels)} time bucket(s) ({how_word} per bucket)."
 
         elif usable_dims:
             dim_col = usable_dims[0]
-            labels, values, total_categories = self._aggregate_topn(data, dim_col, measure_col, top_n=top_n)
+            aggregated = self._has_multi_row_group(self._group_values(data, dim_col, measure_col))
+            measure_label = label_for(self._pretty(measure_col), how, aggregated)
+            labels, values, total_categories = self._aggregate_topn(data, dim_col, measure_col, top_n=top_n, agg=how)
             truncated = total_categories > len(labels)
             dim_label = self._pretty(dim_col)
             title = (f"Top {len(labels)} {dim_label} by {measure_label}" if truncated
@@ -367,10 +384,11 @@ class DataVisualizerAgent:
                     f"{measure_label} to keep the chart readable."
                 )
             else:
-                note = f"Grouped {row_count} row(s) by {dim_col} and aggregated {measure_col} across {total_categories} categories, sorted descending."
+                note = f"Grouped {row_count} row(s) by {dim_col} and {how_word} {measure_col} across {total_categories} categories, sorted descending."
         else:
             # Only a measure column, no usable grouping dimension - plot it
             # across rows rather than forcing a bar-per-row chart.
+            measure_label = self._pretty(measure_col)
             labels = [f"Row {i + 1}" for i in range(row_count)]
             values = [self._numeric(row.get(measure_col)) for row in data]
             configs["line"] = self._generate_line_chart(labels, values, "Row", measure_col, title=measure_label)
@@ -382,6 +400,7 @@ class DataVisualizerAgent:
         configs["recommended"] = recommended
         configs["chart_worthy"] = True
         configs["measure"] = measure_col
+        configs["aggregation"] = how
         configs["note"] = note
         # Read by the chat UI to offer the full result as an Excel download
         # when the chart only shows part of it.

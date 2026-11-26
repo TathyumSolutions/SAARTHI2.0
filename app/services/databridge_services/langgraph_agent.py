@@ -2,6 +2,7 @@
 LangGraph Orchestrator - Connects all agents through StateGraph with Error Recovery
 """
 from langgraph.graph import StateGraph, END
+from .agents.result_cap import truncation_note
 from .agent_state import DataBridgeState
 from .agent_routers import validation_router, error_recovery_router, format_router
 from app.services.stream_manager import stream_manager
@@ -255,6 +256,8 @@ def _compose_final_answer(state: DataBridgeState) -> str:
         )
     elif base_message:
         parts.append(base_message)
+    if state.get("result_truncated"):
+        parts.append(truncation_note(row_count))
 
     chart_note = (state.get("chart_configs") or {}).get("note")
     if chart_note:
@@ -291,6 +294,7 @@ def response_builder_node(state: DataBridgeState) -> DataBridgeState:
         "message": _compose_final_answer(state),
         "columns": state.get("columns", []),
         "row_count": state.get("row_count", 0),
+        "truncated": bool(state.get("result_truncated")),
         "data": state.get("data", []),
         "insights": state.get("insights", []),
         "visualizations": state.get("visualizations", []),
@@ -712,6 +716,7 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
             #"steps": final_state.get("steps", []),
             "steps": ordered_steps,
             "error": user_facing_response.get("format") == "error",
+            "truncated": bool(user_facing_response.get("truncated")),
         },
         "cot_logs": final_state  # This is the "Everything" for your CoT section
     }

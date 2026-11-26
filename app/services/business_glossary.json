@@ -1,0 +1,47 @@
+{
+  "description": "Business terms and where their figures come from. When a question uses a term (or one of its aliases), its definition is added to the router and database-planner prompts so a term is never guessed from the nearest-sounding column. Edit freely; matching is whole-word and case-insensitive (see app/services/business_glossary.py).",
+  "terms": [
+    {
+      "term": "Acquisition cost",
+      "aliases": ["cost to acquire", "costs to acquire", "cost of acquisition", "acquisition cost", "customer acquisition cost", "sourcing cost", "agent commission", "dsa commission", "commission"],
+      "meaning": "Commission paid to the sourcing agent / DSA, as a % of the disbursed amount, by product and by the agent's quarterly disbursement-volume slab.",
+      "source": "The agent commission slab sheet (uploaded spreadsheet / file). The database agents.commission_rate is only each agent's flat contracted rate.",
+      "not": "Not loan_products.processing_fee_pct - a processing fee is income the lender earns from the borrower, never a cost."
+    },
+    {
+      "term": "Processing fee",
+      "aliases": ["processing fee", "processing fees", "processing_fee_pct"],
+      "meaning": "Upfront fee charged to the borrower, as a % of the loan amount (loan_products.processing_fee_pct; posted in transactions_ledger as 'Processing Fee').",
+      "source": "Database.",
+      "not": "It is income to the lender, not a cost of acquiring the loan."
+    },
+    {
+      "term": "Spread",
+      "aliases": ["spread", "pricing spread", "interest spread", "net spread", "spread over benchmark"],
+      "meaning": "The loan's interest rate minus the benchmark lending rate for the same year (percentage points). Average the loan rates per group first; never add rates up.",
+      "source": "Loan rate: database loans.interest_rate. Benchmark: the external lending-rate API (World Bank indicator FR.INR.LEND for India), matched on disbursement year.",
+      "not": ""
+    },
+    {
+      "term": "Benchmark lending rate",
+      "aliases": ["benchmark rate", "benchmark lending rate", "lending interest rate", "market lending rate", "world bank", "fr.inr.lend"],
+      "meaning": "India's average bank lending interest rate for a year, in %.",
+      "source": "External API (World Bank FR.INR.LEND). Values exist up to 2022; later years are null.",
+      "not": "Not a column in the loan database."
+    },
+    {
+      "term": "Provisioning",
+      "aliases": ["provisioning", "provision", "provisions", "provisioning requirement", "iracp", "iracp norms"],
+      "meaning": "Amount set aside against expected loss on a loan, as a % of outstanding principal, driven by its DPD bucket / asset classification.",
+      "source": "Policy %: the IRACP norms document (uploaded file). Applied % per loan snapshot: database npa_classification.provisioning_pct / provisioning_amount.",
+      "not": ""
+    },
+    {
+      "term": "NPA share",
+      "aliases": ["npa share", "npa rate", "npa ratio", "share flagged npa", "flagged npa", "npa flag", "npa_flag", "share of npa", "gross npa"],
+      "meaning": "Share of loans that are non-performing: loans with npa_flag = true (DPD > 90), divided by all loans in the group. Compute as an average of a 1/0 flag, not a sum.",
+      "source": "Database loans.npa_flag (or npa_classification for a given as_of_date).",
+      "not": ""
+    }
+  ]
+}

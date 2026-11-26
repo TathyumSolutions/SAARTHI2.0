@@ -12,6 +12,7 @@ import requests
 import os
 from langchain_openai import ChatOpenAI
 from app.services.llm_call_logger import tracked_invoke, record_llm_call
+from app.services.business_glossary import glossary_block
 
 class QuerySenseAgent:
     """
@@ -194,6 +195,16 @@ branches.branch_name, customers.name), add that table, add the join on the
 key, and put the readable column in "columns" and "group_by" - keep the ID
 in "group_by" too so two rows sharing a name are not merged. Skip this when
 the user explicitly asks for the ID itself.
+3. SUMMARISE IN SQL, NOT IN THE APP: when the question asks for a figure
+"per / by / for each" something, or for an average, share, total, highest,
+lowest or comparison, plan a GROUPED_ANALYSIS (or AGGREGATION) with the
+grouping column(s) in "group_by" and the figures in "aggregations" - never a
+SELECTION of raw rows. Raw rows are capped at 1,000, so counting or
+averaging them afterwards describes a sample, not the data.
+4. RATES ARE AVERAGED: a rate, percentage, ratio or score column
+(interest_rate, *_pct, cibil_score, ...) uses "avg" (or "min"/"max" when
+asked), never "sum". A share of rows (e.g. "share flagged NPA") is
+avg(CASE WHEN condition THEN 1.0 ELSE 0 END).
 
 Return a concise JSON with:
 - tables: list of table names
@@ -252,6 +263,7 @@ FOREIGN-KEY RELATIONS:
 
 SEMANTIC CONTEXT:
 {ctx_text}
+{glossary_block(user_query)}
 
 USER QUESTION:
 \"\"\"{user_query}\"\"\"

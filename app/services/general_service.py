@@ -8,6 +8,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 # Import the exact stream manager your architecture uses
 from app.services.stream_manager import stream_manager
 from app.services.llm_call_logger import tracked_invoke, record_ollama_call
+from app.services.general_answer_rules import not_checked_instruction
 
 def answer_general_knowledge(
     user_query: str,
@@ -17,6 +18,7 @@ def answer_general_knowledge(
     master_steps: list,
     session_id: str = "1",
     feedback_context: str = "",
+    connected_sources: list = None,
 ) -> dict:
     """
     Standalone track runner that queries the LLM's world knowledge base.
@@ -72,6 +74,7 @@ def answer_general_knowledge(
         "If there's more depth worth surfacing that you're leaving out for brevity, end with a short "
         "offer such as 'Want more detail on this?' instead of including it all up front."
     )
+    system_content += not_checked_instruction(connected_sources or [])
     if system_instructions and system_instructions.strip():
         system_content += f"\n\n[CRITICAL PERSONA AND CUSTOM FORMATTING RULES]:\n{system_instructions}"
     if feedback_context:

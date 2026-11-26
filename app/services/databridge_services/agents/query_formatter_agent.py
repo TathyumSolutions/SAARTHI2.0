@@ -306,6 +306,9 @@ Executes SQL and formats results with optional insights and charts
 from typing import Dict, Any
 import os
 import pandas as pd
+
+from .result_cap import apply_row_cap, trim_to_cap, truncation_note
+from .insight_rules import build_insight_rules
 import psycopg2
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
@@ -328,7 +331,7 @@ class DataInsightGeneratorAgent:
         self.openai_key = os.getenv("OPENAI_API_KEY")
         self.custom_key = ""
 
-    def generate_insights(self, data, columns, user_query="",target_model=None,system_instructions=""):
+    def generate_insights(self, data, columns, user_query="",target_model=None,system_instructions="", truncated=False):
         if not data:
             return {"insights": ["No data available to analyze."], "visualizations": []}
         
@@ -350,7 +353,7 @@ Data Summary:
 
 Sample Data (first 5 rows):
 {sample_data}
-
+{build_insight_rules(truncated, len(data))}
 Return ONLY valid JSON.
 """
         if system_instructions.strip():
@@ -502,9 +505,10 @@ class QueryFormatterAgent:
 
         # Cap result size if the generated query didn't already limit it -
         # a broad SELECT with no LIMIT could otherwise pull an entire
-        # table into memory and back to the browser.
-        if not re.search(r"(?i)\bLIMIT\s+\d+\b", normalized):
-            sql_query = f"{normalized} LIMIT 1000;"
+        # table into memory and back to the browser. One extra row is
+        # fetched so a cut-off result is detected and labelled, never
+        # passed off as the full answer (see result_cap).
+        sql_query, cap_applied = apply_row_cap(normalized)
 
         try:
             db_url = (
@@ -524,6 +528,7 @@ class QueryFormatterAgent:
             # execution path instead, which doesn't hit this.
             df = pd.read_sql_query(text(sql_query), engine)
             engine.dispose()
+            df, truncated = trim_to_cap(df, cap_applied)
 
         except Exception as e:
             error_result = {
@@ -572,7 +577,8 @@ class QueryFormatterAgent:
             columns_list = list(df.columns)
             
             raw_insights = self.insight_generator.generate_insights(
-                data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions
+                data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions,
+                truncated=truncated
             ) if with_insights else {}
             
             # FIX: Ensure it always builds a dict with BOTH keys so the bottom code doesn't break
@@ -599,7 +605,8 @@ class QueryFormatterAgent:
             data_records = df.to_dict(orient="records")
             columns_list = list(df.columns)
             raw_insights = self.insight_generator.generate_insights(
-                data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions
+                data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions,
+                truncated=truncated
             ) if with_insights else {}
             if isinstance(raw_insights, dict):
                 insights_data = {
@@ -623,7 +630,8 @@ class QueryFormatterAgent:
             columns_list = list(df.columns)
 
             insights_data = self.insight_generator.generate_insights(
-                data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions
+                data_records, columns_list, user_query,target_model=target_model,system_instructions=system_instructions,
+                truncated=truncated
             ) if with_insights else {}
 
 
@@ -639,8 +647,11 @@ class QueryFormatterAgent:
             "insights": insights_data.get("insights", []),
             "visualizations": insights_data.get("visualizations", []),
             "chart_configs": chart_configs,
-            "query": sql_query
+            "query": sql_query,
+            "truncated": truncated,
         }
+        if truncated:
+            result["message"] = f"{message} {truncation_note(row_count)}"
 
         # print("\n[DEBUG] Returning SUCCESS result:", json.dumps(result, indent=4))
         return result
@@ -679,6 +690,7 @@ class QueryFormatterAgent:
             "chart_configs": result.get("chart_configs", {}),
             "query": result.get("query", generated_sql),
             "status": result.get("status", "unknown"),
+            "result_truncated": bool(result.get("truncated")),
             "current_step": "query_formatter"
         })
 

@@ -55,6 +55,10 @@ from app.services.llm_service import answer_from_docs
 from app.services.api_services import fetch_and_translate_tools, ask_dynamic_model_with_tools
 from app.services.automated_metamind import generate_router_config
 from app.services.general_service import answer_general_knowledge
+from app.services.small_talk_classifier import classify_small_talk
+from app.services.business_glossary import glossary_block
+from app.services.staged_execution import needs_staging, run_staged
+from app.services.general_answer_rules import connected_source_labels
 from app.services.stream_manager import stream_manager
 from app.services.spreadsheet_query_service import answer_from_spreadsheets
 from app.services.data_source_finaliser import finalize_data_source_strategy
@@ -178,28 +182,15 @@ def _load_answer_guidelines() -> str:
     return _answer_guidelines_cache
 
 
-def _flatten_patterns(cfg_section: dict) -> list[str]:
-    result = []
-    for value in cfg_section.values():
-        if isinstance(value, list):
-            result.extend([p.lower() for p in value if isinstance(p, str)])
-        elif isinstance(value, dict):
-            result.extend(_flatten_patterns(value))
-    return result
-
-
 def classify_query_heuristic(user_query: str) -> str | None:
     """
-    Layer 1 — free keyword check for greetings/small talk/date-time questions.
-    Unrelated to the DB-misrouting bug (its patterns never matched status
-    questions in the first place) — kept as-is, it's a real cost saver.
+    Layer 1 - free keyword check for greetings/small talk/date-time questions.
+    Whole-word, short-message-only matching lives in small_talk_classifier
+    (a plain substring check once sent "...provisioning they would need..."
+    to GENERAL because "they" contains "hey ").
     """
     cfg = _load_general_config().get("general_knowledge_routing", {})
-    q = user_query.lower().strip()
-    for pat in _flatten_patterns(cfg.get("strong_general_indicators", {})):
-        if pat in q:
-            return "GENERAL"
-    return None
+    return classify_small_talk(user_query, cfg)
 
 
 # ============================================================
@@ -1082,6 +1073,13 @@ def _build_router_messages(user_query: str, chat_history, router_config: dict,
         if static_data_hints else ""
     )
 
+    glossary_text = glossary_block(user_query)
+    if glossary_text:
+        glossary_text = (
+            "\n" + glossary_text + "\nRoute each term to the source named above, and put the "
+            "term's definition into that tool's `question` so the downstream agent uses it.\n"
+        )
+
     system_prompt = f"""You are the enterprise orchestration router for Saarthi AI.
 
 CURRENT QUESTION (this is what you are answering — always prioritize this):
@@ -1124,7 +1122,10 @@ TOOLS AVAILABLE:
 - answer_general_knowledge: for world knowledge, definitions, greetings, or
   anything not covered by the company's own data sources.
 
-If none of the tools fit, just answer directly in plain text.
+If none of the tools fit, just answer directly in plain text. If you answer
+directly about the user's own data, files or figures, say plainly that you
+did not check their connected data and offer to - never tell them they would
+need to provide or give access to data that is listed below.
 
 First check whether a SINGLE source can answer the whole question on its
 own - a database table can usually reach related data through its own
@@ -1162,6 +1163,16 @@ the spreadsheet - not just a single grand total from either. Never ask
 either source to compute the cross-source figure itself; it doesn't have
 the other source's data.
 
+When the question applies a FIXED VALUE from an external API or a document
+(a benchmark rate, a policy/provisioning %, a threshold) to rows in the
+database or a spreadsheet, call both. The API/document calls run FIRST and
+their answers are passed into the database/spreadsheet `question`
+automatically, so ask the API/document for just that value, and ask the
+database/spreadsheet for the per-entity figures the value is applied to
+(e.g. "average interest_rate and NPA share by product for loans disbursed in
+2022"). A question that uses the database, the documents, a spreadsheet AND
+an API needs all four tools - never drop a source the question names.
+
 When you do call more than one tool for the same question, give EACH tool
 call its own focused `question` argument, rewritten for what that specific
 source should answer - never just resend the original question unmodified
@@ -1186,7 +1197,7 @@ re-discovering it from scratch.
 
 ANSWER GUIDELINES:
 {_load_answer_guidelines()}
-
+{glossary_text}
 LIVE REGISTERED TOOLS FOR THE 'API' TRACK:
 {live_tools_summary}
 
@@ -1577,6 +1588,7 @@ def _run_general_track(question: str, ctx: dict) -> dict:
     gen_result = answer_general_knowledge(
         question, ctx["model_name"], ctx["custom_key"], ctx["system_instructions"], [],
         feedback_context=ctx.get("feedback_context", ""),
+        connected_sources=connected_source_labels(ctx.get("router_config") or {}),
     )
     return {
         "answer": gen_result.get("answer"),
@@ -2170,12 +2182,25 @@ class RouterService:
             # stream open for it, closed by its own DONE below.
             combiner_slot = len(tool_calls) > 1
             stream_manager.begin_tracks(session_id, len(tool_calls) + (1 if combiner_slot else 0))
-            outcomes = (
-                _execute_tool_calls_parallel(tool_calls, ctx)
-                if len(tool_calls) > 1
-                else [_execute_tool_call(call, ctx) for call in tool_calls]
-            )
-            executed_in_parallel = len(tool_calls) > 1
+            def _run_batch(calls: list) -> list:
+                if len(calls) > 1:
+                    return _execute_tool_calls_parallel(calls, ctx)
+                return [_execute_tool_call(call, ctx) for call in calls]
+
+            # A reference value (API rate, policy % from a document) has to
+            # reach the database/spreadsheet sub-question before it runs, or
+            # the rows can never be computed against it - see
+            # staged_execution.py. Otherwise everything runs at once.
+            staged = needs_staging(tool_calls)
+            if staged:
+                outcomes, staged_context = run_staged(tool_calls, _run_batch, original_question=user_query)
+                router_level_steps.append(
+                    "Ran the reference source(s) first and passed their values to the data source(s)"
+                    + (f": {staged_context[:300]}" if staged_context else " (no usable values came back).")
+                )
+            else:
+                outcomes = _run_batch(list(tool_calls))
+            executed_in_parallel = len(tool_calls) > 1 and not staged
 
             results = []
             master_steps: list = list(router_level_steps)
@@ -2202,10 +2227,15 @@ class RouterService:
             for _, r in results:
                 identified_sources.extend(r.get("sources") or [])
             if identified_sources:
-                completion_msg = (
-                    f"Will query {len(results)} data source(s) in parallel and combine the results."
-                    if len(results) > 1 else "Ready to answer from this data source."
-                )
+                if len(results) > 1 and staged:
+                    completion_msg = (
+                        f"Queried {len(results)} data source(s): reference values first, then the data "
+                        "using them, and combined the results."
+                    )
+                elif len(results) > 1:
+                    completion_msg = f"Will query {len(results)} data source(s) in parallel and combine the results."
+                else:
+                    completion_msg = "Ready to answer from this data source."
                 _push_router_event(
                     session_id, "start", "Identified Data Sources",
                     f"Data sources: {', '.join(identified_sources)}."

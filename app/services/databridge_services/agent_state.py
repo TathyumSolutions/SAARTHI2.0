@@ -56,6 +56,8 @@ class DataBridgeState(TypedDict):
     # ===== Data Execution =====
     query_results: Optional[Dict[str, Any]]
     row_count: int
+    # True when the safety row cap cut the result short (see agents/result_cap.py)
+    result_truncated: Optional[bool]
     columns: Optional[List[str]]
     data: Optional[List[Dict[str, Any]]]
     
@@ -77,6 +79,12 @@ class DataBridgeState(TypedDict):
     step_retry_counts: Optional[Dict[str, int]]  # Retry count per step
     recovery_attempt: int  # Overall recovery attempt count
     
+    # ===== Honesty notes surfaced in the final answer =====
+    # Set by QuerySenseAgent when it substituted a different metric for the
+    # one asked about. Must be declared here: LangGraph drops state keys that
+    # are not in this schema, so it never reached the answer before.
+    assumption_note: Optional[str]
+
     # ===== Final Output =====
     response: Optional[Dict[str, Any]]
     format: Optional[str]

@@ -10,6 +10,7 @@ import pandas as pd
 import os
 from langchain_openai import ChatOpenAI
 from app.services.llm_call_logger import tracked_invoke, record_llm_call
+from .insight_rules import build_insight_rules
 
 class DataInsightGeneratorAgent:
     """
@@ -24,7 +25,7 @@ class DataInsightGeneratorAgent:
         self.openai_key = os.getenv("OPENAI_API_KEY")
         self.custom_key = ""
 
-    def generate_insights(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "",target_model: str = None,system_instructions: str = "", user_id=None) -> Dict[str, Any]:
+    def generate_insights(self, data: List[Dict[str, Any]], columns: List[str], user_query: str = "",target_model: str = None,system_instructions: str = "", user_id=None, truncated: bool = False) -> Dict[str, Any]:
         """
         Analyze data and return insights and visualization suggestions.
         """
@@ -60,7 +61,7 @@ Output Format (JSON):
         {{"type": "Line Chart", "reason": "..."}}
     ]
 }}
-
+{build_insight_rules(truncated, len(data))}
 Return ONLY valid JSON.
 """
         if system_instructions.strip():
@@ -210,7 +211,7 @@ Return ONLY valid JSON.
         custom_key = state.get("custom_key", "")
         self.custom_key = custom_key
 
-        insights_data = self.generate_insights(data, columns, user_query,target_model=chosen_model,system_instructions=system_instructions,user_id=state.get("user_id"))
+        insights_data = self.generate_insights(data, columns, user_query,target_model=chosen_model,system_instructions=system_instructions,user_id=state.get("user_id"),truncated=bool(state.get("result_truncated")))
         state["insights"] = insights_data.get("insights", [])
         state["visualizations"] = insights_data.get("visualizations", [])
         state["current_step"] = "data_insight_generator"

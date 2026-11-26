@@ -1,18 +1,37 @@
 {
   "general_knowledge_routing": {
-    "description": "Defines patterns for routing queries directly to the GENERAL knowledge track (LLM world knowledge). Checked BEFORE the main datasource router to save API token costs.",
+    "description": "Defines patterns for routing queries directly to the GENERAL knowledge track (LLM world knowledge). Checked BEFORE the main datasource router to save API token costs. Matching is whole-word only and limited by the guards below (see app/services/small_talk_classifier.py).",
 
     "strong_general_indicators": {
-      "description": "If a query matches ANY of these phrases, route to the GENERAL track immediately.",
+      "description": "A short query that is essentially one of these phrases goes to the GENERAL track immediately.",
       "greeting_patterns": [
-        "hello", "hi ", "hey ", "good morning", "good afternoon",
+        "hello", "hi", "hey", "good morning", "good afternoon",
         "good evening", "how are you", "what's up", "thanks",
         "thank you", "bye", "goodbye", "nice to meet"
       ],
       "time_and_date_patterns": [
-        "what is today", "todays date", "current date", "what day is it", 
-        "what time is it", "current time", "what month", "what year is it", 
+        "what is today", "todays date", "current date", "what day is it",
+        "what time is it", "current time", "what month is it", "what year is it",
         "current month", "current year"
+      ]
+    },
+
+    "guards": {
+      "description": "Safety limits so a real data question is never mistaken for small talk. When a guard blocks the shortcut, the LLM router decides as usual.",
+      "max_words": 8,
+      "max_extra_words": {
+        "greeting_patterns": 3,
+        "time_and_date_patterns": 2
+      },
+      "block_if_contains_digit": true,
+      "data_terms": [
+        "data", "database", "db", "table", "tables", "column", "columns", "sql", "query", "record", "records",
+        "report", "chart", "graph", "dashboard", "excel", "spreadsheet", "sheet", "csv", "file", "files",
+        "doc", "docs", "document", "documents", "pdf", "api", "upload", "uploaded",
+        "show", "list", "count", "total", "sum", "average", "avg", "top", "highest", "lowest", "compare", "trend",
+        "loan", "loans", "npa", "emi", "dpd", "customer", "customers", "branch", "branches", "product", "products",
+        "agent", "agents", "commission", "collection", "collections", "provisioning", "interest", "rate",
+        "sales", "revenue", "profit", "order", "orders", "invoice", "invoices", "payment", "payments", "amount"
       ]
     },
 
