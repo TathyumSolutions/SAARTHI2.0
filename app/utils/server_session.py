@@ -87,6 +87,11 @@ def register_jwt_session_checks(jwt_manager) -> None:
     tests, any future flow - gets the claim without having to remember it."""
     from flask import jsonify
 
+    # Compute (and cache) the id now, in create_app(): with gunicorn
+    # --preload that runs once in the master before workers fork, so every
+    # worker inherits the same id even outside a container.
+    current_server_epoch()
+
     @jwt_manager.additional_claims_loader
     def _stamp_server_run(_identity):
         return session_claims()

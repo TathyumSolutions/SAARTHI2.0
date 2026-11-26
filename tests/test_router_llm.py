@@ -81,3 +81,12 @@ def test_local_route_falls_back_when_the_model_fails():
         calls = router_llm.route_with_local_model(model, "agent commission rates", ROUTER_CONFIG)
     assert calls[0]["name"] == "query_spreadsheet_data"
     assert calls[0]["args"]["tables"] == ["agent_commission"]
+
+
+def test_openai_model_behind_its_own_endpoint_is_called_there():
+    with patch.object(router_llm, "_cloud_chat_model", return_value=object()) as cloud:
+        model, chat_openai = _select("api://gpt-4o", custom_key="sk-proxy",
+                                     settings={"base_url": "https://my-gateway.example/v1"})
+    assert model.provider == "api" and model.supports_tools
+    assert cloud.call_args.args[:2] == ("api://gpt-4o", "sk-proxy")
+    chat_openai.assert_not_called()

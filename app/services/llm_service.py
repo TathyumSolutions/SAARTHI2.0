@@ -99,17 +99,22 @@ class LLMService:
         #)
 
         self.openai_key = os.getenv("OPENAI_API_KEY")
-        
+        # ChatOpenAI refuses to even construct without a key, which stopped
+        # the whole app from starting when only local (Ollama) models or
+        # per-model keys are used. A placeholder lets it start; these two
+        # clients still fail with a clear 401 if called without a real key.
+        _openai_key_or_placeholder = self.openai_key or "not-configured"
+
         self.models = {
                 "gpt-4o-mini": ChatOpenAI(
                     model="gpt-4o-mini",
                     temperature=self.rag_config["generation"]["temperature"],
-                    openai_api_key=self.openai_key
+                    openai_api_key=_openai_key_or_placeholder
                 ),
                 "gpt-4o": ChatOpenAI(
                     model="gpt-4o",
                     temperature=self.rag_config["generation"]["temperature"],
-                    openai_api_key=self.openai_key
+                    openai_api_key=_openai_key_or_placeholder
                 )
             }
         

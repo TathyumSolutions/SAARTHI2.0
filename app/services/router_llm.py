@@ -12,8 +12,9 @@ These calls used to be hard-wired to OpenAI gpt-4o-mini with
   OpenAI-compatible endpoint) its key was sent to OpenAI -> 401.
 
 Resolution order, for every router call:
-1. A selected non-OpenAI cloud model (api://...) is used itself, with its
-   own key/endpoint - honouring the user's choice.
+1. A selected non-OpenAI cloud model (api://...), or an OpenAI model with
+   its own endpoint, is used itself with its own key/endpoint - honouring
+   the user's choice.
 2. Otherwise OpenAI gpt-4o-mini, if an OpenAI key can be found: the
    selected OpenAI model's own key, then OPENAI_API_KEY, then an OpenAI
    key saved on one of the *same company's* model configurations.
@@ -144,7 +145,12 @@ def _cloud_chat_model(model_name: str, custom_key: str, company_code: Optional[s
 def select_router_model(model_name: str, custom_key: str, company_code: Optional[str],
                         temperature: float = 0.0) -> RouterModel:
     """Picks the LLM for a router-level call - see the module docstring."""
-    if model_name and not is_local_model(model_name) and not is_openai_model(model_name):
+    # A selected cloud model is used as-is when it is not OpenAI, or is an
+    # OpenAI model behind its own endpoint (proxy / Azure / gateway) - its
+    # key belongs to that endpoint, not to api.openai.com.
+    own_endpoint = not _is_openai_endpoint(_config_settings(model_name, company_code).get("base_url")) \
+        if model_name else False
+    if model_name and not is_local_model(model_name) and (not is_openai_model(model_name) or own_endpoint):
         return RouterModel(
             label=_bare(model_name), provider="api",
             chat_model=_cloud_chat_model(model_name, custom_key, company_code, temperature),
