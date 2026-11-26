@@ -1000,6 +1000,7 @@
                 if (selectedValue && (selectedValue.startsWith("api://") || selectedValue.startsWith("gpt-"))) {
                     window.activeBackendModelName = selectedValue;
                     localStorage.setItem('saarthi_active_model', selectedValue);
+                    saveMainModelSetting(selectedValue);
                     console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
                 } else {
                     this.selectedIndex = 0;
@@ -1013,6 +1014,7 @@
                 if (selectedValue && (selectedValue.startsWith("ollama://") || selectedValue.startsWith("api://") || selectedValue === "llama3")) {
                     window.activeBackendModelName = selectedValue;
                     localStorage.setItem('saarthi_active_model', selectedValue);
+                    saveMainModelSetting(selectedValue);
                     console.log(`🎯 Active Model Set To: ${window.activeBackendModelName}`);
                 } else {
                     this.selectedIndex = 0;
@@ -1053,6 +1055,7 @@
             option.selected = true;
             window.activeBackendModelName = option.value;
             localStorage.setItem('saarthi_active_model', option.value);
+            saveMainModelSetting(option.value);
         });
     });
 
@@ -1115,6 +1118,65 @@
         }
         return response;
     };
+
+    // ==========================================
+    // CHAT BAR <-> SETTINGS (Model Selection main model) SYNC
+    // ==========================================
+    /** Selects `model` in whichever dropdown has it. Returns true if found. */
+    function selectActiveModel(model) {
+        if (!model) return false;
+        const target = normalizeModelId(model);
+        const option = Array.from(document.querySelectorAll(
+            '#standard-llm-dropdown option, #opensource-llm-dropdown option'
+        )).find(item => item.value && normalizeModelId(item.value) === target);
+        if (!option) return false;
+        document.getElementById('standard-llm-dropdown').selectedIndex = 0;
+        document.getElementById('opensource-llm-dropdown').selectedIndex = 0;
+        option.selected = true;
+        window.activeBackendModelName = option.value;
+        localStorage.setItem('saarthi_active_model', option.value);
+        return true;
+    }
+
+    /** Saves the chat-bar model as the Model Selection main model. */
+    function saveMainModelSetting(model) {
+        if (!model) return;
+        authFetch('/api/user/model-pipeline/main-model', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ main_model: model })
+        })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().catch(() => ({})).then(body => {
+                        throw new Error(body.message || `status ${response.status}`);
+                    });
+                }
+            })
+            .catch(error => console.warn('Could not save the model to Settings:', error));
+    }
+
+    /** Re-reads the saved main model (changed in Settings, maybe elsewhere). */
+    function refreshActiveModelFromSettings() {
+        authFetch('/api/user/model-pipeline')
+            .then(response => response.ok ? response.json() : null)
+            .then(data => {
+                const model = data && data.config && data.config.main_model;
+                if (model && normalizeModelId(model) !== normalizeModelId(window.activeBackendModelName)) {
+                    selectActiveModel(model);
+                }
+            })
+            .catch(() => { /* keep the current selection */ });
+    }
+
+    // Settings saved in another tab of this browser.
+    window.addEventListener('storage', event => {
+        if (event.key === 'saarthi_active_model' && event.newValue) selectActiveModel(event.newValue);
+    });
+    // Coming back to this tab (Settings may have changed in the meantime).
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') refreshActiveModelFromSettings();
+    });
 
     // ==========================================
     // DATABASE SYNC: RESTORE MODELS ON REFRESH
@@ -1180,24 +1242,14 @@
 
                 renderConfiguredModelsSidebar(configurations, registryModels);
 
+                // Settings > Model Selection's main model is the source of
+                // truth (the chat bar writes it on every change); the browser
+                // copy only covers a first visit before anything was saved.
                 const configuredModel = pipelineData && pipelineData.config && pipelineData.config.main_model;
                 const savedModel = localStorage.getItem('saarthi_active_model');
-                const bareModel = value => String(value || '').replace(/^(ollama|api):\/\//, '');
-                // The model last picked in this bar wins; the LLM Mapping
-                // main model is only the default for a first visit.
-                const findOption = model => model && Array.from(document.querySelectorAll(
-                    '#standard-llm-dropdown option, #opensource-llm-dropdown option'
-                )).find(item => item.value && bareModel(item.value) === bareModel(model));
-                const option = findOption(savedModel) || findOption(configuredModel);
-
-                standardDropdown.selectedIndex = 0;
-                opensourceDropdown.selectedIndex = 0;
-                if (option) {
-                    option.selected = true;
-                    window.activeBackendModelName = option.value;
-                    localStorage.setItem('saarthi_active_model', option.value);
-                    console.log(`🎯 Active model restored: ${option.value}`);
-                } else {
+                if (!selectActiveModel(configuredModel) && !selectActiveModel(savedModel)) {
+                    standardDropdown.selectedIndex = 0;
+                    opensourceDropdown.selectedIndex = 0;
                     window.activeBackendModelName = '';
                     localStorage.removeItem('saarthi_active_model');
                 }
