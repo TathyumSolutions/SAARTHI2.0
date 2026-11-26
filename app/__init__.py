@@ -174,6 +174,17 @@ def create_app(config_name='development'):
             print(f"[DB Bootstrap] Schema sync error: {e}")
             print(traceback.format_exc())
             db.session.rollback()
+        finally:
+            # gunicorn --preload runs create_app() once in the master and
+            # then forks the workers. Any pooled Postgres connection still
+            # open here would be inherited by EVERY worker - processes
+            # sharing one socket corrupt each other's results ("error with
+            # status PGRES_TUPLES_OK and no message from the libpq"), which
+            # failed random requests right after every start. Close them so
+            # each worker opens its own.
+            db.session.remove()
+            for engine in db.engines.values():
+                engine.dispose()
 
     @app.teardown_appcontext
     def teardown_db_session(exception):

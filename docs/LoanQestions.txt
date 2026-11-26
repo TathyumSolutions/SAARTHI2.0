@@ -1,0 +1,27 @@
+Assuming these are natural-language test questions for Saarthi against `lending_demo_db`, graded by the joins and logic each one forces.
+
+**Simple** (single table, basic filter/aggregate)
+
+1. How many active branches are there in each region?
+2. Which loan products have a maximum tenure above 60 months?
+3. How many customers have KYC status Pending?
+4. What is the total disbursed amount across all Active loans?
+5. How many collection receipts came through UPI versus NACH?
+
+**Medium** (2-3 joins, grouping, date logic)
+
+1. What is the total disbursed amount and average interest rate per product category?
+2. Which 10 branches have the highest number of NPA loans, and what is each one's NPA share of its total loans?
+3. What is the application approval rate by product, and what are the top 3 rejection reasons overall?
+4. Which agents sourced the most disbursed loans last financial year, and what was their total sanctioned amount?
+5. What is the average CIBIL score and average monthly income of customers by occupation, for those with at least one active loan?
+
+**Complicated** (multi-hop joins, window functions, cohorts, reconciliation)
+
+1. For each disbursement-month cohort, what percentage of loans ever crossed 90 DPD within 12 months of disbursement, split by product?
+2. What is the monthly collection efficiency (amount collected ÷ EMI due) by region for the last 12 months, and which regions declined three months in a row?
+3. As of the latest snapshot date, what is the total provisioning amount by asset classification and product category, and which 5 branches carry the highest provisioning as a percentage of outstanding principal?
+4. Which agents have an NPA rate on their sourced loans more than double their branch's average, and how much commission (paid plus pending) is tied to those agents?
+5. Which loans show a mismatch between the ledger and the loan record: disbursed amount not equal to the sum of Disbursement transactions, or processing fee not matching the product's fee percentage on the sanctioned amount?
+
+Two of these deliberately test ambiguity handling: "last financial year" (April-March) and "collection efficiency" (needs a defined formula). Medium 4 and Complicated 4 also test whether the path from loans to agents is found via `loan_applications`, since `loans` has no `agent_id`.

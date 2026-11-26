@@ -1,5 +1,8 @@
 # Lending Demo Data Set (NBFC-style)
 
+
+https://api.worldbank.org/v2/country/IN/indicator/FR.INR.LEND?format=json&per_page=10
+
 A self-contained, synthetic NBFC/lending-company demo data set for exercising
 Saarthi end-to-end across all of its connector types: a Postgres database,
 Excel reference tables, unstructured policy documents, and a validation API.
