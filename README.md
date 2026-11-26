@@ -458,3 +458,6 @@ DELETE FROM bi_semantics_configs;
 -- TRUNCATE TABLE llm_call_logs, query_logs, response_feedback, chat_sessions,
 -- model_configurations, user_model_pipelines, bi_semantics_configs
 -- RESTART IDENTITY CASCADE;
+
+
+	host.docker.internal lending_demo_db saarthi 5434 password
