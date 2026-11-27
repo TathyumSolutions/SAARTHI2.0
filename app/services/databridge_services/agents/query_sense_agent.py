@@ -11,7 +11,78 @@ from typing import Dict, Any, List
 import requests
 import os
 from langchain_openai import ChatOpenAI
-from app.services.llm_call_logger import tracked_invoke, record_llm_call
+from app.services.llm_call_logger import tracked_invoke
+from app.services.databridge_services.ollama_client import (
+    OLLAMA_SCHEMA_MAX_TABLES,
+    ollama_generate,
+)
+
+# JSON Schema for the plan, sent to Ollama as `format` (structured outputs).
+# The model can then only return an object with these keys. Without it,
+# Llama 2 7B answered "Count of machines grouped by status" with invented
+# rows ({"machines": [{"machine_id": 1, ...}]}) instead of a plan.
+PLAN_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "tables": {"type": "array", "items": {"type": "string"}},
+        "columns": {"type": "array", "items": {"type": "string"}},
+        "intent": {
+            "type": "string",
+            "enum": ["SELECTION", "AGGREGATION", "GROUPED_ANALYSIS", "DISTINCT_SELECTION"],
+        },
+        "aggregations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "function": {"type": "string", "enum": ["sum", "min", "max", "avg", "count"]},
+                    "column": {"type": "string"},
+                },
+                "required": ["function", "column"],
+            },
+        },
+        "group_by": {"type": "array", "items": {"type": "string"}},
+        "joins": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"left": {"type": "string"}, "right": {"type": "string"}},
+                "required": ["left", "right"],
+            },
+        },
+        "filters": {"type": "array", "items": {"type": "string"}},
+        "order_by": {"type": "array", "items": {"type": "string"}},
+        "limit": {"type": "integer"},
+        "assumption_note": {"type": "string"},
+    },
+    "required": ["tables", "columns", "intent", "aggregations", "group_by", "joins",
+                 "filters", "order_by", "limit", "assumption_note"],
+}
+
+
+def _table_named_in(table: str, query_words: set) -> bool:
+    """True when every word of a table name appears in the question, e.g.
+    "production_orders" in "open production orders by plant"."""
+    parts = re.findall(r"[a-z]{3,}", table.lower())
+    return bool(parts) and all(p in query_words or p.rstrip("s") in query_words for p in parts)
+
+
+def _is_local_model(target_model) -> bool:
+    value = str(target_model or "")
+    return value.startswith("ollama://") or value == "llama3"
+
+
+def _query_words(text: str) -> set:
+    """Lower-case words of 3+ letters, each also in a naive singular form
+    ("machines" -> "machine"), for matching against table/column names."""
+    words = set()
+    for w in re.findall(r"[a-z]{3,}", (text or "").lower()):
+        words.add(w)
+        if w.endswith("ies") and len(w) > 4:
+            words.add(w[:-3] + "y")
+        elif w.endswith("s") and len(w) > 3:
+            words.add(w[:-1])
+    return words
 
 class QuerySenseAgent:
     """
@@ -56,13 +127,21 @@ class QuerySenseAgent:
         def _all_tables(self) -> List[str]:
             return list(self.schema.get("tables", {}).keys())
 
-        def _foreign_keys_text(self) -> str:
+        def _foreign_keys_text(self, tables: List[str] = None) -> str:
+            keep = set(tables) if tables is not None else None
             parts = []
             for t, meta in self.schema["tables"].items():
+                if keep is not None and t not in keep:
+                    continue
                 for fk in meta.get("foreign_keys", []) or []:
                     if fk.get("column") and fk.get("references"):
+                        ref_table = str(fk["references"]).split(".", 1)[0]
+                        if keep is not None and ref_table not in keep:
+                            continue
                         parts.append(f"{t}.{fk['column']} -> {fk['references']} (declared)")
             for rel in self.schema.get("relations", []):
+                if keep is not None and (rel.get("from_table") not in keep or rel.get("to_table") not in keep):
+                    continue
                 confidence = rel.get("confidence", "inferred")
                 parts.append(
                     f"{rel['from_table']}.{rel['from_column']} -> {rel['to_table']}.{rel['to_column']} "
@@ -71,9 +150,12 @@ class QuerySenseAgent:
                 )
             return "\n".join(parts) or "(none)"
 
-        def _schema_context_text(self) -> str:
+        def _schema_context_text(self, tables: List[str] = None) -> str:
+            keep = set(tables) if tables is not None else None
             lines = []
             for t, meta in self.schema["tables"].items():
+                if keep is not None and t not in keep:
+                    continue
                 descr = meta.get("description", "")
                 lines.append(f"TABLE: {t} — {descr}")
                 for col, props in meta.get("columns", {}).items():
@@ -85,8 +167,69 @@ class QuerySenseAgent:
        
             
 
-        def _call_llm_for_plan(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "", user_id=None) -> Dict[str, Any]:
-            schema_tables = self._all_tables()
+        def _relevant_tables(self, user_query: str, hint_tables: list = None,
+                             limit: int = OLLAMA_SCHEMA_MAX_TABLES) -> List[str]:
+            """The `limit` tables most likely needed for this question, for
+            prompts sent to local models. The full schema overflows a small
+            context window (Llama 2 has 4,096 tokens), and Ollama then drops
+            the start of the prompt, which holds the output rules.
+
+            Scoring: router-hinted table 10, a word of the table name in
+            the question 3, a column name in the question 1. Tables joined
+            to a top-scoring table by a known relation fill any slots left,
+            so the readable-name joins of rule 2 stay possible."""
+            all_tables = self._all_tables()
+            if len(all_tables) <= limit:
+                return all_tables
+
+            words = _query_words(user_query)
+            hinted = {str(h).lower() for h in (hint_tables or [])}
+            scores = {}
+            for t in all_tables:
+                score = 10 if t.lower() in hinted else 0
+                name_parts = _query_words(t.replace("_", " "))
+                if t.lower() in words or (name_parts and name_parts & words):
+                    score += 3
+                for col in self.schema["tables"][t].get("columns", {}):
+                    if col.lower() in words or _query_words(col.replace("_", " ")) & words:
+                        score += 1
+                scores[t] = score
+
+            ranked = sorted(all_tables, key=lambda t: -scores[t])
+            chosen = [t for t in ranked if scores[t] > 0][:limit]
+            if not chosen:
+                return ranked[:limit]
+
+            neighbours = []
+            for rel in self.schema.get("relations", []):
+                a, b = rel.get("from_table"), rel.get("to_table")
+                if a in chosen and b not in chosen:
+                    neighbours.append(b)
+                elif b in chosen and a not in chosen:
+                    neighbours.append(a)
+            for t, meta in self.schema["tables"].items():
+                for fk in meta.get("foreign_keys", []) or []:
+                    ref = str(fk.get("references") or "").split(".", 1)[0]
+                    if t in chosen and ref in self.schema["tables"] and ref not in chosen:
+                        neighbours.append(ref)
+                    elif ref in chosen and t not in chosen:
+                        neighbours.append(t)
+            neighbours = {t for t in neighbours if t in scores}
+            for t in sorted(neighbours, key=lambda t: (-scores[t], all_tables.index(t))):
+                if len(chosen) >= limit:
+                    break
+                chosen.append(t)
+            return chosen
+
+        def _call_llm_for_plan(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "", user_id=None, retry_feedback: str = "") -> Dict[str, Any]:
+            local_model = _is_local_model(target_model)
+            # A local model only gets the tables relevant to this question
+            # (see _relevant_tables); hosted models keep the full schema.
+            schema_tables = (
+                self._relevant_tables(user_query, hint_tables) if local_model else self._all_tables()
+            )
+            if local_model:
+                print(f"📉 [QuerySense] Local model - schema trimmed to {len(schema_tables)} table(s): {schema_tables}")
             schema_brief = "\n".join(
                 f"Table '{t}': [{', '.join(self.schema['tables'][t]['columns'].keys())}]"
                 for t in schema_tables
@@ -95,8 +238,8 @@ class QuerySenseAgent:
             #    for t in schema_tables
             )
 
-            fk_text = self._foreign_keys_text()
-            ctx_text = self._schema_context_text()
+            fk_text = self._foreign_keys_text(schema_tables if local_model else None)
+            ctx_text = self._schema_context_text(schema_tables if local_model else None)
 
             # The router already read the live schema metadata and named
             # the table(s) it thinks this question needs (see
@@ -108,7 +251,7 @@ class QuerySenseAgent:
             # dropping tables from it.
             valid_hint_tables = [
                 t for t in (hint_tables or [])
-                if any(t.lower() == real.lower() for real in schema_tables)
+                if any(t.lower() == real.lower() for real in self._all_tables())
             ]
             hint_block = (
                 f"\nROUTER-IDENTIFIED TABLE(S) (from live schema metadata - a starting "
@@ -144,6 +287,15 @@ this specific question.
             # way down here, but never inserted into the prompt - so a
             # user's custom persona/formatting instructions had no effect
             # on table/column selection at all.
+            # Set when error_diagnosis sends the pipeline back here. Without
+            # it a retry sent the identical prompt at temperature 0 and got
+            # the identical failed plan back.
+            retry_block = (
+                f"\nPREVIOUS ATTEMPT FAILED: {retry_feedback.strip()}\n"
+                "Pick tables and columns ONLY from the schema below, spelled exactly as shown.\n"
+                if retry_feedback and retry_feedback.strip() else ""
+            )
+
             system_instructions_block = (
                 f"\nUSER CUSTOM FORMATTING INSTRUCTIONS (context only - does not "
                 f"change which tables/columns are correct):\n{system_instructions.strip()}\n"
@@ -173,7 +325,7 @@ You are QuerySense — an expert SQL planner.
 
 Use ONLY the tables, columns, and foreign-key relationships from the schema.
 Do NOT invent names.
-{hint_block}{self_learning_block}{system_instructions_block}
+{hint_block}{self_learning_block}{system_instructions_block}{retry_block}
 1. NAME THE METRIC, DON'T SWAP IT SILENTLY: if the user's question names a
 specific metric or value (e.g. "net value", "price", "cost", "revenue")
 and NO column in the schema above actually matches it for the table(s) this
@@ -255,17 +407,14 @@ SEMANTIC CONTEXT:
 
 USER QUESTION:
 \"\"\"{user_query}\"\"\"
+
+Return ONLY the JSON plan object described above (keys: tables, columns,
+intent, aggregations, group_by, joins, filters, order_by, limit,
+assumption_note). Do NOT return data rows or invent values.
 """
             # --- REQUIRED CHANGES START HERE ---
             import requests # Local import to ensure it's available
             
-            payload = {
-                "model": self.model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {"temperature": 0.0}
-            }
-
             try:
 
                 if target_model == "gpt-4o":
@@ -298,22 +447,9 @@ USER QUESTION:
 
                 elif target_model == "llama3":
                     print("🦙 [QuerySense] Routing to local Ollama [llama3] container layer...")
-                    payload = {
-                        "model": "llama3",  # Forces local Llama 3 image call explicitly
-                        "prompt": prompt,
-                        "stream": False,
-                        "options": {"temperature": 0.0}
-                    }
-                    _t0 = time.monotonic()
-                    resp = requests.post(self.url, json=payload, timeout=120)
-                    resp.raise_for_status()
-                    resp_json = resp.json()
-                    text = resp_json.get("response", "").strip()
-                    record_llm_call(
-                        purpose="query_sense.plan", model_name="llama3", provider="ollama",
-                        prompt_text=prompt, response_text=text,
-                        prompt_tokens=resp_json.get("prompt_eval_count"), completion_tokens=resp_json.get("eval_count"),
-                        duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                    text, _ = ollama_generate(
+                        self.url, "llama3", prompt,
+                        purpose="query_sense.plan", response_format=PLAN_JSON_SCHEMA, user_id=user_id,
                     )
 
                 elif str(target_model).startswith("api://"):
@@ -336,28 +472,10 @@ USER QUESTION:
                 elif str(target_model).startswith("ollama://"):
                     actual_model = target_model.replace("ollama://", "")
                     print(f"📦 [QuerySense] Dynamic Routing payload to Custom Local Ollama model: {actual_model}")
-                    payload = {
-                        "model": actual_model,
-                        "prompt": prompt,
-                        "stream": False,
-                        # The plan is parsed as JSON below; small local models
-                        # (e.g. Llama 2 7B) otherwise wrap it in prose.
-                        "format": "json",
-                        "options": {"temperature": 0.0}
-                    }
-                    _t0 = time.monotonic()
-                    resp = requests.post(self.url, json=payload, timeout=600)
-                    resp.raise_for_status()
-                    resp_json = resp.json()
-                    text = resp_json.get("response", "").strip()
-                    record_llm_call(
-                        purpose="query_sense.plan", model_name=actual_model, provider="ollama",
-                        prompt_text=prompt, response_text=text,
-                        prompt_tokens=resp_json.get("prompt_eval_count"), completion_tokens=resp_json.get("eval_count"),
-                        duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                    text, _ = ollama_generate(
+                        self.url, actual_model, prompt,
+                        purpose="query_sense.plan", response_format=PLAN_JSON_SCHEMA, user_id=user_id,
                     )
-
-
 
                 else:
                     raise ValueError(f"Requested model '{target_model}' has no active route configuration.")    
@@ -423,12 +541,25 @@ USER QUESTION:
              
 
         # -------------------- FALLBACK -------------------------------
-        def _fallback_simple(self, query: str) -> Dict[str, Any]:
+        def _fallback_simple(self, query: str, hint_tables: list = None) -> Dict[str, Any]:
             ql = query.lower()
             words = re.findall(r"\b[a-zA-Z_]{3,}\b", ql)
             resolved = []
 
+            # Tables the question names ("machines" -> machines), plus any
+            # the router hinted. When there are some, column matches are
+            # kept to those tables, so "status" does not pull in every
+            # table that has a status column.
+            query_words = _query_words(query)
+            named_tables = [t for t in self.schema["tables"] if _table_named_in(t, query_words)]
+            for h in hint_tables or []:
+                real = self._resolve_table(h)
+                if real and real not in named_tables:
+                    named_tables.append(real)
+
             for t, meta in self.schema["tables"].items():
+                if named_tables and t not in named_tables:
+                    continue
                 for col in meta["columns"].keys():
                     if col.lower() in words:
                         resolved.append(f"{t}.{col}")
@@ -458,7 +589,12 @@ USER QUESTION:
             elif limit_match:
                 limit = int(limit_match.group(1))
 
-            tables = sorted({c.split(".")[0] for c in resolved})
+            tables = sorted({c.split(".")[0] for c in resolved}) or sorted(named_tables)
+
+            # "count of machines by status", "per plant", "grouped by ..."
+            if aggregations and resolved and re.search(r"\b(by|per|group(ed)?|each)\b", ql):
+                intent = "GROUPED_ANALYSIS"
+                group_by = list(resolved)
 
             return {
                 "tables": tables,
@@ -777,13 +913,26 @@ USER QUESTION:
                 "grouping_reasoning": str(plan["group_by"]),
             }
 
-        def analyze(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "", user_id=None) -> Dict[str, Any]:
+        def _plan_names_real_tables(self, plan: Any) -> bool:
+            """True when the LLM output is a plan whose "tables" list names
+            at least one table that exists in the schema. Rejects JSON of
+            the wrong shape, e.g. invented data rows from a small model."""
+            if not isinstance(plan, dict):
+                return False
+            tables = plan.get("tables")
+            if not isinstance(tables, list):
+                return False
+            return any(self._resolve_table(t) for t in tables)
+
+        def analyze(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "", user_id=None, retry_feedback: str = "") -> Dict[str, Any]:
             self.state["timestamp"] = datetime.now().isoformat()
             self.state["user_query"] = user_query
 
-            plan = self._call_llm_for_plan(user_query,target_model,system_instructions,hint_tables=hint_tables,feedback_context=feedback_context,user_id=user_id)
-            if not plan:
-                plan = self._fallback_simple(user_query)
+            plan = self._call_llm_for_plan(user_query,target_model,system_instructions,hint_tables=hint_tables,feedback_context=feedback_context,user_id=user_id,retry_feedback=retry_feedback)
+            if not self._plan_names_real_tables(plan):
+                if plan:
+                    print("⚠️ [QuerySense] LLM output is not a usable plan (no known tables) - using keyword fallback")
+                plan = self._fallback_simple(user_query, hint_tables=hint_tables)
 
             fallback_aggs = self._fallback_simple(user_query).get("aggregations", [])
             fallback_limit = self._fallback_simple(user_query).get("limit", 0)
@@ -853,8 +1002,13 @@ USER QUESTION:
         hint_tables = state.get("hint_tables") or []
         if feedback_context:
             print(f"🧠 [FEEDBACK-DEBUG] [QuerySense] Using feedback context for table/column selection:\n{feedback_context}")
+        diagnosis = state.get("error_diagnosis") or {}
+        retry_feedback = (
+            state.get("error_feedback") or ""
+            if diagnosis.get("retry_from_step") == "query_sense" else ""
+        )
         analysis = self.query_sense.analyze(
-            simplified_query,chosen_model,system_instructions,hint_tables=hint_tables,feedback_context=feedback_context,user_id=state.get("user_id"))
+            simplified_query,chosen_model,system_instructions,hint_tables=hint_tables,feedback_context=feedback_context,user_id=state.get("user_id"),retry_feedback=retry_feedback)
 
         state["query_sense_output"] = analysis
         state["current_step"] = "query_sense"

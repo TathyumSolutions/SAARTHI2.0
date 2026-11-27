@@ -73,6 +73,7 @@ import time
 from langchain_openai import ChatOpenAI
 from app.services.bi_semantics_service import build_measure_guidance
 from app.services.llm_call_logger import tracked_invoke, record_llm_call
+from app.services.databridge_services.ollama_client import OLLAMA_REQUEST_TIMEOUT, ollama_options
 
 
 class SQLGeneratorAgent:
@@ -313,10 +314,10 @@ Return ONLY the PostgreSQL query, nothing else.
                     "model": actual_model,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {"temperature": 0.0}
+                    "options": ollama_options(0.0)
                 }
                 _t0 = time.monotonic()
-                response = requests.post(self.llm_backend["url"], json=payload, timeout=300)
+                response = requests.post(self.llm_backend["url"], json=payload, timeout=OLLAMA_REQUEST_TIMEOUT)
                 response.raise_for_status()
                 raw_text = response.text
                 if "{" in raw_text and "}" in raw_text:
@@ -481,8 +482,8 @@ Return ONLY the PostgreSQL query, nothing else.
                             "model": actual_model,
                             "prompt": extra_narration_prompt,
                             "stream": False,
-                            "options": {"temperature": 0.3}
-                        }, timeout=600)
+                            "options": ollama_options(0.3)
+                        }, timeout=OLLAMA_REQUEST_TIMEOUT)
 
                         raw_resp = resp.text
                         if "{" in raw_resp and "}" in raw_resp:

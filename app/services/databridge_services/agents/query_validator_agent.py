@@ -339,6 +339,10 @@ class QueryValidatorAgent:
             state["sql_validation"] = validation
             if validation.get("status") != "passed":
                 state["retry_count"] = state.get("retry_count", 0) + 1
+                # Set here, not only in validation_router: LangGraph does not
+                # keep state changes made inside a routing function, so
+                # error_diagnosis used to receive error=None.
+                state["error"] = validation.get("message") or "SQL validation failed"
             state["steps"].append(
                 f"SQL Schema Validation: {validation.get('status').upper()}. Verified that the generated query matches the database structure."
             )    
@@ -347,6 +351,11 @@ class QueryValidatorAgent:
             query_sense_output = state.get("query_sense_output", {})
             validation = self.validate_schema(query_sense_output)
             state["validation_result"] = validation
+            if validation.get("status") != "passed":
+                # See the SQL branch above. With the real message,
+                # error_diagnosis recognises "No matching tables or columns"
+                # as unrecoverable and stops instead of retrying twice.
+                state["error"] = validation.get("message") or "Schema validation failed"
             state["steps"].append(
                 f"Initial Schema Validation: {validation.get('status').upper()}. Confirmed all identified tables and columns exist in the system."
             )

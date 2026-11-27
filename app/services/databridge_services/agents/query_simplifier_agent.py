@@ -1,13 +1,12 @@
 """
 QuerySimplifierAgent - Simplifies user queries to extract core intent
 """
-import requests
 import json
-import time
 from typing import Dict, Any
 import os
 from langchain_openai import ChatOpenAI
-from app.services.llm_call_logger import tracked_invoke, record_llm_call
+from app.services.llm_call_logger import tracked_invoke
+from app.services.databridge_services.ollama_client import ollama_generate
 
 
 class QuerySimplifierAgent:
@@ -144,28 +143,9 @@ Return ONLY the simplified query, nothing else.
                 simplified = response.content.strip()
             elif target_model == "llama3":
                 print("🦙 [QuerySimplifierAgent] Routing to local Ollama [llama3] container layer...")
-                _t0 = time.monotonic()
-                response = requests.post(
-                self.url,
-                json={
-                    "model": "llama3",  # Forces local Llama 3 image call explicitly
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                    "temperature": 0.0,
-                    "num_ctx": 4096
-                    }
-                },
-                timeout=120
-                )
-                response.raise_for_status()
-                result = response.json()
-                simplified = result.get("response", user_query).strip()
-                record_llm_call(
-                    purpose="query_simplifier.simplify", model_name="llama3", provider="ollama",
-                    prompt_text=prompt, response_text=simplified,
-                    prompt_tokens=result.get("prompt_eval_count"), completion_tokens=result.get("eval_count"),
-                    duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                simplified, _ = ollama_generate(
+                    self.url, "llama3", prompt,
+                    purpose="query_simplifier.simplify", user_id=user_id,
                 )
                 return simplified if simplified else user_query
             elif str(target_model).startswith("api://"):
@@ -190,28 +170,9 @@ Return ONLY the simplified query, nothing else.
                 actual_model = target_model.replace("ollama://", "")
                 print(f"📦 [QuerySimplifierAgent] Dynamic Routing payload to Custom Local Ollama model: {actual_model}")
 
-                _t0 = time.monotonic()
-                response = requests.post(
-                    self.url,
-                    json={
-                        "model": actual_model,
-                        "prompt": prompt,
-                        "stream": False,
-                        "options": {
-                            "temperature": 0.0,
-                            "num_ctx": 4096
-                        }
-                    },
-                    timeout=120
-                )
-                response.raise_for_status()
-                result = response.json()
-                simplified = result.get("response", user_query).strip()
-                record_llm_call(
-                    purpose="query_simplifier.simplify", model_name=actual_model, provider="ollama",
-                    prompt_text=prompt, response_text=simplified,
-                    prompt_tokens=result.get("prompt_eval_count"), completion_tokens=result.get("eval_count"),
-                    duration_ms=int((time.monotonic() - _t0) * 1000), user_id=user_id,
+                simplified, _ = ollama_generate(
+                    self.url, actual_model, prompt,
+                    purpose="query_simplifier.simplify", user_id=user_id,
                 )
                 return simplified if simplified else user_query
                 
