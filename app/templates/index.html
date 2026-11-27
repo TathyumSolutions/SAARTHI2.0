@@ -988,10 +988,9 @@
         // back to whichever option is marked `selected` in the Standard API
         // dropdown so a model is always active without the user having to
         // touch the dropdown first.
+        // Only read here - writing browser storage on page load would push
+        // this tab's not-yet-loaded selection into every other open tab.
         window.activeBackendModelName = standardDropdown ? standardDropdown.value : "";
-        if (window.activeBackendModelName) {
-            localStorage.setItem('saarthi_active_model', window.activeBackendModelName);
-        }
 
         if (standardDropdown && opensourceDropdown) {
             standardDropdown.addEventListener("change", function () {
@@ -1076,7 +1075,9 @@
                     console.log(`⚡ Background state auto-recovered: ${window.activeBackendModelName}`);
                 }
             }
-            localStorage.setItem('saarthi_active_model', window.activeBackendModelName);
+            // Sending a message must not write browser storage: every open
+            // Saarthi tab listens to it, so a tab still on an older model
+            // would switch this one back as soon as it sent a message.
 
             if (!window.activeBackendModelName) {
                 alert("Please select the model before proceeding.");
@@ -1138,7 +1139,12 @@
         return true;
     }
 
-    /** Saves the chat-bar model as the Model Selection main model. */
+    /**
+     * Saves the chat-bar model as the Model Selection main model. If the
+     * save fails, says so and puts the dropdown back on the saved model -
+     * otherwise the chat bar shows a model the server never stored, and the
+     * next reload or return to this tab quietly switches back.
+     */
     function saveMainModelSetting(model) {
         if (!model) return;
         authFetch('/api/user/model-pipeline/main-model', {
@@ -1153,7 +1159,11 @@
                     });
                 }
             })
-            .catch(error => console.warn('Could not save the model to Settings:', error));
+            .catch(error => {
+                console.warn('Could not save the model to Settings:', error);
+                alert(`Could not switch to this model: ${error.message}\n\nIt was not saved, so your previous model stays selected.`);
+                refreshActiveModelFromSettings();
+            });
     }
 
     /** Re-reads the saved main model (changed in Settings, maybe elsewhere). */
