@@ -74,6 +74,7 @@ from langchain_openai import ChatOpenAI
 from app.services.bi_semantics_service import build_measure_guidance
 from app.services.llm_call_logger import tracked_invoke, record_llm_call
 from app.services.databridge_services.ollama_client import OLLAMA_REQUEST_TIMEOUT, ollama_options
+from app.services.databridge_services.llm_output_guards import extract_sql
 
 
 class SQLGeneratorAgent:
@@ -333,16 +334,15 @@ Return ONLY the PostgreSQL query, nothing else.
                 )
             else:
                 raise ValueError(f"Requested model '{target_model}' has no active route configuration.") 
-            # Cleanup: remove JSON/object-like lines or explanations
-            sql_lines = [
-                line.strip()
-                for line in raw_sql.splitlines()
-                if line.strip() and not line.strip().startswith("{") and not line.strip().startswith("}")
-            ]
+            # Keep only the SQL statement: small models often add a markdown
+            # fence, a leading "Sure, here is..." or a trailing "Note:" /
+            # "Explanation:" section, which the old line-join cleanup glued
+            # into the query (see llm_output_guards.extract_sql).
+            sql = extract_sql(raw_sql)
+            if not sql and raw_sql and raw_sql.strip():
+                print(f"⚠️ [SQLGeneratorAgent] No SQL statement found in model output: {raw_sql[:200]!r}")
 
-            sql = " ".join(sql_lines)
-
-            return sql.strip()
+            return sql
 
         except Exception as e:
             print(f"❌ [SQLGeneratorAgent] LLM SQL generation error: {e}")

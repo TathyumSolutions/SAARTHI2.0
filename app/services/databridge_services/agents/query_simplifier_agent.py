@@ -7,6 +7,7 @@ import os
 from langchain_openai import ChatOpenAI
 from app.services.llm_call_logger import tracked_invoke
 from app.services.databridge_services.ollama_client import ollama_generate
+from app.services.databridge_services.llm_output_guards import sanitize_simplified_query
 
 
 class QuerySimplifierAgent:
@@ -53,6 +54,12 @@ class QuerySimplifierAgent:
         custom_key = state.get("custom_key", "")
         system_instructions = state.get("system_instructions", "")
         simplified = self.simplify(user_query, chosen_model,custom_key,system_instructions,user_id=state.get("user_id"))
+        # Small models often ignore "NEVER generate SQL" and reply with SQL
+        # or chatter; downstream agents would then plan from that text
+        # instead of the user's question. Fall back to the original instead.
+        simplified, rejection = sanitize_simplified_query(simplified, user_query)
+        if rejection:
+            print(f"⚠️ [QuerySimplifierAgent] Discarded simplifier output ({rejection}); using the original question.")
         #chosen_model = state.get("model_name", self.model_name)
         #simplified = self.simplify(user_query,chosen_model)
         

@@ -61,6 +61,8 @@ from app.services.data_source_finaliser import finalize_data_source_strategy
 from app.services.result_combiner import combine_results
 from app.services.llm_call_logger import tracked_invoke
 from app.services.router_llm import select_router_model, local_text, route_with_local_model
+from app.services.query_placeholders import resolve_query_placeholders, build_missing_value_question
+from app.services.router_tool_merge import merge_same_source_calls
 
 # Token counting is best-effort: fall back to a rough estimate if tiktoken
 # isn't installed, rather than hard-failing the whole router.
@@ -1930,6 +1932,33 @@ class RouterService:
             print("================ END ROUTER DEBUG: get_smart_response inputs ==================\n", flush=True)
 
             # ------------------------------------------------
+            # LAYER 0: Fill in ":name" placeholders (e.g. ":as_of")
+            # ------------------------------------------------
+            # Left in place, every downstream model invents its own value.
+            # Date-like ones default to today; any other one has no safe
+            # default, so ask the user instead of guessing.
+            placeholders = resolve_query_placeholders(user_query)
+            if placeholders.resolved:
+                print(f"📅 [Router] Filled placeholders: {placeholders.resolved}")
+                user_query = placeholders.text
+            if placeholders.unresolved:
+                ask_text = build_missing_value_question(placeholders.unresolved)
+                print(f"❓ [Router] Unresolved placeholders: {placeholders.unresolved}")
+                _push_router_event(session_id, "start", "Checking Question", "Looking for values the question leaves open.")
+                _push_router_event(session_id, "complete", "Checking Question", ask_text)
+                _push_router_done(session_id)
+                ask_steps = [f"Question has unfilled placeholder(s): {', '.join(placeholders.unresolved)}."]
+                return {
+                    "answer": ask_text,
+                    "sql": None, "table": [], "chart": {}, "insights": [],
+                    "steps": ask_steps,
+                    "chain_of_thought": ask_steps,
+                    "router_decision": "GENERAL",
+                    "execution_type": "fresh",
+                    "format": "text",
+                }
+
+            # ------------------------------------------------
             # LAYER 1: Fast heuristic check (Zero LLM Token Cost)
             # ------------------------------------------------
             if classify_query_heuristic(user_query) == "GENERAL":
@@ -2096,6 +2125,14 @@ class RouterService:
                     continue
                 seen_calls.add(dedup_key)
                 tool_calls.append(call)
+
+            # One database answers a combined question in a single SQL run
+            # (via its own joins); splitting it into several query_database
+            # tracks produces halves that can't be joined and, on a local
+            # Ollama, parallel runs that time out. See router_tool_merge.py.
+            tool_calls, merged_tools = merge_same_source_calls(tool_calls, user_query)
+            if merged_tools:
+                print(f"🔗 [Router] Merged repeated calls into one for: {merged_tools}")
 
             print(f"🧠 Router selected tools: {[c['name'] for c in tool_calls]}")
             _log_strategy_event(
