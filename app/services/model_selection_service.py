@@ -106,9 +106,23 @@ def _bare_model_name(model_name: Optional[str]) -> str:
 
 
 def _runtime_model_name(model_name: Optional[str]) -> Optional[str]:
+    """The id the agents route on: "ollama://<name>" for a local model,
+    "api://<name>" for a cloud model.
+
+    A bare registry API name ("gpt-4o", saved by presets and auto-fill) used
+    to be returned as-is. The agents send the exact strings "gpt-4o" and
+    "gpt-4o-mini" to OpenAI with only OPENAI_API_KEY from .env, never the
+    key saved on the model's configuration. Without that .env key, those
+    steps failed even though GPT was selected. The api:// form goes through
+    resolve_dynamic_llm, which uses the step's own key (see
+    get_step_credentials)."""
     value = str(model_name or "").strip()
-    if value in MODELS_REGISTRY and MODELS_REGISTRY[value].get("type") == "open_source":
-        return f"ollama://{value}"
+    if value in MODELS_REGISTRY:
+        model_type = MODELS_REGISTRY[value].get("type")
+        if model_type == "open_source":
+            return f"ollama://{value}"
+        if model_type == "api":
+            return f"api://{value}"
     return value or None
 
 
@@ -208,3 +222,52 @@ def get_recommended_preset_payload(preset_key: str, user_id: int = 1, company_co
         "configured": True,
         "message": "Preset resolved from currently configured models.",
     }
+
+
+def _user_company_code(user_id: int) -> str:
+    try:
+        from app.models.user import User
+        user = User.query.get(user_id)
+        return str(getattr(user, "company_code", "") or "").strip()
+    except Exception:
+        return ""
+
+
+def get_step_credentials(step_model: Optional[str], requested_model: Optional[str],
+                         requested_key: str = "", user_id: int = 1) -> str:
+    """API key for the model one pipeline step runs on.
+
+    The chat request carries the key of the model selected in the chat bar
+    only. Every agent used to receive that key, whatever model it ran. With
+    Llama selected (no key) and a step set to GPT in LLM Mapping, the GPT
+    step got an empty key and failed. With GPT selected and a step set to
+    Claude, the OpenAI key was sent to Anthropic.
+
+    Returns requested_key when the step runs the chat-bar model, "" for a
+    local model, otherwise the custom_key saved on that model's own
+    configuration: the user's own row first, then one saved by the user's
+    company. Never another company's key.
+    """
+    step = str(step_model or "").strip()
+    if not step or _bare_model_name(step).lower() == _bare_model_name(requested_model).lower():
+        return requested_key or ""
+    if step.startswith("ollama://"):
+        return ""
+
+    bare = _bare_model_name(step)
+    variants = {step, bare, f"api://{bare}"}
+    rows = [
+        row for row in ModelConfiguration.query.filter(ModelConfiguration.model.in_(variants)).all()
+        if row.name != "global_default"
+    ]
+    company = _user_company_code(user_id)
+    own = [row for row in rows if row.user_id == user_id]
+    same_company = [
+        row for row in rows
+        if company and (str(row.company_code or "").strip() == company or _row_company_code(row) == company)
+    ]
+    for row in own + same_company:
+        settings = row.settings if isinstance(row.settings, dict) else {}
+        if settings.get("custom_key"):
+            return settings["custom_key"]
+    return ""

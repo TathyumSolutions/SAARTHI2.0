@@ -6,7 +6,7 @@ from .agent_state import DataBridgeState
 from .agent_routers import validation_router, error_recovery_router, format_router
 from app.services.stream_manager import stream_manager
 import time
-from app.services.model_selection_service import get_model_for_step
+from app.services.model_selection_service import get_model_for_step, get_step_credentials
 
 # Import all agents from the agents package
 from .agents import (
@@ -69,6 +69,30 @@ error_diagnosis = ErrorDiagnosisAgent()
 
 
 # ===== Agent Node Functions =====
+def _use_step_model(state: DataBridgeState, step_name: str) -> str:
+    """Points the state at the model, and that model's API key, that this
+    step runs on.
+
+    The chat-bar model (requested_model_name) and its key
+    (requested_custom_key) stay unchanged for the whole request. Each step
+    resolves from them afresh, so one step's model or key never carries
+    over to the next. Before, a step whose lookup returned nothing ran on
+    whatever model the previous step had set, and every step used the
+    chat-bar model's key, so a step set to GPT under Llama got no key."""
+    requested = state.get("requested_model_name") or state.get("model_name")
+    if state.get("requested_custom_key") is None:
+        state["requested_custom_key"] = state.get("custom_key") or ""
+    user_id = state.get("user_id", 1)
+
+    step_model = get_model_for_step(step_name, requested_main_model=requested, user_id=user_id) or requested
+    state["model_name"] = step_model
+    state["custom_key"] = get_step_credentials(
+        step_model, requested, state["requested_custom_key"], user_id=user_id
+    )
+    print(f"[ModelSelection] {step_name} -> {step_model}")
+    return step_model
+
+
 def simplifier_node(state: DataBridgeState) -> DataBridgeState:
     """QuerySimplifierAgent node"""
     session_id = state.get("session_id", 1)
@@ -78,14 +102,10 @@ def simplifier_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Simplifier Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    requested_main_model = state.get("requested_model_name") or state.get("model_name")
-    user_id = state.get("user_id", 1)
-    step_model = get_model_for_step("query_simplifier", requested_main_model=requested_main_model, user_id=user_id)
+    step_model = _use_step_model(state, "query_simplifier")
     query_simplifier = state["_agents"]["query_simplifier"]
     if step_model:
-        state["model_name"] = step_model
         query_simplifier.model_name = step_model
-    print(f"[ModelSelection] query_simplifier -> {step_model}")
     return query_simplifier.execute(state)
     
 
@@ -99,14 +119,10 @@ def query_sense_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Sense Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    requested_main_model = state.get("requested_model_name") or state.get("model_name")
-    user_id = state.get("user_id", 1)
-    step_model = get_model_for_step("query_sense", requested_main_model=requested_main_model, user_id=user_id)
+    step_model = _use_step_model(state, "query_sense")
     query_sense = state["_agents"]["query_sense"]
     if step_model:
-        state["model_name"] = step_model
         query_sense.ollama_model = step_model
-    print(f"[ModelSelection] query_sense -> {step_model}")
     return query_sense.execute(state)
   
 
@@ -119,12 +135,7 @@ def validator_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Validator Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    requested_main_model = state.get("requested_model_name") or state.get("model_name")
-    user_id = state.get("user_id", 1)
-    step_model = get_model_for_step("query_validator", requested_main_model=requested_main_model, user_id=user_id)
-    if step_model:
-        state["model_name"] = step_model
-    print(f"[ModelSelection] query_validator -> {step_model}")
+    _use_step_model(state, "query_validator")
     return state["_agents"]["query_validator"].execute(state)
 
 
@@ -137,12 +148,7 @@ def sql_generator_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "SQL Generator Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    requested_main_model = state.get("requested_model_name") or state.get("model_name")
-    user_id = state.get("user_id", 1)
-    step_model = get_model_for_step("sql_generator", requested_main_model=requested_main_model, user_id=user_id)
-    if step_model:
-        state["model_name"] = step_model
-    print(f"[ModelSelection] sql_generator -> {step_model}")
+    _use_step_model(state, "sql_generator")
     return state["_agents"]["sql_generator"].execute(state)
    
 
@@ -155,12 +161,7 @@ def query_formatter_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Query Formatter Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    requested_main_model = state.get("requested_model_name") or state.get("model_name")
-    user_id = state.get("user_id", 1)
-    step_model = get_model_for_step("query_formatter", requested_main_model=requested_main_model, user_id=user_id)
-    if step_model:
-        state["model_name"] = step_model
-    print(f"[ModelSelection] query_formatter -> {step_model}")
+    _use_step_model(state, "query_formatter")
     return state["_agents"]["query_formatter"].execute(state)
 
 
@@ -173,12 +174,7 @@ def insight_generator_node(state: DataBridgeState) -> DataBridgeState:
         is_sql=True
     )
 
-    requested_main_model = state.get("requested_model_name") or state.get("model_name")
-    user_id = state.get("user_id", 1)
-    step_model = get_model_for_step("data_insight_generator", requested_main_model=requested_main_model, user_id=user_id)
-    if step_model:
-        state["model_name"] = step_model
-    print(f"[ModelSelection] data_insight_generator -> {step_model}")
+    _use_step_model(state, "data_insight_generator")
     return state["_agents"]["data_insight_generator"].execute(state)
 
 
@@ -190,12 +186,7 @@ def visualizer_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Data Visualizer Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    requested_main_model = state.get("requested_model_name") or state.get("model_name")
-    user_id = state.get("user_id", 1)
-    step_model = get_model_for_step("data_visualizer", requested_main_model=requested_main_model, user_id=user_id)
-    if step_model:
-        state["model_name"] = step_model
-    print(f"[ModelSelection] data_visualizer -> {step_model}")
+    _use_step_model(state, "data_visualizer")
     return state["_agents"]["data_visualizer"].execute(state)
 
 
@@ -207,12 +198,7 @@ def error_diagnosis_node(state: DataBridgeState) -> DataBridgeState:
         {"event": "start", "title": "Error Diagnosis Agent", "description": "Processing...", "is_sql": True},
         is_sql=True
     )
-    requested_main_model = state.get("requested_model_name") or state.get("model_name")
-    user_id = state.get("user_id", 1)
-    step_model = get_model_for_step("error_diagnosis", requested_main_model=requested_main_model, user_id=user_id)
-    if step_model:
-        state["model_name"] = step_model
-    print(f"[ModelSelection] error_diagnosis -> {step_model}")
+    _use_step_model(state, "error_diagnosis")
     return state["_agents"]["error_diagnosis"].execute(state)
 
 
@@ -518,6 +504,7 @@ def run_data_bridge_agent(user_query: str, max_retries: int = 2,session_id: int 
         "user_query": user_query,
         "model_name": model_name,
         "requested_model_name": model_name,
+        "requested_custom_key": custom_key or "",
         "session_id": session_id,
         "user_id": user_id,
         "custom_key": custom_key,

@@ -16,6 +16,9 @@ class DataBridgeState(TypedDict):
     session_id: Optional[str]
     user_id: Optional[int]
     custom_key: Optional[str]
+    # Key of the chat-bar model. custom_key is re-set per step to the key of
+    # the model that step runs on (see _use_step_model in langgraph_agent.py).
+    requested_custom_key: Optional[str]
     system_instructions: Optional[str]
     # Self-learning context built from past response_feedback (like/dislike)
     # rows on similar questions - see _build_feedback_context() in
