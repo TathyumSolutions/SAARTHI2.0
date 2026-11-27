@@ -1,0 +1,41 @@
+{
+ "meta": {"question": "As of the latest snapshot date, what is the total provisioning amount by asset classification and product category, and which 5 branches carry the highest provisioning as a percentage of outstanding principal?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:20"},
+ "result": {
+  "columns": ["asset_classification", "category", "total_provisioning"],
+  "rows": [
+    ["Doubtful", "Consumer", 4944.93],
+    ["Doubtful", "Housing", 930009.96],
+    ["Doubtful", "Vehicle", 861120.94],
+    ["Loss", "Gold", 421681.03],
+    ["Loss", "Vehicle", 123283.45],
+    ["Standard", "Business", 402900.31],
+    ["Standard", "Consumer", 3800.84],
+    ["Standard", "Education", 527286.84],
+    ["Standard", "Gold", 27003.36],
+    ["Standard", "Housing", 619628.09],
+    ["Standard", "Microfinance", 3609.11],
+    ["Standard", "Personal", 269508.86],
+    ["Standard", "Secured", 296355.72],
+    ["Standard", "Vehicle", 354079.31],
+    ["Sub-Standard", "Business", 529092.27],
+    ["Sub-Standard", "Education", 784963.86],
+    ["Sub-Standard", "Gold", 235135.83],
+    ["Sub-Standard", "Housing", 2748616.34],
+    ["Sub-Standard", "Microfinance", 4044.9],
+    ["Sub-Standard", "Secured", 1217062.81],
+    ["Sub-Standard", "Vehicle", 984045.86]
+  ],
+  "parts": {
+   "top5_branches_provisioning_pct": {
+    "columns": ["branch_name", "provisioning_pct"],
+    "rows": [
+      ["Pune - West Branch", 7.31],
+      ["Hubballi - South Branch", 6.57],
+      ["Coimbatore - South Branch", 5.42],
+      ["Delhi - North Branch", 5.37],
+      ["Nagpur - West Branch", 4.32]
+    ]
+   }
+  }
+ }
+}

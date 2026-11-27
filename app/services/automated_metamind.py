@@ -578,12 +578,57 @@ def _normalize_join_column_name(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (name or "").lower())
 
 
+# Trailing name tokens that mark a column as an identifier. Matched on whole
+# tokens, not substrings: a substring test let "paid_date" (pa-ID-date) and
+# "annotation" (anNOtation) through as join keys.
+_JOIN_KEY_TOKENS = {"id", "code", "key", "num", "no", "number", "ref"}
+
+
+def _name_tokens(col_name: str) -> list:
+    """'material_ID' -> ['material', 'id']; 'customerId' -> ['customer', 'id']."""
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", col_name or "")
+    return re.findall(r"[a-z0-9]+", spaced.lower())
+
+
 def _looks_like_join_key(col_name: str) -> bool:
-    """Cheap prefilter so relation inference only compares columns that
-    plausibly hold an id/code/key - not every column in the schema -
-    keeping the pairwise comparison below fast on real schemas."""
-    lowered = (col_name or "").lower()
-    return any(token in lowered for token in ("id", "code", "key", "num", "no"))
+    """True when the column's name says it holds an id/code/key - its last
+    word is one of _JOIN_KEY_TOKENS (material_id, po_number, customerId),
+    or a single word ending in "id" (matid)."""
+    tokens = _name_tokens(col_name)
+    if not tokens:
+        return False
+    return tokens[-1] in _JOIN_KEY_TOKENS or (len(tokens) == 1 and tokens[0].endswith("id"))
+
+
+def _is_key_column(table_data: dict, col: dict) -> bool:
+    """Whether `col` identifies one row of its table, so another table's
+    same-named column can reference it.
+
+    A declared primary key or UNIQUE column always counts (this is what
+    lets unannotated SAP-style names like MATNR join). Without one,
+    profiling that shows every row holds a distinct non-null value counts
+    too, but only for a column whose name also looks like an id - a column
+    of unique phone numbers or e-mails is not a join key."""
+    constraints = table_data.get("constraints") or {}
+    name = col.get("name")
+    if name in (constraints.get("primary_key") or []) or name in (constraints.get("unique_columns") or []):
+        return True
+    row_count = table_data.get("row_count")
+    unique_values = col.get("unique_values")
+    return (
+        _looks_like_join_key(name)
+        and isinstance(row_count, int) and row_count > 1
+        and unique_values == row_count
+        and not col.get("null_count")
+    )
+
+
+def _declared_fk_target(table_data: dict, col_name: str):
+    """'(table, column)' a declared FK on col_name references, else None."""
+    for fk in (table_data.get("constraints") or {}).get("foreign_keys", []) or []:
+        if fk.get("column") == col_name and fk.get("references_table"):
+            return (fk["references_table"], fk.get("references_column"))
+    return None
 
 
 def _sample_value_overlap(a: list, b: list):
@@ -647,8 +692,17 @@ def _infer_db_relations(db_tables: dict) -> list:
                     (fk["references_table"], fk["references_column"]),
                 }))
 
+    tables = db_tables or {}
+    # Only tables with no declared primary key at all (an unannotated
+    # schema) fall back to a bare name match: there is nothing to tell a key
+    # from a plain attribute.
+    unannotated = {
+        t for t, d in tables.items()
+        if not (d.get("constraints") or {}).get("primary_key")
+    }
+
     join_columns = []  # [(table_name, column_dict), ...]
-    for table_name, table_data in (db_tables or {}).items():
+    for table_name, table_data in tables.items():
         for col in table_data.get("columns", []) or []:
             if _looks_like_join_key(col.get("name", "")) or col.get("sample_values"):
                 join_columns.append((table_name, col))
@@ -666,11 +720,47 @@ def _infer_db_relations(db_tables: dict) -> list:
             n1 = _normalize_join_column_name(c1.get("name", ""))
             n2 = _normalize_join_column_name(c2.get("name", ""))
             name_match = bool(n1) and n1 == n2 and n1 not in _GENERIC_JOIN_COLUMN_NAMES
-            overlap = _sample_value_overlap(c1.get("sample_values"), c2.get("sample_values"))
-
             if not name_match:
                 continue
+
+            # Two columns that both reference the same parent through a
+            # declared FK (agents.branch_id and loans.branch_id ->
+            # branches) are siblings, not a relation: joining them directly
+            # pairs every agent with every loan of that branch. The real
+            # path goes through the parent table or a bridge table.
+            target1 = _declared_fk_target(tables[t1], c1["name"])
+            target2 = _declared_fk_target(tables[t2], c2["name"])
+            if target1 and target1 == target2:
+                continue
+
+            # One side has to identify a single row (a primary key, a UNIQUE
+            # column, or a column profiled as unique with an id-like name).
+            # Two non-key columns sharing a name - order_date, unit_price,
+            # category, mobile - join many rows to many rows and describe no
+            # relationship. Unannotated tables keep the bare name match, but
+            # only for id-like names.
+            key1 = _is_key_column(tables[t1], c1)
+            key2 = _is_key_column(tables[t2], c2)
+            if not (key1 or key2):
+                if not ({t1, t2} & unannotated and _looks_like_join_key(c1["name"])):
+                    continue
+
+            overlap = _sample_value_overlap(c1.get("sample_values"), c2.get("sample_values"))
+            # A UNIQUE attribute that is not the primary key (pan_number,
+            # gstin) needs the sample values to agree before it is trusted:
+            # customers.gstin and suppliers.gstin share a name, and both are
+            # unique, but hold different companies.
+            pk1 = c1["name"] in ((tables[t1].get("constraints") or {}).get("primary_key") or [])
+            pk2 = c2["name"] in ((tables[t2].get("constraints") or {}).get("primary_key") or [])
+            if not (pk1 or pk2) and not _looks_like_join_key(c1["name"]) and not overlap:
+                continue
+
             confidence = "name+value" if overlap is not None and overlap >= 0.5 else "name_only"
+
+            # Point the relation at the key side, FK-style
+            # (referencing.column -> key_table.column).
+            if key1 and not key2:
+                (t1, c1), (t2, c2) = (t2, c2), (t1, c1)
 
             seen_pairs.add(pair_key)
             relations.append({

@@ -1,0 +1,13 @@
+{
+ "meta": {"question": "For each agent with at least 20 decided applications in the 12 months to 2026-08-22, what is the approval rate? List the 10 lowest with their home branch.", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:21"},
+ "result": {
+  "columns": ["agent_code", "agent_name", "home_branch", "decided", "approval_rate_pct"],
+  "rows": [
+    ["AGT000019", "Sai Subramanian", "Pune - West Branch", 21, 57.14],
+    ["AGT000005", "Varsha Chadha", "Hubballi - South Branch", 26, 69.23],
+    ["AGT000018", "Arya Sampath", "Mumbai - West Branch", 29, 75.86],
+    ["AGT000036", "Dayamai Subramaniam", "Hubballi - South Branch", 29, 82.76],
+    ["AGT000058", "Keya Mishra", "Mumbai - West Branch", 24, 83.33]
+  ]
+ }
+}

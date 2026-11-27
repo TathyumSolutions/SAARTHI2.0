@@ -1,0 +1,17 @@
+{
+ "meta": {"question": "What is the total disbursed amount and average interest rate per product category?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:19"},
+ "result": {
+  "columns": ["category", "total_disbursed", "avg_interest_rate"],
+  "rows": [
+    ["Business", 517608000.0, 18.72],
+    ["Consumer", 73291000.0, 22.95],
+    ["Education", 528617000.0, 12.73],
+    ["Gold", 428599000.0, 11.74],
+    ["Housing", 1174205000.0, 10.75],
+    ["Microfinance", 40536000.0, 23.45],
+    ["Personal", 419341000.0, 18.57],
+    ["Secured", 633169000.0, 11.84],
+    ["Vehicle", 1122866000.0, 13.57]
+  ]
+ }
+}

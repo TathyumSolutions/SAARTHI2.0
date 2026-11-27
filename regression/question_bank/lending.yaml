@@ -1,0 +1,722 @@
+# NBFC Lending regression question bank.
+#
+# Sources:
+#   docs/LoanQestions.txt                  -> ids TXT-*
+#   docs/NBFC Lending Question Bank.docx   -> ids S*, M*, C*, T*, A*, F*
+# Schema: docs/NBFC Lending Schema.html; data: demo_lending/db_lending.py.
+#
+# {{name}} placeholders are filled from `params` (and `snippets`) before a
+# question is asked or its reference SQL is run. :as_of is the generator's
+# own "today" (db_lending.py uses date(2026, 8, 22)), so relative periods
+# stay stable however often the data is regenerated.
+#
+# Entity placeholders (loan, agent, branch) were chosen from the
+# `--scale small` data set. The data generator is seeded, so they hold for
+# that scale; `python -m regression.run_regression --check-params` reports
+# any that are missing from the loaded data.
+
+domain: lending
+database: lending_demo_db
+data_scale: small               # snapshots in regression/expected/ were taken at this --scale
+generator: demo_lending/db_lending.py
+
+params:
+  as_of: "2026-08-22"
+  prev_q_start: "2026-04-01"          # the calendar quarter before :as_of
+  prev_q_end: "2026-06-30"
+  prev_prev_q_start: "2026-01-01"     # the quarter before that (slab basis for prev_q)
+  prev_prev_q_end: "2026-03-31"
+  curr_q_start: "2026-07-01"          # the quarter containing :as_of
+  last6_start: "2026-02-01"           # last 6 complete months
+  last6_end: "2026-07-31"
+  last12m_start: "2025-08-01"         # last 12 complete months
+  last12m_end: "2026-07-31"
+  trailing12_after: "2025-08-22"      # "12 months to :as_of" = (this, as_of]
+  fy_start: "2025-04-01"              # last financial year (April-March)
+  fy_end: "2026-03-31"
+  loan_account_number: "LN000000172"  # agent-sourced, Sub-Standard (A1)
+  agent_code: "AGT000018"             # Q2-2026 disbursements and NPA loans (A3)
+  branch_code: "BR0013"               # agent-sourced 2022 loans (F3)
+
+snippets:
+  # DSA / Agent Commission Slab Card (03_agent_commission_slabs.xlsx).
+  # Rates are % of disbursed amount; slab = agent's trailing-quarter
+  # disbursement volume. Boundary rule used here: a lower bound is
+  # inclusive (exactly Rs 10L falls in the 10L-50L slab).
+  commission_card: |
+    card(product_code, s1, s2, s3, s4) AS (VALUES
+      ('PL',0.64,0.84,1.04,1.19), ('GL',0.74,0.94,1.14,1.29), ('TW',0.74,0.94,1.14,1.29),
+      ('UCL',0.74,0.94,1.14,1.29), ('NCL',0.72,0.92,1.12,1.27), ('MSME',0.64,0.84,1.04,1.19),
+      ('LAP',0.74,0.94,1.14,1.29), ('CD',0.70,0.90,1.10,1.25), ('MFI',0.72,0.92,1.12,1.27),
+      ('EDU',0.64,0.84,1.04,1.19), ('HL',0.65,0.85,1.05,1.20), ('HLTU',0.72,0.92,1.12,1.27))
+  agent_loans: |
+    agent_loans AS (
+      SELECT l.*, la.agent_id
+      FROM loans l JOIN loan_applications la ON la.application_id = l.application_id
+      WHERE la.agent_id IS NOT NULL)
+
+questions:
+
+  # ------------------------------------------------------------------
+  # docs/LoanQestions.txt - Simple
+  # ------------------------------------------------------------------
+  - id: TXT-S1
+    category: simple
+    sources: [DB]
+    question: How many active branches are there in each region?
+    expected_logic: branches where is_active; count grouped by region.
+    reference_sql: |
+      SELECT region, COUNT(*) AS active_branches
+      FROM branches WHERE is_active GROUP BY region ORDER BY region
+    compare: {mode: set, match_columns: [region, active_branches]}
+
+  - id: TXT-S2
+    category: simple
+    sources: [DB]
+    question: Which loan products have a maximum tenure above 60 months?
+    expected_logic: loan_products where max_tenure_months > 60 (strictly above).
+    reference_sql: |
+      SELECT product_code, product_name, max_tenure_months
+      FROM loan_products WHERE max_tenure_months > 60 ORDER BY max_tenure_months DESC
+    compare: {mode: set, match_columns: [product_name, max_tenure_months]}
+
+  - id: TXT-S3
+    category: simple
+    sources: [DB]
+    question: How many customers have KYC status Pending?
+    expected_logic: count customers where kyc_status = 'Pending'.
+    reference_sql: |
+      SELECT COUNT(*) AS pending_kyc_customers FROM customers WHERE kyc_status = 'Pending'
+    compare: {mode: scalar}
+
+  - id: TXT-S4
+    category: simple
+    sources: [DB]
+    question: What is the total disbursed amount across all Active loans?
+    expected_logic: sum(disbursed_amount) where loan_status = 'Active'.
+    reference_sql: |
+      SELECT SUM(disbursed_amount) AS total_disbursed FROM loans WHERE loan_status = 'Active'
+    compare: {mode: scalar}
+
+  - id: TXT-S5
+    category: simple
+    sources: [DB]
+    question: How many collection receipts came through UPI versus NACH?
+    expected_logic: collections count grouped by payment_mode, only UPI and NACH.
+    reference_sql: |
+      SELECT payment_mode, COUNT(*) AS receipts
+      FROM collections WHERE payment_mode IN ('UPI', 'NACH') GROUP BY payment_mode
+    compare: {mode: set, match_columns: [payment_mode, receipts]}
+
+  # ------------------------------------------------------------------
+  # docs/LoanQestions.txt - Medium
+  # ------------------------------------------------------------------
+  - id: TXT-M1
+    category: medium
+    sources: [DB]
+    question: What is the total disbursed amount and average interest rate per product category?
+    expected_logic: loans join loan_products; group by category; sum disbursed_amount, avg interest_rate.
+    reference_sql: |
+      SELECT p.category, SUM(l.disbursed_amount) AS total_disbursed,
+             ROUND(AVG(l.interest_rate), 2) AS avg_interest_rate
+      FROM loans l JOIN loan_products p ON p.product_id = l.product_id
+      GROUP BY p.category ORDER BY p.category
+    compare: {mode: set, match_columns: [category, total_disbursed, avg_interest_rate]}
+
+  - id: TXT-M2
+    category: medium
+    sources: [DB]
+    question: Which 10 branches have the highest number of NPA loans, and what is each one's NPA share of its total loans?
+    expected_logic: >
+      loans join branches via loans.branch_id; npa = count where npa_flag;
+      share = npa / all loans of the branch; top 10 by npa count.
+    reference_sql: |
+      WITH b AS (
+        SELECT b.branch_name, COUNT(*) AS total_loans, COUNT(*) FILTER (WHERE l.npa_flag) AS npa_loans
+        FROM loans l JOIN branches b ON b.branch_id = l.branch_id GROUP BY b.branch_name)
+      SELECT branch_name, npa_loans, ROUND(100.0 * npa_loans / total_loans, 2) AS npa_share_pct
+      FROM b ORDER BY npa_loans DESC, branch_name LIMIT 10
+    compare: {mode: set, match_columns: [npa_loans, npa_share_pct], top_n: 10}
+
+  - id: TXT-M3
+    category: medium
+    sources: [DB]
+    question: What is the application approval rate by product, and what are the top 3 rejection reasons overall?
+    expected_logic: >
+      Rate = Approved / (Approved + Rejected) per product (Withdrawn excluded,
+      it is not a decision). Second part: rejection_reason counts, top 3.
+    reference_sql: |
+      SELECT p.product_name,
+             ROUND(100.0 * COUNT(*) FILTER (WHERE a.status = 'Approved')
+                   / NULLIF(COUNT(*) FILTER (WHERE a.status IN ('Approved', 'Rejected')), 0), 2) AS approval_rate_pct
+      FROM loan_applications a JOIN loan_products p ON p.product_id = a.product_id
+      GROUP BY p.product_name ORDER BY p.product_name
+    extra_parts:
+      - name: top_rejection_reasons
+        sql: |
+          SELECT rejection_reason, COUNT(*) AS rejections
+          FROM loan_applications WHERE status = 'Rejected' AND rejection_reason IS NOT NULL
+          GROUP BY rejection_reason ORDER BY rejections DESC LIMIT 3
+    compare: {mode: set, match_columns: [product_name, approval_rate_pct]}
+    ambiguity: Whether Withdrawn applications count in the denominator.
+
+  - id: TXT-M4
+    category: medium
+    sources: [DB]
+    question: Which agents sourced the most disbursed loans last financial year, and what was their total sanctioned amount?
+    expected_logic: >
+      Last FY = {{fy_start}} to {{fy_end}} (April-March). loans has no agent_id:
+      loans -> loan_applications (application_id) -> agents. Count loans by
+      disbursement_date in the FY; sum sanctioned_amount; top 10.
+    reference_sql: |
+      SELECT ag.agent_name, COUNT(*) AS disbursed_loans, SUM(l.sanctioned_amount) AS total_sanctioned
+      FROM loans l
+      JOIN loan_applications la ON la.application_id = l.application_id
+      JOIN agents ag ON ag.agent_id = la.agent_id
+      WHERE l.disbursement_date BETWEEN '{{fy_start}}' AND '{{fy_end}}'
+      GROUP BY ag.agent_id, ag.agent_name
+      ORDER BY disbursed_loans DESC, total_sanctioned DESC LIMIT 10
+    compare: {mode: set, match_columns: [disbursed_loans, total_sanctioned], top_n: 10}
+    ambiguity: '"Last financial year" must be April-March, not the calendar year.'
+    join_path: [loans.application_id, loan_applications.agent_id, agents.agent_id]
+
+  - id: TXT-M5
+    category: medium
+    sources: [DB]
+    question: What is the average CIBIL score and average monthly income of customers by occupation, for those with at least one active loan?
+    expected_logic: customers with EXISTS an Active loan (count each customer once); avg cibil_score, avg monthly_income by occupation.
+    reference_sql: |
+      SELECT c.occupation, ROUND(AVG(c.cibil_score), 2) AS avg_cibil_score,
+             ROUND(AVG(c.monthly_income), 2) AS avg_monthly_income
+      FROM customers c
+      WHERE EXISTS (SELECT 1 FROM loans l WHERE l.customer_id = c.customer_id AND l.loan_status = 'Active')
+      GROUP BY c.occupation ORDER BY c.occupation
+    compare: {mode: set, match_columns: [occupation, avg_cibil_score, avg_monthly_income]}
+    pitfall: A plain join to loans weights a customer by their number of active loans.
+
+  # ------------------------------------------------------------------
+  # docs/LoanQestions.txt - Complicated
+  # ------------------------------------------------------------------
+  - id: TXT-C1
+    category: complicated
+    sources: [DB]
+    question: For each disbursement-month cohort, what percentage of loans ever crossed 90 DPD within 12 months of disbursement, split by product?
+    expected_logic: >
+      Cohort = month of disbursement_date, by product. A loan qualifies when an
+      installment reached 91 days past due no later than 12 months after
+      disbursement (dpd_days > 90 and due_date + 91 days <= disbursement + 12 months).
+    reference_sql: |
+      WITH flagged AS (
+        SELECT l.loan_id, l.product_id, date_trunc('month', l.disbursement_date)::date AS cohort_month,
+               EXISTS (SELECT 1 FROM repayment_schedule s
+                       WHERE s.loan_id = l.loan_id AND s.dpd_days > 90
+                         AND s.due_date + 91 <= l.disbursement_date + INTERVAL '12 months') AS crossed_90
+        FROM loans l)
+      SELECT f.cohort_month, p.product_name, COUNT(*) AS loans,
+             ROUND(100.0 * COUNT(*) FILTER (WHERE crossed_90) / COUNT(*), 2) AS pct_crossed_90dpd
+      FROM flagged f JOIN loan_products p ON p.product_id = f.product_id
+      GROUP BY f.cohort_month, p.product_name ORDER BY f.cohort_month, p.product_name
+    compare: {mode: set, match_columns: [pct_crossed_90dpd], min_column_match: 1}
+
+  - id: TXT-C2
+    category: complicated
+    sources: [DB]
+    question: What is the monthly collection efficiency (amount collected ÷ EMI due) by region for the last 12 months, and which regions declined three months in a row?
+    expected_logic: >
+      Last 12 complete months {{last12m_start}}..{{last12m_end}}. EMI due =
+      sum(emi_due) of installments due in the month; collected = sum of
+      collections.total_amount received in the month; region via loans.branch_id.
+      Then flag regions whose efficiency fell three months running.
+    reference_sql: |
+      WITH due AS (
+        SELECT b.region, date_trunc('month', s.due_date)::date AS month, SUM(s.emi_due) AS emi_due
+        FROM repayment_schedule s JOIN loans l ON l.loan_id = s.loan_id JOIN branches b ON b.branch_id = l.branch_id
+        WHERE s.due_date BETWEEN '{{last12m_start}}' AND '{{last12m_end}}' GROUP BY 1, 2),
+      got AS (
+        SELECT b.region, date_trunc('month', c.collection_date)::date AS month, SUM(c.total_amount) AS collected
+        FROM collections c JOIN loans l ON l.loan_id = c.loan_id JOIN branches b ON b.branch_id = l.branch_id
+        WHERE c.collection_date BETWEEN '{{last12m_start}}' AND '{{last12m_end}}' GROUP BY 1, 2)
+      SELECT d.region, d.month, ROUND(100.0 * COALESCE(g.collected, 0) / d.emi_due, 2) AS collection_efficiency_pct
+      FROM due d LEFT JOIN got g ON g.region = d.region AND g.month = d.month
+      ORDER BY d.region, d.month
+    extra_parts:
+      - name: regions_declining_3_months
+        sql: |
+          WITH due AS (
+            SELECT b.region, date_trunc('month', s.due_date)::date AS month, SUM(s.emi_due) AS emi_due
+            FROM repayment_schedule s JOIN loans l ON l.loan_id = s.loan_id JOIN branches b ON b.branch_id = l.branch_id
+            WHERE s.due_date BETWEEN '{{last12m_start}}' AND '{{last12m_end}}' GROUP BY 1, 2),
+          got AS (
+            SELECT b.region, date_trunc('month', c.collection_date)::date AS month, SUM(c.total_amount) AS collected
+            FROM collections c JOIN loans l ON l.loan_id = c.loan_id JOIN branches b ON b.branch_id = l.branch_id
+            WHERE c.collection_date BETWEEN '{{last12m_start}}' AND '{{last12m_end}}' GROUP BY 1, 2),
+          eff AS (
+            SELECT d.region, d.month, COALESCE(g.collected, 0) / d.emi_due AS e
+            FROM due d LEFT JOIN got g ON g.region = d.region AND g.month = d.month),
+          lagged AS (
+            SELECT region, month, e, LAG(e, 1) OVER w AS e1, LAG(e, 2) OVER w AS e2, LAG(e, 3) OVER w AS e3
+            FROM eff WINDOW w AS (PARTITION BY region ORDER BY month))
+          SELECT DISTINCT region FROM lagged WHERE e < e1 AND e1 < e2 AND e2 < e3 ORDER BY region
+    compare: {mode: set, match_columns: [collection_efficiency_pct], min_column_match: 1}
+    ambiguity: '"Collection efficiency" needs a defined formula; state it.'
+
+  - id: TXT-C3
+    category: complicated
+    sources: [DB]
+    question: As of the latest snapshot date, what is the total provisioning amount by asset classification and product category, and which 5 branches carry the highest provisioning as a percentage of outstanding principal?
+    expected_logic: >
+      Latest npa_classification.as_of_date; join loans -> loan_products;
+      sum provisioning_amount by asset_classification, category. Part 2: by
+      loans.branch_id, provisioning / outstanding_principal, top 5.
+    reference_sql: |
+      SELECT n.asset_classification, p.category, SUM(n.provisioning_amount) AS total_provisioning
+      FROM npa_classification n JOIN loans l ON l.loan_id = n.loan_id
+      JOIN loan_products p ON p.product_id = l.product_id
+      WHERE n.as_of_date = (SELECT MAX(as_of_date) FROM npa_classification)
+      GROUP BY 1, 2 ORDER BY 1, 2
+    extra_parts:
+      - name: top5_branches_provisioning_pct
+        sql: |
+          SELECT b.branch_name,
+                 ROUND(100.0 * SUM(n.provisioning_amount) / NULLIF(SUM(n.outstanding_principal), 0), 2) AS provisioning_pct
+          FROM npa_classification n JOIN loans l ON l.loan_id = n.loan_id JOIN branches b ON b.branch_id = l.branch_id
+          WHERE n.as_of_date = (SELECT MAX(as_of_date) FROM npa_classification)
+          GROUP BY b.branch_name ORDER BY provisioning_pct DESC LIMIT 5
+    compare: {mode: set, match_columns: [asset_classification, category, total_provisioning]}
+
+  - id: TXT-C4
+    category: complicated
+    sources: [DB]
+    question: Which agents have an NPA rate on their sourced loans more than double their branch's average, and how much commission (paid plus pending) is tied to those agents?
+    expected_logic: >
+      Agent's loans via loan_applications.agent_id (loans has no agent_id).
+      Branch average = NPA rate of all loans booked at the agent's home branch
+      (agents.branch_id = loans.branch_id). Commission = Agent Commission
+      payables for the agent with status Paid or Pending.
+    reference_sql: |
+      WITH {{agent_loans}},
+      agent_rate AS (
+        SELECT agent_id, COUNT(*) AS loans, AVG(CASE WHEN npa_flag THEN 1.0 ELSE 0 END) AS npa_rate
+        FROM agent_loans GROUP BY agent_id),
+      branch_rate AS (
+        SELECT branch_id, AVG(CASE WHEN npa_flag THEN 1.0 ELSE 0 END) AS npa_rate FROM loans GROUP BY branch_id),
+      commission AS (
+        SELECT agent_id, SUM(amount) AS commission
+        FROM payables WHERE payable_type = 'Agent Commission' AND status IN ('Paid', 'Pending') GROUP BY agent_id)
+      SELECT ag.agent_code, ag.agent_name, ROUND(100 * ar.npa_rate, 2) AS agent_npa_rate_pct,
+             ROUND(100 * br.npa_rate, 2) AS branch_npa_rate_pct, COALESCE(c.commission, 0) AS commission
+      FROM agent_rate ar JOIN agents ag ON ag.agent_id = ar.agent_id
+      JOIN branch_rate br ON br.branch_id = ag.branch_id
+      LEFT JOIN commission c ON c.agent_id = ar.agent_id
+      WHERE ar.npa_rate > 2 * br.npa_rate
+      ORDER BY agent_npa_rate_pct DESC
+    compare: {mode: set, match_columns: [agent_code, commission], min_column_match: 1}
+    join_path: [loans.application_id, loan_applications.agent_id, agents.agent_id]
+
+  - id: TXT-C5
+    category: complicated
+    sources: [DB]
+    question: "Which loans show a mismatch between the ledger and the loan record: disbursed amount not equal to the sum of Disbursement transactions, or processing fee not matching the product's fee percentage on the sanctioned amount?"
+    expected_logic: >
+      Aggregate transactions_ledger per loan by type first. processing_fee_pct
+      is a percentage (2.00 = 2%). The generated data has no mismatches, so the
+      correct answer is an empty result - not an invented list.
+    reference_sql: |
+      WITH d AS (SELECT loan_id, SUM(amount) AS s FROM transactions_ledger WHERE transaction_type = 'Disbursement' GROUP BY loan_id),
+           f AS (SELECT loan_id, SUM(amount) AS s FROM transactions_ledger WHERE transaction_type = 'Processing Fee' GROUP BY loan_id)
+      SELECT l.loan_account_number, l.disbursed_amount, d.s AS ledger_disbursed,
+             ROUND(l.sanctioned_amount * p.processing_fee_pct / 100, 2) AS expected_fee, f.s AS ledger_fee
+      FROM loans l JOIN loan_products p ON p.product_id = l.product_id
+      LEFT JOIN d ON d.loan_id = l.loan_id LEFT JOIN f ON f.loan_id = l.loan_id
+      WHERE l.disbursed_amount IS DISTINCT FROM d.s
+         OR ABS(COALESCE(f.s, 0) - ROUND(l.sanctioned_amount * p.processing_fee_pct / 100, 2)) > 1
+    compare: {mode: empty}
+
+  # ------------------------------------------------------------------
+  # NBFC Lending Question Bank.docx - 1. Simple (DB)
+  # ------------------------------------------------------------------
+  - id: S1
+    category: simple
+    sources: [DB]
+    question: How many loans are in each status, and what is their total disbursed amount?
+    expected_logic: Count rows and sum disbursed_amount by loan_status (current status; not the outstanding balance).
+    reference_sql: |
+      SELECT loan_status, COUNT(*) AS loans, SUM(disbursed_amount) AS total_disbursed
+      FROM loans GROUP BY loan_status ORDER BY loan_status
+    compare: {mode: set, match_columns: [loan_status, loans, total_disbursed]}
+
+  - id: S2
+    category: simple
+    sources: [DB]
+    question: What are the count and total requested amount of loan applications in each status for the quarter before {{as_of}} (applied between {{prev_q_start}} and {{prev_q_end}})?
+    expected_logic: Filter applied_date to the quarter; count rows and sum requested_amount by status.
+    reference_sql: |
+      SELECT status, COUNT(*) AS applications, SUM(requested_amount) AS total_requested
+      FROM loan_applications WHERE applied_date BETWEEN '{{prev_q_start}}' AND '{{prev_q_end}}'
+      GROUP BY status ORDER BY status
+    compare: {mode: set, match_columns: [status, applications, total_requested]}
+
+  - id: S3
+    category: simple
+    sources: [DB]
+    question: Which 10 pending payables that are overdue at {{as_of}} have the highest amounts?
+    expected_logic: status = Pending and due_date < :as_of; sort by amount descending; limit 10.
+    reference_sql: |
+      SELECT invoice_number, payable_type, payee_name, amount, due_date
+      FROM payables WHERE status = 'Pending' AND due_date < '{{as_of}}'
+      ORDER BY amount DESC LIMIT 10
+    compare: {mode: ordered, match_columns: [amount], top_n: 10}
+
+  # ------------------------------------------------------------------
+  # 2. Medium (DB)
+  # ------------------------------------------------------------------
+  - id: M1
+    category: medium
+    sources: [DB]
+    question: By branch region and product category, what were the monthly loan count and disbursed amount over the last 6 complete months ({{last6_start}} to {{last6_end}})?
+    expected_logic: Filter disbursement_date; booking branch through loans.branch_id; show months with no loans as zero.
+    reference_sql: |
+      WITH months AS (SELECT generate_series('{{last6_start}}'::date, '{{last6_end}}'::date, INTERVAL '1 month')::date AS month),
+      grid AS (SELECT DISTINCT b.region, p.category, m.month FROM branches b CROSS JOIN loan_products p CROSS JOIN months m),
+      agg AS (
+        SELECT b.region, p.category, date_trunc('month', l.disbursement_date)::date AS month,
+               COUNT(*) AS loans, SUM(l.disbursed_amount) AS disbursed
+        FROM loans l JOIN branches b ON b.branch_id = l.branch_id JOIN loan_products p ON p.product_id = l.product_id
+        WHERE l.disbursement_date BETWEEN '{{last6_start}}' AND '{{last6_end}}' GROUP BY 1, 2, 3)
+      SELECT g.region, g.category, g.month, COALESCE(a.loans, 0) AS loans, COALESCE(a.disbursed, 0) AS disbursed
+      FROM grid g LEFT JOIN agg a USING (region, category, month)
+      ORDER BY 1, 2, 3
+    compare: {mode: set, match_columns: [loans, disbursed], allow_missing_zero_rows: true}
+
+  - id: M2
+    category: medium
+    sources: [DB]
+    question: For installments due last quarter ({{prev_q_start}} to {{prev_q_end}}), what share of the EMI due had been collected by {{as_of}}, by region and product? List the 10 lowest.
+    expected_logic: >
+      Aggregate receipts up to :as_of per schedule_id before joining. Use
+      principal plus interest components, without penalty. Rate =
+      sum(collected) / sum(emi_due).
+    reference_sql: |
+      WITH r AS (
+        SELECT schedule_id, SUM(principal_component + interest_component) AS collected
+        FROM collections WHERE collection_date <= '{{as_of}}' AND schedule_id IS NOT NULL GROUP BY schedule_id)
+      SELECT b.region, p.product_name,
+             ROUND(100.0 * SUM(COALESCE(r.collected, 0)) / SUM(s.emi_due), 2) AS collected_pct
+      FROM repayment_schedule s JOIN loans l ON l.loan_id = s.loan_id
+      JOIN branches b ON b.branch_id = l.branch_id JOIN loan_products p ON p.product_id = l.product_id
+      LEFT JOIN r ON r.schedule_id = s.schedule_id
+      WHERE s.due_date BETWEEN '{{prev_q_start}}' AND '{{prev_q_end}}'
+      GROUP BY b.region, p.product_name ORDER BY collected_pct ASC LIMIT 10
+    compare: {mode: set, match_columns: [collected_pct], top_n: 10}
+    pitfall: Joining collections before aggregating double-counts EMI due.
+
+  - id: M3
+    category: medium
+    sources: [DB]
+    question: For each agent with at least 20 decided applications in the 12 months to {{as_of}}, what is the approval rate? List the 10 lowest with their home branch.
+    expected_logic: >
+      decision_date in ({{trailing12_after}}, {{as_of}}]. Rate = Approved /
+      (Approved + Rejected). Exclude Withdrawn and null agent_id. Branch
+      through agents.branch_id.
+    reference_sql: |
+      SELECT ag.agent_code, ag.agent_name, b.branch_name AS home_branch,
+             COUNT(*) AS decided,
+             ROUND(100.0 * COUNT(*) FILTER (WHERE a.status = 'Approved') / COUNT(*), 2) AS approval_rate_pct
+      FROM loan_applications a JOIN agents ag ON ag.agent_id = a.agent_id
+      JOIN branches b ON b.branch_id = ag.branch_id
+      WHERE a.status IN ('Approved', 'Rejected')
+        AND a.decision_date > '{{trailing12_after}}' AND a.decision_date <= '{{as_of}}'
+      GROUP BY ag.agent_code, ag.agent_name, b.branch_name
+      HAVING COUNT(*) >= 20
+      ORDER BY approval_rate_pct ASC, ag.agent_code LIMIT 10
+    compare: {mode: set, match_columns: [approval_rate_pct], top_n: 10}
+
+  # ------------------------------------------------------------------
+  # 3. Complicated (DB)
+  # ------------------------------------------------------------------
+  - id: C1
+    category: complicated
+    sources: [DB]
+    question: By disbursement quarter and product, what share of loans had any of their first 6 installments more than 30 days late (as of {{as_of}})?
+    expected_logic: >
+      An installment qualifies if paid_date (when Paid on or before :as_of),
+      else :as_of, is more than 30 days after due_date; only installments due
+      by :as_of. Count each loan once; early closures stay in the denominator.
+      Cohort incomplete until every loan's 6th installment is 31+ days old.
+    reference_sql: |
+      WITH late AS (
+        SELECT s.loan_id,
+               BOOL_OR((CASE WHEN s.payment_status = 'Paid' AND s.paid_date <= '{{as_of}}' THEN s.paid_date
+                             ELSE '{{as_of}}'::date END) - s.due_date > 30) AS any_late,
+               MAX(s.due_date) FILTER (WHERE s.installment_number = 6) AS sixth_due
+        FROM repayment_schedule s
+        WHERE s.installment_number <= 6 AND s.due_date <= '{{as_of}}'
+        GROUP BY s.loan_id)
+      SELECT date_trunc('quarter', l.disbursement_date)::date AS disbursement_quarter, p.product_name,
+             COUNT(*) AS loans, COUNT(*) FILTER (WHERE lt.any_late) AS loans_late,
+             ROUND(100.0 * COUNT(*) FILTER (WHERE lt.any_late) / COUNT(*), 2) AS pct_late,
+             BOOL_AND(lt.sixth_due IS NOT NULL AND lt.sixth_due + 31 <= '{{as_of}}') AS cohort_complete
+      FROM loans l JOIN loan_products p ON p.product_id = l.product_id
+      LEFT JOIN late lt ON lt.loan_id = l.loan_id
+      GROUP BY 1, 2 ORDER BY 1, 2
+    compare: {mode: set, match_columns: [loans_late, pct_late], min_column_match: 1}
+
+  - id: C2
+    category: complicated
+    sources: [DB]
+    question: Where do the repayment schedule and receipts disagree (as of {{as_of}})? Classify each exception and rank the top 20 by rupee gap within each branch.
+    expected_logic: >
+      Aggregate receipts per schedule_id first (same :as_of cutoff). Compare
+      amount_paid with principal plus interest components. In this data
+      collections.total_amount = principal + interest (penalty is posted
+      separately), so component-total checks must use that definition.
+    reference_sql: |
+      WITH r AS (
+        SELECT schedule_id, COUNT(*) AS receipts, SUM(principal_component + interest_component) AS collected
+        FROM collections WHERE collection_date <= '{{as_of}}' GROUP BY schedule_id),
+      ex AS (
+        SELECT b.branch_name, l.loan_account_number, s.installment_number, s.amount_paid,
+               COALESCE(r.collected, 0) AS collected,
+               ABS(s.amount_paid - COALESCE(r.collected, 0)) AS gap,
+               CASE WHEN s.payment_status IN ('Paid', 'Partially Paid') AND r.schedule_id IS NULL THEN 'Paid without receipt'
+                    ELSE 'Amount gap' END AS exception_type
+        FROM repayment_schedule s JOIN loans l ON l.loan_id = s.loan_id JOIN branches b ON b.branch_id = l.branch_id
+        LEFT JOIN r ON r.schedule_id = s.schedule_id
+        WHERE s.due_date <= '{{as_of}}' AND ABS(s.amount_paid - COALESCE(r.collected, 0)) > 1),
+      ranked AS (SELECT ex.*, ROW_NUMBER() OVER (PARTITION BY branch_name ORDER BY gap DESC, loan_account_number, installment_number) AS rn FROM ex)
+      SELECT branch_name, rn AS rank_in_branch, loan_account_number, installment_number, exception_type, gap
+      FROM ranked WHERE rn <= 20 ORDER BY branch_name, rn
+    compare: {mode: set, match_columns: [gap], min_column_match: 1}
+
+  - id: C3
+    category: complicated
+    sources: [DB]
+    question: Which loans have DPD, NPA flag or classification values that conflict with one another (as of {{as_of}})?
+    expected_logic: >
+      Derive DPD from the oldest installment not fully paid at :as_of. Latest
+      snapshot per loan on or before :as_of (ROW_NUMBER). Compare current_dpd,
+      npa_flag (DPD > 90) and the snapshot's asset_classification.
+    reference_sql: |
+      WITH derived AS (
+        SELECT loan_id, '{{as_of}}'::date - MIN(due_date) AS derived_dpd
+        FROM repayment_schedule WHERE payment_status <> 'Paid' AND due_date < '{{as_of}}' GROUP BY loan_id),
+      snap AS (
+        SELECT * FROM (SELECT n.*, ROW_NUMBER() OVER (PARTITION BY loan_id ORDER BY as_of_date DESC, npa_id DESC) AS rn
+                       FROM npa_classification n WHERE as_of_date <= '{{as_of}}') x WHERE rn = 1)
+      SELECT l.loan_account_number, l.current_dpd, COALESCE(d.derived_dpd, 0) AS derived_dpd, l.npa_flag,
+             s.asset_classification
+      FROM loans l LEFT JOIN derived d ON d.loan_id = l.loan_id LEFT JOIN snap s ON s.loan_id = l.loan_id
+      WHERE l.loan_status = 'Active' AND (
+            l.current_dpd <> COALESCE(d.derived_dpd, 0)
+         OR l.npa_flag <> (l.current_dpd > 90)
+         OR (s.asset_classification IS NOT NULL AND (s.asset_classification <> 'Standard') <> (l.current_dpd > 90)))
+      ORDER BY l.loan_account_number
+    compare: {mode: set, match_columns: [loan_account_number], min_column_match: 1}
+
+  # ------------------------------------------------------------------
+  # 4. Simple across two source types
+  # ------------------------------------------------------------------
+  - id: T1
+    category: two_source
+    sources: [XLSX, DB]
+    question: How many active agents fall into each commission volume slab for the quarter containing {{as_of}}?
+    expected_logic: >
+      Slab basis = disbursed_amount in the previous calendar quarter
+      ({{prev_q_start}}..{{prev_q_end}}), agents linked to loans through
+      loan_applications. Slabs from 03_agent_commission_slabs.xlsx: < 10L,
+      10L-50L, 50L-2Cr, > 2Cr. Zero-volume agents reported separately.
+    reference_sql: |
+      WITH vol AS (
+        SELECT la.agent_id, SUM(l.disbursed_amount) AS volume
+        FROM loans l JOIN loan_applications la ON la.application_id = l.application_id
+        WHERE l.disbursement_date BETWEEN '{{prev_q_start}}' AND '{{prev_q_end}}' AND la.agent_id IS NOT NULL
+        GROUP BY la.agent_id)
+      SELECT CASE WHEN COALESCE(v.volume, 0) = 0 THEN '0 - no volume'
+                  WHEN v.volume < 1000000 THEN '1 - Below Rs 10L'
+                  WHEN v.volume < 5000000 THEN '2 - Rs 10L-50L'
+                  WHEN v.volume < 20000000 THEN '3 - Rs 50L-2Cr'
+                  ELSE '4 - Above Rs 2Cr' END AS slab,
+             COUNT(*) AS active_agents
+      FROM agents a LEFT JOIN vol v ON v.agent_id = a.agent_id
+      WHERE a.is_active GROUP BY 1 ORDER BY 1
+    compare: {mode: set, match_columns: [active_agents]}
+    expected_facts: ["10L", "50L", "2Cr"]
+
+  - id: T2
+    category: two_source
+    sources: [DOC, DB]
+    question: In the latest snapshot on or before {{as_of}}, which provisioning rates or amounts need review against the IRACP provisioning policy?
+    expected_logic: >
+      Compare provisioning_pct by classification and bucket with IRACP-003 §3
+      (Standard incl. SMA-0/1 0.40% "generally"; SMA-2 typically 10-15%;
+      Sub-Standard min 25% unsecured; Loss 100%). provisioning_pct is stored
+      as a fraction (0.15 = 15%). Check amount = outstanding x pct.
+      Flag for review, not as proven breaches.
+    reference_sql: |
+      SELECT asset_classification, dpd_bucket, provisioning_pct, COUNT(*) AS loans,
+             COUNT(*) FILTER (WHERE ABS(provisioning_amount - outstanding_principal * provisioning_pct) > 1) AS amount_mismatches
+      FROM npa_classification
+      WHERE as_of_date = (SELECT MAX(as_of_date) FROM npa_classification WHERE as_of_date <= '{{as_of}}')
+      GROUP BY 1, 2, 3 ORDER BY 1, 2
+    compare: {mode: set, match_columns: [loans], min_column_match: 1}
+    expected_facts: ["0.40%", "SMA-2", "review"]
+
+  - id: T3
+    category: two_source
+    sources: [DOC, XLSX]
+    question: The commission card says a product policy caps Gold Loan and LAP commission at 1.5%. Does any slab exceed it, and do these documents confirm the cap?
+    expected_logic: >
+      Highest GL and LAP slab is 1.29%, so none exceeds 1.5%. IRACP-003 is not
+      a commission policy and states no cap; the cited product policy was not provided.
+    compare: {mode: facts}
+    expected_facts: ["1.29%", "1.5%", "not provided"]
+
+  # ------------------------------------------------------------------
+  # 5. Simple across all source types (DOC + XLSX + DB)
+  # ------------------------------------------------------------------
+  - id: A1
+    category: all_sources
+    sources: [DOC, XLSX, DB]
+    question: For agent-sourced loan {{loan_account_number}}, what are its DPD and classification, how must interest income be treated, and what commission rate does the card give?
+    expected_logic: >
+      DB: DPD, classification, product, agent; slab from the agent's volume in
+      the quarter before disbursement. DOC §2-4: NPA -> cash-basis income,
+      accrued interest reversed. Show agents.commission_rate separately.
+    reference_sql: |
+      WITH {{commission_card}},
+      ln AS (
+        SELECT l.*, la.agent_id, p.product_code FROM loans l
+        JOIN loan_applications la ON la.application_id = l.application_id
+        JOIN loan_products p ON p.product_id = l.product_id
+        WHERE l.loan_account_number = '{{loan_account_number}}'),
+      vol AS (
+        SELECT SUM(l2.disbursed_amount) AS volume FROM ln
+        JOIN loan_applications la2 ON la2.agent_id = ln.agent_id
+        JOIN loans l2 ON l2.application_id = la2.application_id
+        WHERE l2.disbursement_date >= date_trunc('quarter', ln.disbursement_date) - INTERVAL '3 months'
+          AND l2.disbursement_date < date_trunc('quarter', ln.disbursement_date))
+      SELECT ln.loan_account_number, ln.current_dpd, n.dpd_bucket, n.asset_classification, ln.product_code,
+             ag.agent_code, ag.commission_rate AS agent_master_rate,
+             CASE WHEN COALESCE(v.volume, 0) < 1000000 THEN c.s1 WHEN v.volume < 5000000 THEN c.s2
+                  WHEN v.volume < 20000000 THEN c.s3 ELSE c.s4 END AS card_rate_pct
+      FROM ln JOIN agents ag ON ag.agent_id = ln.agent_id CROSS JOIN vol v
+      JOIN card c ON c.product_code = ln.product_code
+      LEFT JOIN npa_classification n ON n.loan_id = ln.loan_id
+    compare: {mode: set, match_columns: [current_dpd, asset_classification], min_column_match: 1}
+    expected_facts: ["cash basis", "reversed", "Sub-Standard"]
+
+  - id: A2
+    category: all_sources
+    sources: [DOC, XLSX, DB]
+    question: For agent-sourced loans disbursed last quarter ({{prev_q_start}} to {{prev_q_end}}), which commission payables differ from the card, and what is each loan's current classification?
+    expected_logic: >
+      Expected = disbursed_amount x slab rate (slab from the agent's volume in
+      {{prev_prev_q_start}}..{{prev_prev_q_end}}). Sum Agent Commission payables
+      per related_loan_id; keep loans with no payable. Differences are for review.
+    reference_sql: |
+      WITH {{commission_card}}, {{agent_loans}},
+      vol AS (
+        SELECT agent_id, SUM(disbursed_amount) AS volume FROM agent_loans
+        WHERE disbursement_date BETWEEN '{{prev_prev_q_start}}' AND '{{prev_prev_q_end}}' GROUP BY agent_id),
+      pay AS (
+        SELECT related_loan_id, SUM(amount) AS paid_commission FROM payables
+        WHERE payable_type = 'Agent Commission' AND related_loan_id IS NOT NULL GROUP BY related_loan_id)
+      SELECT al.loan_account_number, p.product_code, al.disbursed_amount,
+             ROUND(al.disbursed_amount * (CASE WHEN COALESCE(v.volume, 0) < 1000000 THEN c.s1 WHEN v.volume < 5000000 THEN c.s2
+                  WHEN v.volume < 20000000 THEN c.s3 ELSE c.s4 END) / 100, 2) AS expected_commission,
+             COALESCE(py.paid_commission, 0) AS payable_commission,
+             COALESCE(n.asset_classification, 'No snapshot') AS classification
+      FROM agent_loans al JOIN loan_products p ON p.product_id = al.product_id
+      JOIN card c ON c.product_code = p.product_code
+      LEFT JOIN vol v ON v.agent_id = al.agent_id
+      LEFT JOIN pay py ON py.related_loan_id = al.loan_id
+      LEFT JOIN npa_classification n ON n.loan_id = al.loan_id
+      WHERE al.disbursement_date BETWEEN '{{prev_q_start}}' AND '{{prev_q_end}}'
+      ORDER BY al.loan_account_number
+    compare: {mode: set, match_columns: [loan_account_number, expected_commission], min_column_match: 1}
+    expected_facts: ["review", "clawback"]
+
+  - id: A3
+    category: all_sources
+    sources: [DOC, XLSX, DB]
+    question: For agent {{agent_code}}, what commission does the card give on last quarter's disbursements by product, and which sourced loans are now NPA?
+    expected_logic: >
+      Slab from the quarter before the disbursement quarter. Latest snapshot per
+      loan. NPA loans: cash-basis income and accrued-interest reversal. Do not
+      suggest withholding commission - neither document provides for it.
+    reference_sql: |
+      WITH {{commission_card}}, {{agent_loans}},
+      ag AS (SELECT agent_id FROM agents WHERE agent_code = '{{agent_code}}'),
+      vol AS (
+        SELECT SUM(disbursed_amount) AS volume FROM agent_loans
+        WHERE agent_id = (SELECT agent_id FROM ag)
+          AND disbursement_date BETWEEN '{{prev_prev_q_start}}' AND '{{prev_prev_q_end}}')
+      SELECT p.product_code, COUNT(*) AS loans, SUM(al.disbursed_amount) AS disbursed,
+             ROUND(SUM(al.disbursed_amount) * MAX(CASE WHEN COALESCE(v.volume, 0) < 1000000 THEN c.s1 WHEN v.volume < 5000000 THEN c.s2
+                  WHEN v.volume < 20000000 THEN c.s3 ELSE c.s4 END) / 100, 2) AS card_commission
+      FROM agent_loans al JOIN loan_products p ON p.product_id = al.product_id
+      JOIN card c ON c.product_code = p.product_code CROSS JOIN vol v
+      WHERE al.agent_id = (SELECT agent_id FROM ag)
+        AND al.disbursement_date BETWEEN '{{prev_q_start}}' AND '{{prev_q_end}}'
+      GROUP BY p.product_code ORDER BY p.product_code
+    extra_parts:
+      - name: npa_loans_of_agent
+        sql: |
+          SELECT l.loan_account_number, l.current_dpd, n.asset_classification
+          FROM loans l JOIN loan_applications la ON la.application_id = l.application_id
+          JOIN agents a ON a.agent_id = la.agent_id
+          LEFT JOIN npa_classification n ON n.loan_id = l.loan_id
+          WHERE a.agent_code = '{{agent_code}}' AND l.npa_flag ORDER BY 1
+    compare: {mode: set, match_columns: [card_commission, disbursed], min_column_match: 1}
+    expected_facts: ["cash basis", "reversed"]
+
+  # ------------------------------------------------------------------
+  # Final APIs (World Bank, PIN code lookup)
+  # ------------------------------------------------------------------
+  - id: F1
+    category: api
+    sources: [API]
+    question: What is India's lending interest rate for the latest year that has a value?
+    expected_logic: World Bank FR.INR.LEND; skip null years; 8.57% for 2022. Not an NBFC benchmark.
+    compare: {mode: facts}
+    expected_facts: ["8.57", "2022"]
+
+  - id: F2
+    category: api
+    sources: [API]
+    question: Which district and state does PIN code 411001 belong to?
+    expected_logic: api.postalpincode.in/pincode/411001 -> Pune, Maharashtra.
+    compare: {mode: facts}
+    expected_facts: ["Pune", "Maharashtra"]
+
+  - id: F3
+    category: api
+    sources: [DB, DOC, XLSX, API]
+    question: For branch {{branch_code}}, show agent-sourced loans disbursed in 2022 by product, with amount, amount-weighted interest rate and its gap to India's 2022 lending rate.
+    expected_logic: >
+      Weighted rate = sum(interest_rate x disbursed) / sum(disbursed); gap =
+      weighted - 8.567 (World Bank 2022). Branch through loans.branch_id.
+    reference_sql: |
+      SELECT p.product_code, COUNT(*) AS loans, SUM(l.disbursed_amount) AS disbursed,
+             ROUND(SUM(l.interest_rate * l.disbursed_amount) / SUM(l.disbursed_amount), 2) AS weighted_rate,
+             ROUND(SUM(l.interest_rate * l.disbursed_amount) / SUM(l.disbursed_amount) - 8.56714285714286, 2) AS gap_pp
+      FROM loans l JOIN loan_applications la ON la.application_id = l.application_id
+      JOIN branches b ON b.branch_id = l.branch_id JOIN loan_products p ON p.product_id = l.product_id
+      WHERE b.branch_code = '{{branch_code}}' AND la.agent_id IS NOT NULL
+        AND l.disbursement_date BETWEEN '2022-01-01' AND '2022-12-31'
+      GROUP BY p.product_code ORDER BY p.product_code
+    compare: {mode: set, match_columns: [disbursed, weighted_rate], min_column_match: 1}
+    expected_facts: ["8.57"]
+
+# What the sources cannot answer - the correct response names the missing
+# data instead of estimating (from the question bank's refusal section).
+refusal_tests:
+  - id: R1
+    question: Which restructured accounts are in the portfolio?
+    expected_facts: ["no restructuring column"]
+  - id: R2
+    question: What is the net commission payable after part-prepayments in the first 90 days?
+    expected_facts: ["prepayment"]
+  - id: R3
+    question: How much interest income was reversed for NPA accounts last quarter?
+    expected_facts: ["accrual", "reversal"]

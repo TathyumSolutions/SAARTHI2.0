@@ -1,0 +1,22 @@
+{
+ "meta": {"question": "For agent AGT000018, what commission does the card give on last quarter's disbursements by product, and which sourced loans are now NPA?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:21"},
+ "result": {
+  "columns": ["product_code", "loans", "disbursed", "card_commission"],
+  "rows": [
+    ["GL", 1, 441000.0, 4145.4],
+    ["HL", 1, 1065000.0, 9052.5],
+    ["MSME", 1, 980000.0, 8232.0],
+    ["NCL", 1, 1878000.0, 17277.6]
+  ],
+  "parts": {
+   "npa_loans_of_agent": {
+    "columns": ["loan_account_number", "current_dpd", "asset_classification"],
+    "rows": [
+      ["LN000001692", 237, "Sub-Standard"],
+      ["LN000002761", 258, "Sub-Standard"],
+      ["LN000003663", 95, "Sub-Standard"]
+    ]
+   }
+  }
+ }
+}

@@ -1,0 +1,15 @@
+{
+ "meta": {"question": "What is the average CIBIL score and average monthly income of customers by occupation, for those with at least one active loan?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:19"},
+ "result": {
+  "columns": ["occupation", "avg_cibil_score", "avg_monthly_income"],
+  "rows": [
+    ["Agriculturist", 741.45, 26752.14],
+    ["Homemaker", 729.95, 41402.87],
+    ["Retired", 730.75, 40461.58],
+    ["Salaried - Government", 740.29, 43423.97],
+    ["Salaried - Private Sector", 732.64, 42844.82],
+    ["Self Employed - Business", 733.84, 51269.69],
+    ["Self Employed - Professional", 743.68, 39667.36]
+  ]
+ }
+}

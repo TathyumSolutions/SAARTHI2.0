@@ -1,0 +1,15 @@
+{
+ "meta": {"question": "In the latest snapshot on or before 2026-08-22, which provisioning rates or amounts need review against the IRACP provisioning policy?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:21"},
+ "result": {
+  "columns": ["asset_classification", "dpd_bucket", "provisioning_pct", "loans", "amount_mismatches"],
+  "rows": [
+    ["Doubtful", "NPA 1-2yr", 0.5, 7, 0],
+    ["Loss", "NPA 2yr+", 1.0, 2, 0],
+    ["Standard", "SMA-0", 0.0, 48, 48],
+    ["Standard", "SMA-1", 0.01, 38, 0],
+    ["Standard", "SMA-2", 0.15, 22, 0],
+    ["Standard", "Standard", 0.0, 585, 585],
+    ["Sub-Standard", "NPA 91-365", 0.25, 74, 0]
+  ]
+ }
+}

@@ -1,0 +1,50 @@
+{
+ "meta": {"question": "What is the monthly collection efficiency (amount collected ÷ EMI due) by region for the last 12 months, and which regions declined three months in a row?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:20"},
+ "result": {
+  "columns": ["region", "month", "collection_efficiency_pct"],
+  "rows": [
+    ["North", "2025-08-01", 99.06],
+    ["North", "2025-09-01", 93.74],
+    ["North", "2025-10-01", 98.55],
+    ["North", "2025-11-01", 95.15],
+    ["North", "2025-12-01", 98.5],
+    ["North", "2026-01-01", 96.31],
+    ["North", "2026-02-01", 97.67],
+    ["North", "2026-03-01", 98.32],
+    ["North", "2026-04-01", 95.38],
+    ["North", "2026-05-01", 94.19],
+    ["North", "2026-06-01", 97.03],
+    ["North", "2026-07-01", 94.48],
+    ["South", "2025-08-01", 92.87],
+    ["South", "2025-09-01", 98.52],
+    ["South", "2025-10-01", 95.61],
+    ["South", "2025-11-01", 95.57],
+    ["South", "2025-12-01", 96.29],
+    ["South", "2026-01-01", 97.64],
+    ["South", "2026-02-01", 93.73],
+    ["South", "2026-03-01", 97.34],
+    ["South", "2026-04-01", 95.85],
+    ["South", "2026-05-01", 98.92],
+    ["South", "2026-06-01", 95.09],
+    ["South", "2026-07-01", 95.86],
+    ["West", "2025-08-01", 96.66],
+    ["West", "2025-09-01", 94.31],
+    ["West", "2025-10-01", 98.19],
+    ["West", "2025-11-01", 96.55],
+    ["West", "2025-12-01", 94.52],
+    ["West", "2026-01-01", 96.35],
+    ["West", "2026-02-01", 92.27],
+    ["West", "2026-03-01", 98.58],
+    ["West", "2026-04-01", 95.02],
+    ["West", "2026-05-01", 93.6],
+    ["West", "2026-06-01", 94.87],
+    ["West", "2026-07-01", 96.54]
+  ],
+  "parts": {
+   "regions_declining_3_months": {
+    "columns": ["region"],
+    "rows": []
+   }
+  }
+ }
+}

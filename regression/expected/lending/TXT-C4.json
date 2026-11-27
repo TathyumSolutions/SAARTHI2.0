@@ -1,0 +1,24 @@
+{
+ "meta": {"question": "Which agents have an NPA rate on their sourced loans more than double their branch's average, and how much commission (paid plus pending) is tied to those agents?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:20"},
+ "result": {
+  "columns": ["agent_code", "agent_name", "agent_npa_rate_pct", "branch_npa_rate_pct", "commission"],
+  "rows": [
+    ["AGT000046", "Aryan Varty", 5.71, 0.89, 234605.07],
+    ["AGT000049", "Ikbal Kakar", 4.55, 1.08, 513509.29],
+    ["AGT000007", "Reyansh Das", 4.44, 1.26, 311039.76],
+    ["AGT000070", "Tamanna Parsa", 3.57, 0.89, 182402.56],
+    ["AGT000063", "Henry Mangat", 3.51, 1.37, 285924.04],
+    ["AGT000020", "Lopa Som", 3.45, 1.14, 380260.41],
+    ["AGT000053", "Daksh Sharma", 3.03, 1.14, 265015.58],
+    ["AGT000066", "Yahvi Seshadri", 3.03, 0.72, 398019.73],
+    ["AGT000069", "George Vaidya", 2.94, 0.89, 124253.38],
+    ["AGT000043", "Vihaan Ravel", 2.63, 1.14, 293379.32],
+    ["AGT000064", "Indrajit Buch", 2.5, 1.14, 227536.87],
+    ["AGT000029", "Mohini Pradhan", 2.38, 0.89, 248669.31],
+    ["AGT000077", "Ucchal Sethi", 1.89, 0.72, 388575.6],
+    ["AGT000056", "Kamala Sekhon", 1.39, 0.18, 500609.63],
+    ["AGT000040", "Onkar Shere", 1.2, 0.53, 305354.26],
+    ["AGT000021", "Chandran Salvi", 1.19, 0.53, 423691.6]
+  ]
+ }
+}

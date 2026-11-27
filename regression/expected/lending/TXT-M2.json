@@ -1,0 +1,18 @@
+{
+ "meta": {"question": "Which 10 branches have the highest number of NPA loans, and what is each one's NPA share of its total loans?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:19"},
+ "result": {
+  "columns": ["branch_name", "npa_loans", "npa_share_pct"],
+  "rows": [
+    ["Mumbai - West Branch", 9, 1.52],
+    ["Coimbatore - South Branch", 8, 1.37],
+    ["Delhi - North Branch", 7, 1.26],
+    ["Madurai - South Branch", 7, 1.14],
+    ["Hubballi - South Branch", 6, 1.0],
+    ["New Delhi - North Branch", 6, 0.93],
+    ["Pune - West Branch", 6, 1.05],
+    ["Thane - West Branch", 6, 1.08],
+    ["Bengaluru - South Branch", 5, 0.85],
+    ["Chennai - South Branch", 5, 0.89]
+  ]
+ }
+}

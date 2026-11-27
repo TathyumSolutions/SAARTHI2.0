@@ -1,0 +1,10 @@
+{
+ "meta": {"question": "For each supplier with at least 3 received POs in the 12 months to 2026-08-25, what is the on-time delivery percentage? List the 10 lowest with their home plant.", "database": "manufacturing_demo_db", "params": {"as_of": "2026-08-25", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "last_month_start": "2026-07-01", "last_month_end": "2026-07-31", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "trailing12_after": "2025-08-25", "trailing30_after": "2026-07-26", "supplier_code": "SUP000060", "plant_code": "PLT0009", "f3_supplier_code": "SUP000019"}, "data_scale": "small", "saved": "2026-11-27T20:35:21"},
+ "result": {
+  "columns": ["supplier_code", "supplier_name", "home_plant", "received_pos", "on_time_pct"],
+  "rows": [
+    ["SUP000010", "Ganga Nagy", "Aurangabad Fabrication Plant 9", 3, 33.33],
+    ["SUP000073", "Madhav Vora", "Nashik Assembly Plant 3", 3, 33.33]
+  ]
+ }
+}

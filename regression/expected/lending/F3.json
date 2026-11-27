@@ -1,0 +1,20 @@
+{
+ "meta": {"question": "For branch BR0013, show agent-sourced loans disbursed in 2022 by product, with amount, amount-weighted interest rate and its gap to India's 2022 lending rate.", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:21"},
+ "result": {
+  "columns": ["product_code", "loans", "disbursed", "weighted_rate", "gap_pp"],
+  "rows": [
+    ["CD", 6, 600000.0, 23.32, 14.75],
+    ["EDU", 7, 3553000.0, 12.68, 4.12],
+    ["GL", 6, 4911000.0, 12.23, 3.66],
+    ["HL", 4, 2655000.0, 8.96, 0.39],
+    ["HLTU", 3, 7367000.0, 11.31, 2.74],
+    ["LAP", 2, 1087000.0, 11.79, 3.22],
+    ["MFI", 5, 266000.0, 22.7, 14.13],
+    ["MSME", 4, 2891000.0, 19.25, 10.68],
+    ["NCL", 5, 2102000.0, 11.93, 3.36],
+    ["PL", 4, 1375000.0, 17.89, 9.32],
+    ["TW", 6, 913000.0, 14.13, 5.57],
+    ["UCL", 4, 3073000.0, 15.81, 7.24]
+  ]
+ }
+}

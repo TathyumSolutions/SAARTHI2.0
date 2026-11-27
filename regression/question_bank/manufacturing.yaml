@@ -1,0 +1,401 @@
+# Manufacturing regression question bank.
+#
+# Source: docs/Manufacturing Question Bank (2).docx (ids S*, M*, C*, T*, A*, F*)
+# Schema: docs/Manufacturing Schema.html; data: demo_manufacturing/db_manufacturing.py.
+#
+# :as_of is the generator's own "today" (db_manufacturing.py TODAY =
+# date(2026, 8, 25)). Entity placeholders were chosen from the
+# `--scale small` data set (seeded, so stable for that scale).
+
+domain: manufacturing
+database: manufacturing_demo_db
+data_scale: small               # snapshots in regression/expected/ were taken at this --scale
+generator: demo_manufacturing/db_manufacturing.py
+
+params:
+  as_of: "2026-08-25"
+  prev_q_start: "2026-04-01"        # the quarter before :as_of / "last quarter"
+  prev_q_end: "2026-06-30"
+  last_month_start: "2026-07-01"
+  last_month_end: "2026-07-31"
+  last6_start: "2026-02-01"         # last 6 complete months
+  last6_end: "2026-07-31"
+  trailing12_after: "2025-08-25"    # "12 months to :as_of" = (this, as_of]
+  trailing30_after: "2026-07-26"    # "30 days to :as_of" = (this, as_of]
+  supplier_code: "SUP000060"        # active, below threshold (A1)
+  plant_code: "PLT0009"             # most Excellent home-plant suppliers (A3)
+  f3_supplier_code: "SUP000019"     # has POs last quarter (F3)
+
+snippets:
+  # Vendor Rating Card (03_vendor_rating_card.xlsx), sheet Vendor Rating.
+  rating_band: |
+    CASE WHEN quality_rating IS NULL THEN 'Unrated'
+         WHEN quality_rating >= 4.5 THEN 'Excellent'
+         WHEN quality_rating >= 3.5 THEN 'Good'
+         WHEN quality_rating >= 2.5 THEN 'Acceptable'
+         ELSE 'Below Threshold' END
+
+questions:
+
+  # ------------------------------------------------------------------
+  # 1. Simple: single table (DB)
+  # ------------------------------------------------------------------
+  - id: S1
+    category: simple
+    sources: [DB]
+    question: How many machines are currently in each status?
+    expected_logic: Count rows, grouped by status.
+    reference_sql: |
+      SELECT status, COUNT(*) AS machines FROM machines GROUP BY status ORDER BY status
+    compare: {mode: set, match_columns: [status, machines]}
+
+  - id: S2
+    category: simple
+    sources: [DB]
+    question: What are the count and total value of purchase orders in each status for the quarter before {{as_of}} (ordered between {{prev_q_start}} and {{prev_q_end}})?
+    expected_logic: Filter order_date; count rows and sum total_amount by status.
+    reference_sql: |
+      SELECT status, COUNT(*) AS purchase_orders, SUM(total_amount) AS total_value
+      FROM purchase_orders WHERE order_date BETWEEN '{{prev_q_start}}' AND '{{prev_q_end}}'
+      GROUP BY status ORDER BY status
+    compare: {mode: set, match_columns: [status, purchase_orders, total_value]}
+
+  - id: S3
+    category: simple
+    sources: [DB]
+    question: Which 10 pending payables that are overdue at {{as_of}} have the highest amounts?
+    expected_logic: status = Pending and due_date < :as_of; sort by amount descending; limit 10.
+    reference_sql: |
+      SELECT invoice_number, payable_type, payee_name, amount, due_date
+      FROM payables WHERE status = 'Pending' AND due_date < '{{as_of}}'
+      ORDER BY amount DESC LIMIT 10
+    compare: {mode: ordered, match_columns: [amount], top_n: 10}
+
+  # ------------------------------------------------------------------
+  # 2. Medium: 2-3 joins, grouping, date logic (DB)
+  # ------------------------------------------------------------------
+  - id: M1
+    category: medium
+    sources: [DB]
+    question: For each supplier with at least 3 received POs in the 12 months to {{as_of}}, what is the on-time delivery percentage? List the 10 lowest with their home plant.
+    expected_logic: >
+      received_date in ({{trailing12_after}}, {{as_of}}]. On time means
+      received_date <= expected_delivery_date. Exclude and report missing
+      expected dates. Home plant through suppliers.plant_id.
+    reference_sql: |
+      SELECT s.supplier_code, s.supplier_name, pl.plant_name AS home_plant, COUNT(*) AS received_pos,
+             ROUND(100.0 * COUNT(*) FILTER (WHERE po.received_date <= po.expected_delivery_date)
+                   / NULLIF(COUNT(po.expected_delivery_date), 0), 2) AS on_time_pct
+      FROM purchase_orders po JOIN suppliers s ON s.supplier_id = po.supplier_id
+      JOIN plants pl ON pl.plant_id = s.plant_id
+      WHERE po.received_date > '{{trailing12_after}}' AND po.received_date <= '{{as_of}}'
+      GROUP BY s.supplier_code, s.supplier_name, pl.plant_name
+      HAVING COUNT(*) >= 3
+      ORDER BY on_time_pct ASC, s.supplier_code LIMIT 10
+    compare: {mode: set, match_columns: [received_pos, on_time_pct]}
+    join_path: [purchase_orders.supplier_id, suppliers.plant_id, plants.plant_id]
+    pitfall: The home plant is suppliers.plant_id, not the PO's receiving plant.
+
+  - id: M2
+    category: medium
+    sources: [DB]
+    question: By plant region and product category, what was the monthly rejection rate over the last 6 complete months ({{last6_start}} to {{last6_end}})?
+    expected_logic: >
+      production_log -> production_orders -> plants, products. Filter log_date.
+      Rate = sum(rejected_qty) / sum(produced_qty), not an average of row
+      rates. Handle zero production.
+    reference_sql: |
+      SELECT pl.region, pr.category, date_trunc('month', lg.log_date)::date AS month,
+             ROUND(100.0 * SUM(lg.rejected_qty) / NULLIF(SUM(lg.produced_qty), 0), 2) AS rejection_rate_pct
+      FROM production_log lg JOIN production_orders po ON po.production_order_id = lg.production_order_id
+      JOIN plants pl ON pl.plant_id = po.plant_id JOIN products pr ON pr.product_id = po.product_id
+      WHERE lg.log_date BETWEEN '{{last6_start}}' AND '{{last6_end}}'
+      GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
+    compare: {mode: set, match_columns: [rejection_rate_pct]}
+    pitfall: AVG(rejected_qty / produced_qty) weights every log row equally.
+
+  - id: M3
+    category: medium
+    sources: [DB]
+    question: For each plant and machine type, what were the downtime hours and maintenance cost last quarter ({{prev_q_start}} to {{prev_q_end}}), and how many events were High or Critical?
+    expected_logic: >
+      machine_downtime -> machines -> plants. as_of_date is the event date.
+      Sum hours and cost; count High and Critical conditionally.
+    reference_sql: |
+      SELECT pl.plant_name, m.machine_type, SUM(d.downtime_hours) AS downtime_hours,
+             SUM(d.maintenance_cost) AS maintenance_cost,
+             COUNT(*) FILTER (WHERE d.criticality IN ('High', 'Critical')) AS high_or_critical_events
+      FROM machine_downtime d JOIN machines m ON m.machine_id = d.machine_id
+      JOIN plants pl ON pl.plant_id = m.plant_id
+      WHERE d.as_of_date BETWEEN '{{prev_q_start}}' AND '{{prev_q_end}}'
+      GROUP BY pl.plant_name, m.machine_type ORDER BY 1, 2
+    compare: {mode: set, match_columns: [downtime_hours, maintenance_cost, high_or_critical_events]}
+
+  # ------------------------------------------------------------------
+  # 3. Complicated: multi-hop, windows, cohorts, reconciliation (DB)
+  # ------------------------------------------------------------------
+  - id: C1
+    category: complicated
+    sources: [DB]
+    question: Which POs have a unit price more than 15% above the benchmark from the last three accepted POs for the same material? Show supplier, plant, requester and any linked payable.
+    expected_logic: >
+      Benchmark = average unit_price of the 3 prior accepted (Approved or
+      Received) POs for the material, ordered by order_date then po_id,
+      excluding the current PO; require 3 priors. Non-accepted POs are still
+      tested. Left join employees and payables, aggregating payables per PO.
+    reference_sql: |
+      WITH bench AS (
+        SELECT p.po_id, b.benchmark, b.priors
+        FROM purchase_orders p
+        CROSS JOIN LATERAL (
+          SELECT AVG(q.unit_price) AS benchmark, COUNT(*) AS priors FROM (
+            SELECT unit_price FROM purchase_orders q
+            WHERE q.material_id = p.material_id AND q.status IN ('Approved', 'Received')
+              AND (q.order_date, q.po_id) < (p.order_date, p.po_id)
+            ORDER BY q.order_date DESC, q.po_id DESC LIMIT 3) q) b),
+      pay AS (SELECT related_po_id, COUNT(*) AS payables, SUM(amount) AS payable_amount
+              FROM payables WHERE related_po_id IS NOT NULL GROUP BY related_po_id)
+      SELECT po.po_number, rm.material_code, po.unit_price, ROUND(b.benchmark, 2) AS benchmark,
+             ROUND(100 * (po.unit_price / b.benchmark - 1), 2) AS pct_above,
+             s.supplier_name, pl.plant_name, e.full_name AS requester, COALESCE(pay.payable_amount, 0) AS payable_amount
+      FROM purchase_orders po JOIN bench b ON b.po_id = po.po_id
+      JOIN raw_materials rm ON rm.material_id = po.material_id
+      JOIN suppliers s ON s.supplier_id = po.supplier_id JOIN plants pl ON pl.plant_id = po.plant_id
+      LEFT JOIN employees e ON e.employee_id = po.requested_by_employee_id
+      LEFT JOIN pay ON pay.related_po_id = po.po_id
+      WHERE b.priors = 3 AND po.unit_price > 1.15 * b.benchmark
+      ORDER BY pct_above DESC
+    compare: {mode: set, match_columns: [po_number, pct_above], min_column_match: 1}
+
+  - id: C2
+    category: complicated
+    sources: [DB]
+    question: Group customers by the quarter of their first non-cancelled, non-rejected order. What share ordered again in each of the next 4 quarters, and what was the cumulative invoiced value per cohort customer?
+    expected_logic: >
+      First order across all history (status not Cancelled/Rejected). Count
+      distinct customers by quarter offset 1-4; denominator = original cohort
+      size. Invoices = shipments.total_invoice_amount excluding Returned,
+      aggregated before joining. Mark quarters not yet complete at :as_of.
+    reference_sql: |
+      WITH valid AS (
+        SELECT customer_id, production_order_id, date_trunc('quarter', order_date)::date AS q
+        FROM production_orders WHERE order_status NOT IN ('Cancelled', 'Rejected')),
+      firsts AS (SELECT customer_id, MIN(q) AS cohort_q FROM valid GROUP BY customer_id),
+      sizes AS (SELECT cohort_q, COUNT(*) AS cohort_size FROM firsts GROUP BY cohort_q),
+      offsets AS (SELECT generate_series(1, 4) AS k),
+      repeat AS (
+        SELECT f.cohort_q, o.k, COUNT(DISTINCT v.customer_id) AS repeat_customers
+        FROM firsts f CROSS JOIN offsets o
+        JOIN valid v ON v.customer_id = f.customer_id AND v.q = (f.cohort_q + (o.k * INTERVAL '3 months'))::date
+        GROUP BY f.cohort_q, o.k),
+      inv AS (
+        SELECT po.customer_id, date_trunc('quarter', po.order_date)::date AS q, SUM(sh.inv) AS invoiced
+        FROM production_orders po
+        JOIN (SELECT production_order_id, SUM(total_invoice_amount) AS inv FROM shipments
+              WHERE shipment_status <> 'Returned' GROUP BY production_order_id) sh
+          ON sh.production_order_id = po.production_order_id
+        WHERE po.order_status NOT IN ('Cancelled', 'Rejected')
+        GROUP BY 1, 2),
+      cum AS (
+        SELECT f.cohort_q, o.k, SUM(i.invoiced) AS cum_invoiced
+        FROM firsts f CROSS JOIN offsets o
+        JOIN inv i ON i.customer_id = f.customer_id AND i.q <= (f.cohort_q + (o.k * INTERVAL '3 months'))::date
+        GROUP BY f.cohort_q, o.k)
+      SELECT s.cohort_q AS cohort_quarter, o.k AS quarter_offset, s.cohort_size,
+             COALESCE(r.repeat_customers, 0) AS repeat_customers,
+             ROUND(100.0 * COALESCE(r.repeat_customers, 0) / s.cohort_size, 2) AS repeat_pct,
+             ROUND(COALESCE(c.cum_invoiced, 0) / s.cohort_size, 2) AS cum_invoiced_per_customer,
+             ((s.cohort_q + ((o.k + 1) * INTERVAL '3 months'))::date <= '{{as_of}}') AS quarter_complete
+      FROM sizes s CROSS JOIN offsets o
+      LEFT JOIN repeat r ON r.cohort_q = s.cohort_q AND r.k = o.k
+      LEFT JOIN cum c ON c.cohort_q = s.cohort_q AND c.k = o.k
+      ORDER BY 1, 2
+    compare: {mode: set, match_columns: [repeat_pct], min_column_match: 1}
+
+  - id: C3
+    category: complicated
+    sources: [DB]
+    question: For Completed orders, where do ordered, logged, shipped and money values disagree? Classify each exception and rank the top 20 by rupee gap within each plant.
+    expected_logic: >
+      Aggregate each child table to one row per order first. Checks: header
+      quantity_produced vs log produced_qty; good quantity (produced -
+      rejected) vs shipped (excluding Returned); Sales Invoice vs shipped goods
+      value (shipment invoices include freight, so compare quantity x price);
+      Sales Invoice vs Payment Received. Rank with ROW_NUMBER per plant.
+    reference_sql: |
+      WITH lg AS (SELECT production_order_id, SUM(produced_qty) AS logged FROM production_log GROUP BY 1),
+      sh AS (SELECT production_order_id, SUM(quantity_shipped) AS shipped,
+                    SUM(quantity_shipped * unit_price) AS shipped_value
+             FROM shipments WHERE shipment_status <> 'Returned' GROUP BY 1),
+      tl AS (SELECT production_order_id,
+                    SUM(amount) FILTER (WHERE transaction_type = 'Sales Invoice') AS invoiced,
+                    SUM(amount) FILTER (WHERE transaction_type = 'Payment Received') AS received
+             FROM transactions_ledger GROUP BY 1),
+      base AS (
+        SELECT o.order_number, o.plant_id, o.unit_price, o.quantity_produced, o.quantity_rejected,
+               COALESCE(lg.logged, 0) AS logged, COALESCE(sh.shipped, 0) AS shipped,
+               COALESCE(sh.shipped_value, 0) AS shipped_value,
+               COALESCE(tl.invoiced, 0) AS invoiced, COALESCE(tl.received, 0) AS received
+        FROM production_orders o LEFT JOIN lg USING (production_order_id)
+        LEFT JOIN sh USING (production_order_id) LEFT JOIN tl USING (production_order_id)
+        WHERE o.order_status = 'Completed'),
+      ex AS (
+        SELECT order_number, plant_id, 'Header vs log quantity' AS exception_type,
+               ABS(quantity_produced - logged) * unit_price AS rupee_gap FROM base WHERE quantity_produced <> logged
+        UNION ALL
+        SELECT order_number, plant_id, 'Good vs shipped quantity',
+               ABS(quantity_produced - quantity_rejected - shipped) * unit_price FROM base
+        WHERE quantity_produced - quantity_rejected <> shipped
+        UNION ALL
+        SELECT order_number, plant_id, 'Invoice vs shipped value', ABS(invoiced - shipped_value) FROM base
+        WHERE ABS(invoiced - shipped_value) > 1
+        UNION ALL
+        SELECT order_number, plant_id, 'Invoice not fully received', invoiced - received FROM base
+        WHERE invoiced - received > 1),
+      ranked AS (SELECT ex.*, ROW_NUMBER() OVER (PARTITION BY plant_id ORDER BY rupee_gap DESC, order_number, exception_type) AS rn FROM ex)
+      SELECT p.plant_name, r.rn AS rank_in_plant, r.order_number, r.exception_type, ROUND(r.rupee_gap, 2) AS rupee_gap
+      FROM ranked r JOIN plants p ON p.plant_id = r.plant_id
+      WHERE r.rn <= 20 ORDER BY p.plant_name, r.rn
+    compare: {mode: set, match_columns: [rupee_gap], min_column_match: 1}
+
+  # ------------------------------------------------------------------
+  # 4. Simple across two source types
+  # ------------------------------------------------------------------
+  - id: T1
+    category: two_source
+    sources: [XLSX, DB]
+    question: How many active suppliers fall into each rating band?
+    expected_logic: >
+      Card ranges on quality_rating: Excellent 4.5-5.0, Good 3.5-4.4,
+      Acceptable 2.5-3.4, Below Threshold < 2.5. Filter is_active. Report
+      unrated rows separately, if any.
+    reference_sql: |
+      SELECT {{rating_band}} AS rating_band, COUNT(*) AS active_suppliers
+      FROM suppliers WHERE is_active GROUP BY 1 ORDER BY 1
+    compare: {mode: set, match_columns: [active_suppliers]}
+    expected_facts: ["Excellent", "Below Threshold"]
+
+  - id: T2
+    category: two_source
+    sources: [DOC, DB]
+    question: For POs dated last month ({{last_month_start}} to {{last_month_end}}) that were Rejected or Cancelled, which have no reason recorded, against the vendor policy's requirement?
+    expected_logic: >
+      VMP-003 §4 requires a reason code. List null or blank rejection_reason.
+      A filled value is not proof of a valid code (the column is text).
+    reference_sql: |
+      SELECT po_number, status, order_date, rejection_reason
+      FROM purchase_orders
+      WHERE order_date BETWEEN '{{last_month_start}}' AND '{{last_month_end}}'
+        AND status IN ('Rejected', 'Cancelled') AND NULLIF(TRIM(rejection_reason), '') IS NULL
+      ORDER BY po_number
+    compare: {mode: empty}
+    expected_facts: ["reason code"]
+
+  - id: T3
+    category: two_source
+    sources: [DOC, XLSX]
+    question: Do the rating card's payment terms agree with the vendor policy's standard payment terms?
+    expected_logic: >
+      Policy: 15 to 90 days by rating tier and category. Card: 45, 30 and 15
+      days, plus advance payment below threshold. The card shows no 60 or
+      90-day term and no category rule. Advance payment matches the policy's
+      rule for suppliers under review or suspended.
+    compare: {mode: facts}
+    expected_facts: ["45 days", "15", "90", "advance payment"]
+
+  # ------------------------------------------------------------------
+  # 5. Simple across all source types (DOC + XLSX + DB)
+  # ------------------------------------------------------------------
+  - id: A1
+    category: all_sources
+    sources: [DOC, XLSX, DB]
+    question: What are supplier {{supplier_code}}'s rating band, tier and payment terms, and what action does policy require at that rating?
+    expected_logic: >
+      DB rating; XLSX band/tier/terms (Below Threshold -> Under Review /
+      Suspended, advance payment only); DOC §3 improvement plan, §5 advance
+      payment. Do not claim Suspended status from one rating.
+    reference_sql: |
+      SELECT supplier_code, supplier_name, quality_rating, is_active, {{rating_band}} AS rating_band
+      FROM suppliers WHERE supplier_code = '{{supplier_code}}'
+    compare: {mode: set, match_columns: [quality_rating], min_column_match: 1}
+    expected_facts: ["Below Threshold", "improvement plan", "advance payment"]
+
+  - id: A2
+    category: all_sources
+    sources: [DOC, XLSX, DB]
+    question: Which active suppliers are below threshold, and have any POs dated in the 30 days to {{as_of}}?
+    expected_logic: >
+      Active and quality_rating < 2.5; POs with order_date in
+      ({{trailing30_after}}, {{as_of}}]. XLSX bars new POs until re-audit; DOC
+      requires an improvement plan. Not proven breaches (no rating-change dates).
+    reference_sql: |
+      SELECT s.supplier_code, s.quality_rating, COUNT(po.po_id) AS recent_pos
+      FROM suppliers s
+      LEFT JOIN purchase_orders po ON po.supplier_id = s.supplier_id
+        AND po.order_date > '{{trailing30_after}}' AND po.order_date <= '{{as_of}}'
+      WHERE s.is_active AND s.quality_rating < 2.5
+      GROUP BY s.supplier_code, s.quality_rating ORDER BY s.supplier_code
+    compare: {mode: set, match_columns: [supplier_code], min_column_match: 1}
+    expected_facts: ["re-audit", "improvement plan"]
+
+  - id: A3
+    category: all_sources
+    sources: [DOC, XLSX, DB]
+    question: How many active Excellent-rated suppliers does plant {{plant_code}} service as home plant, what priority and terms apply, and may other plants use them?
+    expected_logic: >
+      suppliers.plant_id = plant; quality_rating >= 4.5. XLSX: first allocation
+      on urgent POs, 45 days. DOC §2: other plants may use them subject to
+      logistics feasibility.
+    reference_sql: |
+      SELECT COUNT(*) AS excellent_active_suppliers
+      FROM suppliers s JOIN plants p ON p.plant_id = s.plant_id
+      WHERE p.plant_code = '{{plant_code}}' AND s.is_active AND s.quality_rating >= 4.5
+    compare: {mode: scalar}
+    expected_facts: ["45 days", "logistics feasibility", "urgent"]
+
+  # ------------------------------------------------------------------
+  # Final APIs (Frankfurter, OSRM)
+  # ------------------------------------------------------------------
+  - id: F1
+    category: api
+    sources: [API]
+    question: What is the exchange rate from US dollars to Indian rupees?
+    expected_logic: GET api.frankfurter.dev/v2/rate/usd/inr; live value, so only the shape is checked.
+    compare: {mode: facts}
+    expected_facts: ["INR"]
+
+  - id: F2
+    category: api
+    sources: [API]
+    question: What are the driving distance and estimated time between Pune (73.8567, 18.5204) and Mumbai (72.8777, 19.0760)?
+    expected_logic: OSRM route -> 146.81 km, about 1 hour 57 minutes (car estimate, not a truck journey).
+    compare: {mode: facts}
+    expected_facts: ["146"]
+
+  - id: F3
+    category: api
+    sources: [DB, DOC, XLSX, API]
+    question: For supplier {{f3_supplier_code}}, show last calendar quarter's purchase orders by receiving plant, with each order's value in INR.
+    expected_logic: >
+      DB part of F3: POs with order_date in {{prev_q_start}}..{{prev_q_end}} by
+      receiving plant (purchase_orders.plant_id). USD conversion and OSRM need
+      the APIs; the schema has no coordinates.
+    reference_sql: |
+      SELECT p.plant_name AS receiving_plant, po.po_number, po.order_date, po.total_amount
+      FROM purchase_orders po JOIN suppliers s ON s.supplier_id = po.supplier_id
+      JOIN plants p ON p.plant_id = po.plant_id
+      WHERE s.supplier_code = '{{f3_supplier_code}}'
+        AND po.order_date BETWEEN '{{prev_q_start}}' AND '{{prev_q_end}}'
+      ORDER BY po.order_date, po.po_number
+    compare: {mode: set, match_columns: [po_number, total_amount], min_column_match: 1}
+
+refusal_tests:
+  - id: R1
+    question: What is each supplier's full scorecard, including responsiveness?
+    expected_facts: ["responsiveness"]
+  - id: R2
+    question: Which suppliers were below threshold for two consecutive quarters?
+    expected_facts: ["history"]
+  - id: R3
+    question: What are each supplier's agreed payment terms?
+    expected_facts: ["payment terms"]

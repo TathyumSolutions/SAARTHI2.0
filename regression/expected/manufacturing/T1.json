@@ -1,0 +1,12 @@
+{
+ "meta": {"question": "How many active suppliers fall into each rating band?", "database": "manufacturing_demo_db", "params": {"as_of": "2026-08-25", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "last_month_start": "2026-07-01", "last_month_end": "2026-07-31", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "trailing12_after": "2025-08-25", "trailing30_after": "2026-07-26", "supplier_code": "SUP000060", "plant_code": "PLT0009", "f3_supplier_code": "SUP000019"}, "data_scale": "small", "saved": "2026-11-27T20:35:22"},
+ "result": {
+  "columns": ["rating_band", "active_suppliers"],
+  "rows": [
+    ["Acceptable", 27],
+    ["Below Threshold", 8],
+    ["Excellent", 18],
+    ["Good", 23]
+  ]
+ }
+}

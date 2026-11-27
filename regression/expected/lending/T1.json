@@ -1,0 +1,12 @@
+{
+ "meta": {"question": "How many active agents fall into each commission volume slab for the quarter containing 2026-08-22?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:21"},
+ "result": {
+  "columns": ["slab", "active_agents"],
+  "rows": [
+    ["0 - no volume", 18],
+    ["1 - Below Rs 10L", 32],
+    ["2 - Rs 10L-50L", 25],
+    ["3 - Rs 50L-2Cr", 1]
+  ]
+ }
+}

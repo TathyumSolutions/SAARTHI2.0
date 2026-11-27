@@ -1,0 +1,11 @@
+{
+ "meta": {"question": "What are the count and total requested amount of loan applications in each status for the quarter before 2026-08-22 (applied between 2026-04-01 and 2026-06-30)?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:20"},
+ "result": {
+  "columns": ["status", "applications", "total_requested"],
+  "rows": [
+    ["Approved", 275, 148711000.0],
+    ["Rejected", 89, 52745000.0],
+    ["Withdrawn", 29, 14481000.0]
+  ]
+ }
+}

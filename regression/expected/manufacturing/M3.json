@@ -1,0 +1,18 @@
+{
+ "meta": {"question": "For each plant and machine type, what were the downtime hours and maintenance cost last quarter (2026-04-01 to 2026-06-30), and how many events were High or Critical?", "database": "manufacturing_demo_db", "params": {"as_of": "2026-08-25", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "last_month_start": "2026-07-01", "last_month_end": "2026-07-31", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "trailing12_after": "2025-08-25", "trailing30_after": "2026-07-26", "supplier_code": "SUP000060", "plant_code": "PLT0009", "f3_supplier_code": "SUP000019"}, "data_scale": "small", "saved": "2026-11-27T20:35:21"},
+ "result": {
+  "columns": ["plant_name", "machine_type", "downtime_hours", "maintenance_cost", "high_or_critical_events"],
+  "rows": [
+    ["Aurangabad Fabrication Plant 9", "CNC Lathe", 8.96, 11288.1, 0],
+    ["Bengaluru Machining Plant 2", "Surface Grinder", 6.78, 3696.51, 0],
+    ["Chennai Machining Plant 8", "Laser Cutting Machine", 5.61, 10139.68, 0],
+    ["Delhi Electronics Assembly Plant 6", "CNC Milling (VMC)", 144.28, 503184.02, 1],
+    ["Delhi Electronics Assembly Plant 6", "Press Brake", 6.0, 13811.04, 0],
+    ["Mumbai Electronics Assembly Plant 1", "Laser Cutting Machine", 7.24, 8694.16, 0],
+    ["Mumbai Electronics Assembly Plant 1", "Press Brake", 42.21, 89600.38, 1],
+    ["Mysuru Foundry Plant 7", "Induction Furnace", 7.97, 25424.07, 0],
+    ["Nashik Assembly Plant 3", "Press Brake", 4.73, 16080.35, 0],
+    ["Pune Injection Molding Plant 10", "Surface Grinder", 6.43, 20495.85, 0]
+  ]
+ }
+}

@@ -1,0 +1,9 @@
+{
+ "meta": {"question": "For agent-sourced loan LN000000172, what are its DPD and classification, how must interest income be treated, and what commission rate does the card give?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:21"},
+ "result": {
+  "columns": ["loan_account_number", "current_dpd", "dpd_bucket", "asset_classification", "product_code", "agent_code", "agent_master_rate", "card_rate_pct"],
+  "rows": [
+    ["LN000000172", 127, "NPA 91-365", "Sub-Standard", "EDU", "AGT000058", 1.23, 0.64]
+  ]
+ }
+}

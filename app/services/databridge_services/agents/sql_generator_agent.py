@@ -345,6 +345,9 @@ Return ONLY the PostgreSQL query, nothing else.
 
         except Exception as e:
             print(f"❌ [SQLGeneratorAgent] LLM SQL generation error: {e}")
+            # Kept for execute(): without it a missing API key or a refused
+            # call reached the user as "LLM returned empty response".
+            self.last_llm_error = f"{type(e).__name__}: {str(e).splitlines()[0][:300]}"
             return ""
 
     def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -368,6 +371,7 @@ Return ONLY the PostgreSQL query, nothing else.
             if feedback_context:
                 print(f"🧠 [FEEDBACK-DEBUG] [SQL] Using feedback context for SQL generation:\n{feedback_context}")
 
+            self.last_llm_error = None
             sql = self.generate_sql_from_querysense(
                 user_query,
                 query_sense_output,
@@ -381,7 +385,9 @@ Return ONLY the PostgreSQL query, nothing else.
 
             if not sql:
                 print(f"⚠️ [SQLGeneratorAgent] No SQL generated!")
-                state["error"] = "SQL generation failed - LLM returned empty response"
+                llm_error = getattr(self, "last_llm_error", None)
+                state["error"] = (f"SQL generation failed - the LLM call raised {llm_error}" if llm_error
+                                  else "SQL generation failed - LLM returned empty response")
                 state["generated_sql"] = None
             else:
                 state["generated_sql"] = sql

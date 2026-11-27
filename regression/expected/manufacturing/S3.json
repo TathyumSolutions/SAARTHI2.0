@@ -1,0 +1,11 @@
+{
+ "meta": {"question": "Which 10 pending payables that are overdue at 2026-08-25 have the highest amounts?", "database": "manufacturing_demo_db", "params": {"as_of": "2026-08-25", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "last_month_start": "2026-07-01", "last_month_end": "2026-07-31", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "trailing12_after": "2025-08-25", "trailing30_after": "2026-07-26", "supplier_code": "SUP000060", "plant_code": "PLT0009", "f3_supplier_code": "SUP000019"}, "data_scale": "small", "saved": "2026-11-27T20:35:21"},
+ "result": {
+  "columns": ["invoice_number", "payable_type", "payee_name", "amount", "due_date"],
+  "rows": [
+    ["INV00000497", "Freight Charges", "Sandhu and Sons", 557330.5, "2026-08-23"],
+    ["INV00000521", "Freight Charges", "Gokhale-Gill", 332261.5, "2026-08-18"],
+    ["INV00000066", "Supplier Payment", "Raw Material Supplier Payout", 152816.46, "2026-08-12"]
+  ]
+ }
+}

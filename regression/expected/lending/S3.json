@@ -1,0 +1,18 @@
+{
+ "meta": {"question": "Which 10 pending payables that are overdue at 2026-08-22 have the highest amounts?", "database": "lending_demo_db", "params": {"as_of": "2026-08-22", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "prev_prev_q_start": "2026-01-01", "prev_prev_q_end": "2026-03-31", "curr_q_start": "2026-07-01", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "last12m_start": "2025-08-01", "last12m_end": "2026-07-31", "trailing12_after": "2025-08-22", "fy_start": "2025-04-01", "fy_end": "2026-03-31", "loan_account_number": "LN000000172", "agent_code": "AGT000018", "branch_code": "BR0013"}, "data_scale": "small", "saved": "2026-11-27T20:35:20"},
+ "result": {
+  "columns": ["invoice_number", "payable_type", "payee_name", "amount", "due_date"],
+  "rows": [
+    ["INV00005665", "Office Rent", "Anne-Johal", 106721.55, "2026-08-21"],
+    ["INV00005350", "Agent Commission", "DSA Commission Payout", 32011.28, "2026-08-17"],
+    ["INV00003168", "Agent Commission", "DSA Commission Payout", 30727.33, "2026-08-18"],
+    ["INV00001497", "Agent Commission", "DSA Commission Payout", 18061.55, "2026-08-08"],
+    ["INV00000366", "Agent Commission", "DSA Commission Payout", 11651.76, "2026-08-21"],
+    ["INV00004740", "Agent Commission", "DSA Commission Payout", 10989.48, "2026-08-14"],
+    ["INV00001694", "Agent Commission", "DSA Commission Payout", 8707.92, "2026-08-18"],
+    ["INV00002319", "Agent Commission", "DSA Commission Payout", 4563.99, "2026-08-21"],
+    ["INV00001550", "Agent Commission", "DSA Commission Payout", 4396.53, "2026-08-18"],
+    ["INV00005495", "Agent Commission", "DSA Commission Payout", 3986.28, "2026-08-13"]
+  ]
+ }
+}

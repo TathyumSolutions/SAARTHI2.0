@@ -92,6 +92,79 @@ def _table_named_in(table: str, query_words: set) -> bool:
     return bool(parts) and all(p in query_words or p.rstrip("s") in query_words for p in parts)
 
 
+# ---------------------------------------------------------------- table relevance
+# Used by _relevant_tables to pick the few tables a local model is shown.
+# Question words and schema names go through the same _stem(), so
+# "rejection"/"rejected", "logged"/"log" and "collected"/"collections" meet.
+
+_STEM_SUFFIXES = ("ations", "ation", "ings", "ions", "ing", "ion", "ers", "er", "ed", "es", "s")
+# Words that read as an id-like column's last token, not as a subject.
+_KEY_TOKENS = {"id", "code", "key", "num", "no", "number", "ref"}
+# Short words never taken as a table acronym.
+_ACRONYM_STOPWORDS = {"of", "in", "to", "by", "on", "at", "is", "an", "or", "as", "no", "id", "do",
+                      "be", "it", "we", "me", "my", "up", "if", "so", "us", "vs"}
+
+
+def _stem(word: str) -> str:
+    """Light suffix stripping, applied the same way to question words and
+    schema names. Keeps at least 4 letters, so "region" stays whole."""
+    w = (word or "").lower()
+    if w.endswith("ies") and len(w) > 4:
+        return w[:-3] + "y"
+    for suffix in _STEM_SUFFIXES:
+        if w.endswith(suffix) and len(w) - len(suffix) >= 4:
+            w = w[: -len(suffix)]
+            # "logg" -> "log", "shipp" -> "ship"
+            if len(w) >= 4 and w[-1] == w[-2] and w[-1] not in "aeiou":
+                w = w[:-1]
+            break
+    return w
+
+
+def _name_stems(name: str) -> list:
+    return [_stem(t) for t in re.findall(r"[a-z]+", (name or "").lower()) if len(t) >= 3]
+
+
+def _question_terms(text: str) -> set:
+    """Stems of the question's 3+ letter words."""
+    return {_stem(w) for w in re.findall(r"[a-z]{3,}", (text or "").lower())}
+
+
+def _question_acronyms(text: str) -> set:
+    """Capitalised short words that may abbreviate a table ("POs" -> "po",
+    "BOM" -> "bom"). Only words written in capitals count, so ordinary
+    words ("to", "per") never do."""
+    out = set()
+    for w in re.findall(r"\b[A-Z]{2,4}s?\b", text or ""):
+        w = (w[:-1] if w.endswith("s") else w).lower()
+        if w not in _ACRONYM_STOPWORDS:
+            out.add(w)
+    return out
+
+
+def _sample_text_stems(props: dict) -> set:
+    """Stems of a column's short text sample values ("Agent Commission"),
+    so a question word can find the table through its data."""
+    stems = set()
+    for raw in (props or {}).get("example_values") or []:
+        if isinstance(raw, str) and 0 < len(raw) <= 40 and not re.search(r"\d", raw):
+            stems.update(_name_stems(raw))
+    return stems
+
+
+def _table_acronym(table: str) -> str:
+    """'purchase_orders' -> 'po'; '' for a one-word name."""
+    parts = re.findall(r"[a-z]+", table.lower())
+    return "".join(p[0] for p in parts) if len(parts) >= 2 else ""
+
+
+def _term_matches_stem(term: str, stem: str) -> bool:
+    """Exact stem match, or a 4+ letter question stem that starts a longer
+    name stem ("ship" -> "shipment")."""
+    return term == stem or (len(term) >= 4 and stem.startswith(term))
+
+
+
 def _is_local_model(target_model) -> bool:
     value = str(target_model or "")
     return value.startswith("ollama://") or value == "llama3"
@@ -204,52 +277,157 @@ class QuerySenseAgent:
             context window (Llama 2 has 4,096 tokens), and Ollama then drops
             the start of the prompt, which holds the output rules.
 
-            Scoring: router-hinted table 10, a word of the table name in
-            the question 3, a column name in the question 1. Tables joined
-            to a top-scoring table by a known relation fill any slots left,
-            so the readable-name joins of rule 2 stay possible."""
+            Scoring, on stemmed words (see _stem):
+              - router-hinted table: 10
+              - the table's name in the question: 3 times the share of its
+                words found (loans 3, loan_applications 1.5 for "loans"), or 3
+                for its acronym written in capitals ("POs" - purchase_orders)
+              - each question word found in the table's column names: 1
+                divided by the number of tables it is found in, so a word
+                every table has ("amount", "status", "date") barely counts
+                and "region" - only on branches - counts in full. Words of
+                short text sample values count the same way. The words of
+                an FK column ("requested_by_employee_id") also count for the
+                table it references (employees), so "requester" finds it.
+            Tables are then taken in score order. When a table has no known
+            join to those already taken but one table links them (loans
+            between repayment_schedule and branches), that bridge is taken
+            with it. Joined neighbours fill any slots left.
+
+            Run against the Lending and Manufacturing question banks
+            (regression/), the earlier one-point-per-matching-column scoring
+            left a table the answer needed out of 10 of 45 prompts."""
             all_tables = self._all_tables()
             if len(all_tables) <= limit:
                 return all_tables
 
-            words = _query_words(user_query)
             hinted = {str(h).lower() for h in (hint_tables or [])}
-            scores = {}
-            for t in all_tables:
-                score = 10 if t.lower() in hinted else 0
-                name_parts = _query_words(t.replace("_", " "))
-                if t.lower() in words or (name_parts and name_parts & words):
-                    score += 3
-                for col in self.schema["tables"][t].get("columns", {}):
-                    if col.lower() in words or _query_words(col.replace("_", " ")) & words:
-                        score += 1
-                scores[t] = score
+            terms = _question_terms(user_query)
+            acronyms = _question_acronyms(user_query)
+            adjacency = self._table_adjacency()
 
-            ranked = sorted(all_tables, key=lambda t: -scores[t])
-            chosen = [t for t in ranked if scores[t] > 0][:limit]
-            if not chosen:
+            # term -> tables whose column names contain it
+            term_tables: Dict[str, set] = {}
+            for t in all_tables:
+                for col, props in self.schema["tables"][t].get("columns", {}).items():
+                    value_stems = _sample_text_stems(props if isinstance(props, dict) else {})
+                    for term in terms & value_stems:
+                        term_tables.setdefault(term, set()).add(t)
+                    tokens = re.findall(r"[a-z]+", col.lower())
+                    is_key = bool(tokens) and tokens[-1] in _KEY_TOKENS
+                    ref_table = self._fk_target_table(t, col)
+                    stems = _name_stems(col)
+                    if is_key:
+                        # Drop the id token and words naming the referenced
+                        # table: "branch_id" says nothing about the table it
+                        # sits in. Role words ("requested") remain.
+                        ref_stems = set(_name_stems(ref_table or "")) | set(stems[-2:-1] if not ref_table else [])
+                        stems = [st for st in stems[:-1] if st not in ref_stems]
+                    for term in terms:
+                        if any(_term_matches_stem(term, st) for st in stems):
+                            term_tables.setdefault(term, set()).add(t)
+                            if is_key and ref_table:
+                                term_tables[term].add(ref_table)
+
+            # Tables sharing an acronym ("po": purchase_orders and
+            # production_orders) split its points.
+            acronym_owners: Dict[str, int] = {}
+            for t in all_tables:
+                if _table_acronym(t):
+                    acronym_owners[_table_acronym(t)] = acronym_owners.get(_table_acronym(t), 0) + 1
+
+            scores = {}
+            evidence: Dict[str, set] = {t: set() for t in all_tables}  # question words each table matches
+            for t in all_tables:
+                score = 10.0 if t.lower() in hinted else 0.0
+                name_stems = _name_stems(t)
+                matched = [term for term in terms if any(_term_matches_stem(term, st) for st in name_stems)]
+                if _table_acronym(t) and _table_acronym(t) in acronyms:
+                    score += 3 / acronym_owners[_table_acronym(t)]
+                    # Per table: a shared acronym is ambiguous, so it must
+                    # not stop the other table it may mean.
+                    evidence[t].add(f"acronym:{t}")
+                elif name_stems and matched:
+                    # Share of the name's words in the question: "loan" is
+                    # half of loan_applications but all of loans.
+                    matched_stems = [st for st in name_stems if any(_term_matches_stem(term, st) for term in terms)]
+                    score += 3 * len(matched_stems) / len(name_stems)
+                    evidence[t].update(matched)
+                scores[t] = score
+            for term, tables in term_tables.items():
+                for t in tables:
+                    scores[t] += 1.0 / len(tables)
+                    evidence[t].add(term)
+
+            ranked = sorted(all_tables, key=lambda t: (-scores[t], all_tables.index(t)))
+            candidates = [t for t in ranked if scores[t] > 0]
+            if not candidates:
                 return ranked[:limit]
 
-            neighbours = []
-            for rel in self.schema.get("relations", []):
-                a, b = rel.get("from_table"), rel.get("to_table")
-                if a in chosen and b not in chosen:
-                    neighbours.append(b)
-                elif b in chosen and a not in chosen:
-                    neighbours.append(a)
-            for t, meta in self.schema["tables"].items():
-                for fk in meta.get("foreign_keys", []) or []:
-                    ref = str(fk.get("references") or "").split(".", 1)[0]
-                    if t in chosen and ref in self.schema["tables"] and ref not in chosen:
-                        neighbours.append(ref)
-                    elif ref in chosen and t not in chosen:
-                        neighbours.append(t)
-            neighbours = {t for t in neighbours if t in scores}
+            chosen: List[str] = []
+            covered: set = set()
+            for t in candidates:
+                if len(chosen) >= limit:
+                    break
+                if t in chosen:
+                    continue
+                if chosen and not (adjacency.get(t, set()) & set(chosen)):
+                    # Not joined to anything taken so far. Worth a slot (two,
+                    # with its bridge) only for a word nothing taken covers -
+                    # a table that merely repeats covered words would push
+                    # out a better one.
+                    if not (evidence[t] - covered) and t.lower() not in hinted:
+                        continue
+                    bridge = self._bridge_table(t, chosen, adjacency, scores)
+                    if bridge and len(chosen) + 2 <= limit:
+                        chosen.extend([bridge, t])
+                        covered |= evidence[t] | evidence[bridge]
+                        continue
+                chosen.append(t)
+                covered |= evidence[t]
+
+            neighbours = {n for t in chosen for n in adjacency.get(t, set()) if n not in chosen}
             for t in sorted(neighbours, key=lambda t: (-scores[t], all_tables.index(t))):
                 if len(chosen) >= limit:
                     break
                 chosen.append(t)
             return chosen
+
+        def _fk_target_table(self, table: str, column: str):
+            """Table a declared FK or inferred relation on table.column points to."""
+            for fk in self.schema["tables"].get(table, {}).get("foreign_keys", []) or []:
+                if fk.get("column") == column and fk.get("references"):
+                    ref = str(fk["references"]).split(".", 1)[0]
+                    if ref in self.schema["tables"]:
+                        return ref
+            for rel in self.schema.get("relations", []) or []:
+                if rel.get("from_table") == table and rel.get("from_column") == column:
+                    return rel.get("to_table")
+            return None
+
+        def _table_adjacency(self) -> Dict[str, set]:
+            """Undirected table graph from declared FKs and inferred relations."""
+            adj: Dict[str, set] = {t: set() for t in self.schema["tables"]}
+            for t, meta in self.schema["tables"].items():
+                for fk in meta.get("foreign_keys", []) or []:
+                    ref = str(fk.get("references") or "").split(".", 1)[0]
+                    if ref in adj and ref != t:
+                        adj[t].add(ref)
+                        adj[ref].add(t)
+            for rel in self.schema.get("relations", []) or []:
+                a, b = rel.get("from_table"), rel.get("to_table")
+                if a in adj and b in adj and a != b:
+                    adj[a].add(b)
+                    adj[b].add(a)
+            return adj
+
+        @staticmethod
+        def _bridge_table(table: str, chosen: List[str], adjacency: Dict[str, set], scores: Dict[str, float]):
+            """A table joined both to `table` and to one already chosen,
+            preferring the highest-scoring one."""
+            options = [b for b in adjacency.get(table, set())
+                       if b not in chosen and adjacency.get(b, set()) & set(chosen)]
+            return max(options, key=lambda b: (scores.get(b, 0), b), default=None)
 
         def _call_llm_for_plan(self, user_query: str,target_model: str,system_instructions: str = "", hint_tables: list = None, feedback_context: str = "", user_id=None, retry_feedback: str = "") -> Dict[str, Any]:
             local_model = _is_local_model(target_model)

@@ -1,0 +1,11 @@
+{
+ "meta": {"question": "What are the count and total value of purchase orders in each status for the quarter before 2026-08-25 (ordered between 2026-04-01 and 2026-06-30)?", "database": "manufacturing_demo_db", "params": {"as_of": "2026-08-25", "prev_q_start": "2026-04-01", "prev_q_end": "2026-06-30", "last_month_start": "2026-07-01", "last_month_end": "2026-07-31", "last6_start": "2026-02-01", "last6_end": "2026-07-31", "trailing12_after": "2025-08-25", "trailing30_after": "2026-07-26", "supplier_code": "SUP000060", "plant_code": "PLT0009", "f3_supplier_code": "SUP000019"}, "data_scale": "small", "saved": "2026-11-27T20:35:21"},
+ "result": {
+  "columns": ["status", "purchase_orders", "total_value"],
+  "rows": [
+    ["Approved", 1, 1418559.13],
+    ["Cancelled", 1, 1152836.6],
+    ["Received", 9, 17484064.93]
+  ]
+ }
+}
