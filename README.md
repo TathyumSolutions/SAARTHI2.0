@@ -417,7 +417,6 @@ SELECT * FROM response_feedback;
 SELECT * FROM llm_call_logs;
 SELECT * FROM model_configurations;
 SELECT * FROM user_model_pipelines;
-SELECT * FROM bi_semantics_configs;
 
 -- =========================================================
 -- 5) Delete all rows in safe order
@@ -441,7 +440,6 @@ DELETE FROM response_feedback;
 DELETE FROM chat_sessions;
 DELETE FROM model_configurations;
 DELETE FROM user_model_pipelines;
-DELETE FROM bi_semantics_configs;
 
 -- =========================================================
 -- 6) Faster full cleanup alternative
@@ -456,7 +454,7 @@ DELETE FROM bi_semantics_configs;
 
 -- WORKSPACE DB:
 -- TRUNCATE TABLE llm_call_logs, query_logs, response_feedback, chat_sessions,
--- model_configurations, user_model_pipelines, bi_semantics_configs
+-- model_configurations, user_model_pipelines
 -- RESTART IDENTITY CASCADE;
 
 

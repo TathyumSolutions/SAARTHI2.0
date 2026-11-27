@@ -5,7 +5,7 @@ Database Models
   - core:      Company, User, ResourceMapping, AuditLog
   - resources: DatabaseConnection, ApiConnector, FileResource
   - workspace: ChatSession, ModelConfiguration, ResponseFeedback, QueryLog,
-    BiSemanticsConfig, LLMCallLog, ScheduledJob, ScheduledJobRun
+    LLMCallLog, ScheduledJob, ScheduledJobRun
 
 The router config (which datasources/tables/tools a user's smart router
 considers) used to be a persisted RouterConfig row per user here. It's
@@ -28,7 +28,6 @@ from .model_config import ModelConfiguration
 from .user_model_pipeline import UserModelPipeline
 from .feedback import ResponseFeedback
 from .query_log import QueryLog
-from .bi_semantics_config import BiSemanticsConfig
 from .llm_call_log import LLMCallLog
 from .scheduled_job import ScheduledJob, ScheduledJobRun
 
@@ -44,7 +43,6 @@ __all__ = [
     'ModelConfiguration',
     'ResponseFeedback',
     'QueryLog',
-    'BiSemanticsConfig',
     'LLMCallLog',
     'ScheduledJob',
     'ScheduledJobRun',

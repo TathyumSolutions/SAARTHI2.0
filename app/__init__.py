@@ -117,7 +117,6 @@ def create_app(config_name='development'):
         settings_routes,
         resource_mapping_routes,
         warehouse_routes,
-        bi_semantics_routes,
         user_model_pipeline_routes,
         alert_routes
     )
@@ -144,7 +143,6 @@ def create_app(config_name='development'):
     app.register_blueprint(settings_routes.bp)
     app.register_blueprint(resource_mapping_routes.bp)
     app.register_blueprint(warehouse_routes.bp)
-    app.register_blueprint(bi_semantics_routes.bp)
     app.register_blueprint(user_model_pipeline_routes.bp)
     app.register_blueprint(alert_routes.bp)
 

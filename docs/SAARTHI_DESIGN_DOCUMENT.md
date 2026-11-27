@@ -127,7 +127,6 @@ app/routes/                  Flask blueprints (HTTP layer)
    llm_call_log_routes.py      /api/llm-calls/ — LLM Calls page
    export_routes.py            /api/export/results/<id> — full-result Excel download
    warehouse_routes.py         /api/warehouse/* — ETL script generator
-   bi_semantics_routes.py      /api/bi-semantics/* — default measure per table
    api_v1_routes.py            /api/v1/chat — programmatic chat endpoint
    page_routes.py              HTML pages
    (analytics/history/user/workspace/export-* stubs)
@@ -144,7 +143,6 @@ app/services/
    data_source_finaliser.py      resolves business terms via lookup spreadsheets (pre-DB track)
    column_intelligence.py        numeric-text normalisation, column role/unit, LLM column meanings
    result_combiner.py            joins multi-source tables by value-verified keys + plan-driven arithmetic
-   bi_semantics_service.py       default measure/aggregation hints for SQL generation
    model_selection_service.py    which model runs each pipeline step
    model_config_access_service   LLM grants + daily budgets
    llm_call_logger.py            tracked_invoke → llm_call_logs
@@ -211,7 +209,6 @@ erDiagram
 | `response_feedback` (`ResponseFeedback`) | `user_id`, `company_code`, `query_code`, `question`, `answer`, `sql_query`, `router_decision`, **`feedback_type`** like/dislike, `remarks`, `metamind_snapshot` JSON | Self-learning signal. Liked rows feed the router's feedback context. |
 | `model_configurations` (`ModelConfiguration`) | `name`, `model` (e.g. `gpt-4o-mini`, `api://claude-…`, `ollama://llama3`), `provider`, `settings` JSON (`custom_key`, `base_url`, `company_code`, `is_global_default`, `step_overrides` …), `user_id`, `company_code` | "Configured Models" under AI & Models. |
 | `user_model_pipelines` (`UserModelPipeline`) | `user_id`, `main_model`, `model_type_preference` (oss/api), **`step_models`** JSON (`{query_sense: …, sql_generator: …}`) | Per-user choice of model for each DB-pipeline step. |
-| `bi_semantics_configs` (`BiSemanticsConfig`) | `user_id`, `table_name`, `entity_label`, `measure_column`, `aggregation`; unique (`user_id`,`table_name`) | Per-user default measure (e.g. sales orders → `SUM(net_value)`), layered over built-in defaults. |
 | `llm_call_logs` (`LLMCallLog`) | **`call_code`** (`LLMC00000001`), `user_id`, `company_code`, `session_id`, `query_code`, **`purpose`** (`router.decision`, `sql_generator.generate_sql`, `rag.answer`…), `provider`, `model`, `model_configuration_id`, token counts, **`cost`**, `duration_ms`, `status`, `prompt_preview`, `response_preview` | Every LLM call made anywhere in the app (when `llm_logging.enabled`). |
 
 ### 4.2 Non-database stores (equally important)
@@ -513,7 +510,6 @@ No regeneration happens. The grantee's next question resolves visibility live. B
 * `model_config_routes` → CRUD on `model_configurations`. It seeds default open-source models per company and stores `custom_key`/`base_url`/`is_global_default`/`step_overrides` in `settings`.
 * `user_model_pipeline_routes` → `POST /api/user/model-pipeline` upserts `user_model_pipelines` (`main_model`, `step_models`). `/auto-fill` and `/models/recommendations` produce presets from `model_registry_service`.
 * `settings_routes` → `POST /api/settings/query-instructions` writes `users.query_instructions`. `POST /api/settings/rag-config` rewrites `rag_config.yaml` (RAG knobs, `self_learning.enabled`, LLM pricing).
-* `bi_semantics_routes` → upsert/delete `bi_semantics_configs`.
 
 ### 7.9 Status lifecycles
 
@@ -673,7 +669,7 @@ flowchart TD
     START([enriched question + schema]) --> SIMP[1 simplifier<br/>QuerySimplifierAgent<br/>LLM: rewrite intent]
     SIMP --> SENSE[2 query_sense<br/>QuerySenseAgent<br/>LLM: JSON plan tables/columns/filters/joins<br/>+ hint_tables, feedback_context<br/>validates joins, adds display-label columns]
     SENSE --> VAL{3 validator<br/>QueryValidatorAgent<br/>no LLM}
-    VAL -->|schema ok, no SQL yet| GEN[4 sql_generator<br/>SQLGeneratorAgent<br/>LLM: SQL + BI-semantics hint<br/>+ narration]
+    VAL -->|schema ok, no SQL yet| GEN[4 sql_generator<br/>SQLGeneratorAgent<br/>LLM: SQL<br/>+ narration]
     GEN --> VAL
     VAL -->|SQL valid| FMT[5 query_formatter<br/>QueryFormatterAgent<br/>execute SELECT only, LIMIT 1000,<br/>statement_timeout 30s; kpi/table/chart;<br/>LLM insights]
     VAL -->|invalid, retries left| DIAG[error_diagnosis<br/>rule-based]
@@ -695,7 +691,7 @@ flowchart TD
 | simplifier | schema | `query_simplifier.simplify` |
 | query_sense | schema, `hint_tables`, feedback | `query_sense.plan` |
 | validator | schema (column/alias checks) | – |
-| sql_generator | **`bi_semantics_configs`** + built-in defaults (`build_measure_guidance`) | `sql_generator.generate_sql`, `sql_generator.narration` |
+| sql_generator | QuerySense plan, feedback | `sql_generator.generate_sql`, `sql_generator.narration` |
 | query_formatter | **customer Postgres** (read-only SELECT) | `data_insight.generate` |
 | insight_generator | result rows | `data_insight.generate` |
 | visualizer | result rows; top-N from `query_instructions` | – |
@@ -846,26 +842,26 @@ Common `purpose` values: `router.decision`, `router.result_combiner`, `router.mu
 
 C = create, R = read, U = update, D = delete. "Manifest" and "Qdrant" are the non-database stores.
 
-| Flow ↓ / Table → | companies | users | resource_mapping | audit_logs | database_connections | files | api_connectors | Manifest/Parquet | Qdrant | chat_sessions | query_logs | response_feedback | model_configurations | user_model_pipelines | bi_semantics_configs | llm_call_logs |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Provision company | C | | | | | | | | | | | | | | | |
-| Register / verify / login / approve | R | C U | | C | | | | | | | | | | | | |
-| DB connection save/edit | | R | R | C | C U (schema_metadata, summary, status) | | | | | | | | | | | |
-| **DB Process** | | R | R | | U (status, schema_metadata, summary, config.column_semantics) + COMMENT ON TABLE on external DB | | | | | | | | | | | C |
-| Excel upload / edit | | R | R | C | C U | | | C U | | | | | | | | |
-| **Excel Process** | | R | R | | U (status, summary, schema_metadata) | | | U (description, column meanings) | | | | | | | | C |
-| Document upload | | R | | C | | C | | | | | | | | | | |
-| **Document Process** | | R | R | C | | U (status, summary) | | | C | | | | | | | C |
-| API save / **Process** | | R | R | C | | | C U (summary) | | | | | | | | | |
-| Delete DB/Excel/doc/API | | R | D | C | D | D | D | D | D | | | | | | | |
-| Resource mapping grant/revoke/budget | | R | C U D | C | R | R | R | | | | | | R | | | |
-| Description edit / Details | | R | R | | U / R(+live introspect) | U / R | U / R | R | R | | | | | | | |
-| **Ask question (fresh)** | | R | R | | R (schema_metadata, desc) | R | R | R | R | | **C** | R | R | R | R | **C** |
-| **Ask question (reused)** | | R | | | R | | | R | | | **C** + R | | R | | | C (insights) |
-| Save chat session | | R | | | | | | | | C U | | | | | | |
-| Like / Dislike / edit feedback | | R | R | | R | R | R | R | R | | U | C U D | | | | |
-| Model config / pipeline / BI semantics | | R | | | | | | | | | | | C U D | C U | C U D | |
-| Queries / LLM Calls pages | | R | | | | | | | | | R | | | | | R |
+| Flow ↓ / Table → | companies | users | resource_mapping | audit_logs | database_connections | files | api_connectors | Manifest/Parquet | Qdrant | chat_sessions | query_logs | response_feedback | model_configurations | user_model_pipelines | llm_call_logs |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Provision company | C | | | | | | | | | | | | | | |
+| Register / verify / login / approve | R | C U | | C | | | | | | | | | | | |
+| DB connection save/edit | | R | R | C | C U (schema_metadata, summary, status) | | | | | | | | | | |
+| **DB Process** | | R | R | | U (status, schema_metadata, summary, config.column_semantics) + COMMENT ON TABLE on external DB | | | | | | | | | | C |
+| Excel upload / edit | | R | R | C | C U | | | C U | | | | | | | |
+| **Excel Process** | | R | R | | U (status, summary, schema_metadata) | | | U (description, column meanings) | | | | | | | C |
+| Document upload | | R | | C | | C | | | | | | | | | |
+| **Document Process** | | R | R | C | | U (status, summary) | | | C | | | | | | C |
+| API save / **Process** | | R | R | C | | | C U (summary) | | | | | | | | |
+| Delete DB/Excel/doc/API | | R | D | C | D | D | D | D | D | | | | | | |
+| Resource mapping grant/revoke/budget | | R | C U D | C | R | R | R | | | | | | R | | |
+| Description edit / Details | | R | R | | U / R(+live introspect) | U / R | U / R | R | R | | | | | | |
+| **Ask question (fresh)** | | R | R | | R (schema_metadata, desc) | R | R | R | R | | **C** | R | R | R | **C** |
+| **Ask question (reused)** | | R | | | R | | | R | | | **C** + R | | R | | C (insights) |
+| Save chat session | | R | | | | | | | | C U | | | | | |
+| Like / Dislike / edit feedback | | R | R | | R | R | R | R | R | | U | C U D | | | |
+| Model config / pipeline | | R | | | | | | | | | | | C U D | C U | |
+| Queries / LLM Calls pages | | R | | | | | | | | | R | | | | R |
 
 
 ---
