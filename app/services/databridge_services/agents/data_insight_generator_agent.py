@@ -10,6 +10,7 @@ import pandas as pd
 import os
 from langchain_openai import ChatOpenAI
 from app.services.llm_call_logger import tracked_invoke, record_llm_call
+from app.services.databridge_services.result_summary import is_single_row, summarize_single_row
 
 class DataInsightGeneratorAgent:
     """
@@ -30,6 +31,11 @@ class DataInsightGeneratorAgent:
         """
         if not data:
             return {"insights": ["No data available to analyze."], "visualizations": []}
+        if is_single_row(data):
+            # A single figure (a total, a count) has no pattern to find, and
+            # describe() over one row only yields NaN spreads the LLM then
+            # "explains". State the value instead - no LLM call needed.
+            return {"insights": [summarize_single_row(data[0], columns)], "visualizations": []}
         
         model_to_use = target_model or self.model
 

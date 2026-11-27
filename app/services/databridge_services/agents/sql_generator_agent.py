@@ -217,6 +217,8 @@ JOIN RULES:
 
 AGGREGATION RULES:
 - Use GROUP BY only if aggregations exist in Query Sense Output.
+- An aggregation with "function": "count_distinct" means COUNT(DISTINCT <column>) - never a plain COUNT(<column>).
+- Apply every expression in the Query Sense Output "filters" list in the WHERE (or HAVING, for aggregates) clause.
 - Use ORDER BY + LIMIT for top N queries, NOT RANK().
 - NEVER use RANK(), ROW_NUMBER() unless explicitly requested.
 

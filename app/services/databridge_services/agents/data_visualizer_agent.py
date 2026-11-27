@@ -44,6 +44,7 @@
 DataVisualizerAgent - Self-contained chart configuration generator
 """
 from typing import Dict, Any, List, Optional
+from app.services.databridge_services.result_summary import SINGLE_FIGURE_CHART_NOTE
 import requests
 import json
 import re
@@ -302,6 +303,10 @@ class DataVisualizerAgent:
             return {**not_chart_worthy, "note": "No data was returned to visualize."}
 
         row_count = len(data)
+        if row_count == 1:
+            # One row is a single figure (a total, a count): a one-point
+            # line or a one-bar chart adds nothing to the number itself.
+            return {**not_chart_worthy, "note": SINGLE_FIGURE_CHART_NOTE}
         columns_info = self._classify_columns(data, columns)
         measure_col = self._pick_measure_column(columns_info)
         # A caller that knows which figure the question is about (e.g. the

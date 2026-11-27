@@ -35,7 +35,7 @@ PLAN_JSON_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "function": {"type": "string", "enum": ["sum", "min", "max", "avg", "count"]},
+                    "function": {"type": "string", "enum": ["sum", "min", "max", "avg", "count", "count_distinct"]},
                     "column": {"type": "string"},
                 },
                 "required": ["function", "column"],
@@ -58,6 +58,31 @@ PLAN_JSON_SCHEMA = {
     "required": ["tables", "columns", "intent", "aggregations", "group_by", "joins",
                  "filters", "order_by", "limit", "assumption_note"],
 }
+
+
+_MAX_CATEGORY_VALUES = 8
+_MAX_CATEGORY_VALUE_LEN = 40
+
+
+def _category_values(props: dict) -> List[str]:
+    """Distinct example values of a category (dimension) column, for the
+    planner to match qualifying words like "breakdowns" against. Other
+    columns (ids, measures, dates, free text) return nothing - their
+    samples don't help pick a filter and only cost prompt space."""
+    if props.get("role") != "dimension":
+        return []
+    seen, values = set(), []
+    for raw in props.get("example_values") or []:
+        if raw is None:
+            continue
+        value = str(raw).strip()
+        if not value or value in seen or len(value) > _MAX_CATEGORY_VALUE_LEN:
+            continue
+        seen.add(value)
+        values.append(value)
+        if len(values) >= _MAX_CATEGORY_VALUES:
+            break
+    return values
 
 
 def _table_named_in(table: str, query_words: set) -> bool:
@@ -159,8 +184,13 @@ class QuerySenseAgent:
                 descr = meta.get("description", "")
                 lines.append(f"TABLE: {t} — {descr}")
                 for col, props in meta.get("columns", {}).items():
-                    cdesc = props.get("description", "")
-                    lines.append(f"  - {t}.{col}: {cdesc}")
+                    props = props if isinstance(props, dict) else {}
+                    # Introspected schemas carry "meaning"; older static
+                    # schema files used "description".
+                    cdesc = props.get("meaning") or props.get("description", "")
+                    values = _category_values(props)
+                    values_text = f" (values: {', '.join(values)})" if values else ""
+                    lines.append(f"  - {t}.{col}: {cdesc}{values_text}")
                 lines.append("")
             return "\n".join(lines)
 
@@ -346,12 +376,26 @@ branches.branch_name, customers.name), add that table, add the join on the
 key, and put the readable column in "columns" and "group_by" - keep the ID
 in "group_by" too so two rows sharing a name are not merged. Skip this when
 the user explicitly asks for the ID itself.
+3. COUNT THINGS, NOT ROWS: when the question asks how many of an entity
+(machines, customers, suppliers, products, ...) and the table being counted
+records events or transactions about it - so the same entity's id can appear
+on many rows (e.g. one row per downtime event, order or payment) - use
+{{"function": "count_distinct", "column": "<that table>.<entity id column>"}}.
+Use plain "count" only when the question counts the events themselves
+("how many downtime events", "number of orders") or the table has exactly
+one row per entity.
+4. QUALIFYING WORDS ARE FILTERS: when the question narrows what is counted
+or listed with a word that matches the listed values of a column (e.g.
+"breakdowns" when a category column has values like 'Minor Breakdown' and
+'Major Breakdown'), add a filter on that column - use ILIKE '%<word>%' when
+the word matches several values, or = '<value>' for one exact value. Never
+ignore such a word, and never invent a column for it.
 
 Return a concise JSON with:
 - tables: list of table names
 - columns: list of "table.column"
 - intent: SELECTION | AGGREGATION | GROUPED_ANALYSIS | DISTINCT_SELECTION
-- aggregations: list of {{ "function": "sum|min|max|avg|count", "column": "table.column" or "*" }}
+- aggregations: list of {{ "function": "sum|min|max|avg|count|count_distinct", "column": "table.column" or "*" }}
 - group_by: list of "table.column"
 - joins: list of {{ "left": "table.col", "right": "table.col" }}
 - filters: list of SQL boolean expressions
@@ -849,7 +893,7 @@ assumption_note). Do NOT return data rows or invent values.
                     continue
                 fn = (a.get("function") or "").lower()
                 col = a.get("column")
-                if fn not in ("sum", "avg", "min", "max", "count"):
+                if fn not in ("sum", "avg", "min", "max", "count", "count_distinct"):
                     continue
                 if col == "*":
                     sanitized["aggregations"].append({"function": fn, "column": "*"})

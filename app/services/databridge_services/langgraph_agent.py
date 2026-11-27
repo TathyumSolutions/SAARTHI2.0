@@ -7,6 +7,7 @@ from .agent_routers import validation_router, error_recovery_router, format_rout
 from app.services.stream_manager import stream_manager
 import time
 from app.services.model_selection_service import get_model_for_step, get_step_credentials
+from app.services.databridge_services.result_summary import is_single_row, summarize_single_row
 
 # Import all agents from the agents package
 from .agents import (
@@ -233,6 +234,15 @@ def _compose_final_answer(state: DataBridgeState) -> str:
     parts = []
     if assumption_note:
         parts.append(f"Note: {assumption_note}")
+
+    # A single figure (a total, a count) is the answer itself - say it
+    # plainly instead of "Retrieved 1 row across 1 column ..." plus chart
+    # and statistics notes that have nothing to describe.
+    data = state.get("data") or []
+    if row_count == 1 and is_single_row(data):
+        parts.append(summarize_single_row(data[0], columns))
+        return " ".join(parts)
+
     if row_count and columns:
         row_word = "row" if row_count == 1 else "rows"
         col_word = "column" if len(columns) == 1 else "columns"
