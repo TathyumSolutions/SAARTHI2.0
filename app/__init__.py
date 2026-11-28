@@ -160,13 +160,17 @@ def create_app(config_name='development'):
     with app.app_context():
         try:
             from sqlalchemy.orm import configure_mappers
+            from app.services.db_bootstrap import (
+                drop_removed_tables, schema_bootstrap_lock, sync_missing_columns,
+            )
             configure_mappers()
-            print("[DB Bootstrap] Synchronizing schema across core/resources/workspace...")
-            db.create_all()
-            from app.services.db_bootstrap import sync_missing_columns, drop_removed_tables
-            sync_missing_columns(db)
-            drop_removed_tables(db, ['router_configs'])
-            print("[DB Bootstrap] Schema is up to date.")
+            # One process at a time (see schema_bootstrap_lock).
+            with schema_bootstrap_lock(app.config['SQLALCHEMY_DATABASE_URI']):
+                print("[DB Bootstrap] Synchronizing schema across core/resources/workspace...")
+                db.create_all()
+                sync_missing_columns(db)
+                drop_removed_tables(db, ['router_configs'])
+                print("[DB Bootstrap] Schema is up to date.")
         except Exception as e:
             import traceback
             print(f"[DB Bootstrap] Schema sync error: {e}")

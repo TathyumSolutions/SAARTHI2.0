@@ -9,9 +9,16 @@ driven entirely by the SQLAlchemy models via db.create_all(bind_key=...), so
 schema lives in one place - the models - instead of being duplicated as raw
 SQL strings here.
 """
-import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+from contextlib import contextmanager
 from urllib.parse import urlparse
+
+import psycopg2
+import psycopg2.errors
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+
+# pg_advisory_lock key held while one process synchronises the schema.
+# Any fixed number works; it only has to be the same in every process.
+SCHEMA_BOOTSTRAP_LOCK_KEY = 72_401_311
 
 
 def _create_postgres_database_if_missing(database_url):
@@ -34,12 +41,64 @@ def _create_postgres_database_if_missing(database_url):
         cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
         if not cursor.fetchone():
             print(f"[DB Bootstrap] Database '{db_name}' not found - creating it.")
-            cursor.execute(f'CREATE DATABASE "{db_name}"')
+            try:
+                cursor.execute(f'CREATE DATABASE "{db_name}"')
+            except (psycopg2.errors.DuplicateDatabase, psycopg2.errors.UniqueViolation):
+                # Another process starting at the same moment (web and
+                # scheduler on a first `docker compose up`) created it
+                # between the check and the CREATE - the outcome we wanted.
+                print(f"[DB Bootstrap] Database '{db_name}' was just created by another process.")
         else:
             print(f"[DB Bootstrap] Database '{db_name}' already exists.")
     finally:
         cursor.close()
         conn.close()
+
+
+def _maintenance_dsn(database_url):
+    parsed = urlparse(database_url)
+    return (f"postgresql://{parsed.username}:{parsed.password}@{parsed.hostname}:"
+            f"{parsed.port or 5432}/postgres")
+
+
+@contextmanager
+def schema_bootstrap_lock(database_url):
+    """
+    Serialises schema synchronisation across processes sharing one Postgres
+    server. Without it, web and scheduler starting together both ran
+    db.create_all() on an empty database: one created the tables, the other
+    failed with "duplicate key value violates unique constraint
+    pg_type_typname_nsp_index" and skipped the rest of its sync. The second
+    process now waits, then finds every table already there.
+
+    The lock lives on the 'postgres' maintenance database, so every process
+    contends for the same one whichever app database it targets. It is a
+    session lock: released when the connection closes, even if the process
+    dies mid-sync. No-op for SQLite. If the lock cannot be taken, the sync
+    still runs unlocked - the old behaviour - rather than blocking startup.
+    """
+    if not urlparse(database_url).scheme.startswith('postgres'):
+        yield
+        return
+    conn = None
+    try:
+        conn = psycopg2.connect(_maintenance_dsn(database_url), connect_timeout=10)
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", (SCHEMA_BOOTSTRAP_LOCK_KEY,))
+            if not cursor.fetchone()[0]:
+                print("[DB Bootstrap] Another process is synchronizing the schema - waiting for it...")
+                cursor.execute("SELECT pg_advisory_lock(%s)", (SCHEMA_BOOTSTRAP_LOCK_KEY,))
+    except Exception as e:
+        print(f"[DB Bootstrap] Could not take the schema lock ({e}); continuing without it.")
+        if conn is not None:
+            conn.close()
+        conn = None
+    try:
+        yield
+    finally:
+        if conn is not None:
+            conn.close()  # releases the advisory lock
 
 
 def bootstrap_databases(bind_urls):
