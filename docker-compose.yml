@@ -27,6 +27,14 @@ services:
       # pull finishes, local models answer with "model not found".
       ollama:
         condition: service_started
+    # Healthy once create_app() (incl. DB bootstrap) has finished and the
+    # server answers. The scheduler waits for this - see its depends_on.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+      start_period: 60s
 
     volumes:
       - ./app:/app/app
@@ -57,6 +65,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      # Start only after web is up. On a first `docker compose up` both
+      # containers otherwise start together and race twice: on filling the
+      # new nltk_data volume ("mkdir .../tokenizers: file exists") and on
+      # bootstrapping the empty database schema.
+      web:
+        condition: service_healthy
     volumes:
       - ./app:/app/app
       - uploads_data:/app/uploads
